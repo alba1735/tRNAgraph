@@ -1,0 +1,12 @@
+name: trnagraph
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - 'pandas'
+  - 'numpy'
+  - 'scipy'
+  - 'scikit-learn'
+  - 'matplotlib'
+  - 'seaborn'
+  - 'anndata'

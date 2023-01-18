@@ -127,3 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Vscode
+.vscode/
+
+# h5py
+*.hdf5
+*.h5ad
