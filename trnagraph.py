@@ -6,11 +6,15 @@ import anndata as ad
 import os
 import argparse
 
+# graphing functions
+import graphs_coverage
+import graphs_pca
+
 class trax2anndata():
     '''
     Create h5ad AnnData object from a trax run
     '''
-    def __init__(self, traxcoverage, observations, output, database):
+    def __init__(self, traxcoverage, observations, output):
         self.coverage = pd.read_csv(traxcoverage, sep='\t', header=0)
         self.size_factors = pd.read_csv(traxcoverage.split('-')[0] + '-SizeFactors.txt',sep=" ",header=0).to_dict('index')[0]
         self.observations = observations
@@ -19,7 +23,6 @@ class trax2anndata():
                           'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions']
         self.positions = pd.unique(self.coverage['position'])
         self.output = output
-        self.database = database
 
     def create(self):
         '''
@@ -38,21 +41,20 @@ class trax2anndata():
         clist = [[p + '_' + cov for p in self.positions] for cov in self.cov_types]
         clist = [a for l in clist for a in l]
         x_df.columns = clist
-
-        # if raw==True:
-        #     x_raw_df = x_df.T*obs_df['sizefactor']
-        #     x_raw_df = x_raw_df.T
-        #     x_df = x_raw_df
         
         obs_df,x_df = self._group_sort_(obs_df,x_df)
         adata = self._adata_build_(obs_df,x_df)
+
+        # Add size factors to adata object as raw layer
+        adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
+
         self.save(adata)
 
     def save(self, adata):
         '''
         Save h5ad database object
         '''
-        print('Writing h5ad database object to {}.h5ad'.format(self.output))
+        print('Writing h5ad database object to {}.h5ad\n'.format(self.output))
         adata.write('{}.h5ad'.format(self.output))
 
     def _ref_seq_build_(self):
@@ -87,7 +89,7 @@ class trax2anndata():
             obs += self.observations
         if len(obs) != len([x.split('_') for x in x_df.index.values][0]):
             diff_obs_count = abs(len(obs)-len([x.split('_') for x in x_df.index.values][0]))
-            print('Number of observations does not match number of parameters in trax coverage file by {}.\nTo create a more specific database object, please provide proper the correct number of observations.\nAdding blank observations to database object.\n'.format(diff_obs_count))
+            print('Number of observations does not match number of parameters in trax coverage file by {}.\nTo create a more specific database object, please provide the correct number of observations.\nAdding blank observations to database object...\n'.format(diff_obs_count))
             obs += ['obs_' + str(x) for x in range(diff_obs_count)]
 
         self.observations = obs[1:]
@@ -150,14 +152,17 @@ class trax2anndata():
             adata.obs[ob] = obs_df[ob].values
             
         # Add the total counts per tRNA as observations-annotation to adata
-        adata.obs['n_counts'] = adata.X.sum(axis=1)
+        #adata.obs['n_counts'] = adata.X.sum(axis=1)
         
         # Add the total reads per tRNA as observations-annotation to adata
         ## MAKE SURE THESE AREN'T GETTING HIGHEST READS FROM GAPS?
-        mask_out = np.isin(adata.var.coverage, ['uniquecoverage'])
-        adata_u = adata[:,mask_out]
-        adata.obs['n_reads'] = adata_u.X.max(axis=1)
-        
+        #mask_out = np.isin(adata.var.coverage, ['uniquecoverage'])
+        #adata_u = adata[:,mask_out]
+        #adata.obs['n_reads'] = adata_u.X.max(axis=1)
+
+        # Add size factor
+        adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
+
         # Add reference sequence
         adata.obs['refseq'] = obs_df['refseq'].values
 
@@ -169,21 +174,43 @@ class trax2anndata():
         return adata
 
 class anndataGrapher:
-    def __init__(self, db, graph_types, graph_args, output_dir):
-        self.adata = ad.read_h5ad(db)
-        self.output_dir = output_dir
-        self.graph_types = graph_types
-        self.graph_args = graph_args
+    def __init__(self, adata, graphtypes, output):
+        self.adata = ad.read_h5ad(adata)
+        self.output = output
+        self.graph_types = graphtypes
 
-    def graph(self, graph_type, graph_args):
-        pass
+    def graph(self):
+        if self.graph_types == 'all' or 'all' in self.graph_types:
+            self.graph_types = ['coverage', 'heatmap', 'pca', 'volcano', 'radial']
+
+        # if 'coverage' in self.graph_types:
+        #     print('Generating coverage graphs...')
+        #     output = self.output + '/coverage'
+        #     directory_builder(output)
+        #     graphs_coverage.grapher(self.adata, output).create()
+        #     print('Coverage graphs generated.\n')
+
+        if 'pca' in self.graph_types:
+            print('Generating pca plots...')
+            output = self.output + '/pca'
+            directory_builder(output)
+            graphs_pca.grapher(self.adata, output).create()
+            print('Coverage pca plots.\n')
+
+def directory_builder(directory):
+    if not os.path.exists(directory):
+        print('Creating output directory: {}'.format(directory))
+        os.makedirs(directory, exist_ok=True)
+    else:
+        print('Output directory already exists: {}'.format(directory))     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='tRNAgraph',
         description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create a AnnData database object from \
             a trax coverage file, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
-            perform further analysis beyond the scope of what tRAX can do.'
+            perform further analysis beyond the scope of what tRAX can do.',
+        allow_abbrev=False
     )
     parser.add_argument('-o', '--output', help='Specify output directory', default='tRNAgraph')
 
@@ -195,38 +222,37 @@ if __name__ == '__main__':
     )
 
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
-    parser_build.add_argument('-tc', '--traxcoverage', help='Specify location of trax coverage file', required=True)
-    parser_build.add_argument('-obs', '--observations', help='Specify the observations of sample names in order', nargs='*', default=None)
-    parser_build.add_argument('-obsf', '--observations_file', help='Specify a file containing the observations of sample names in order as tab seperated file', default=None)
+    parser_build.add_argument('-i', '--traxcoverage', help='Specify location of trax coverage file (required)', required=True)
+    parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
+    parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
-    parser_graph.add_argument('-db', '--database', help='Specify location of h5ad object', required=True)
-    parser_graph.add_argument('-gt', '--graph_types', help='Specify graphs to create', nargs='+', required=True)
-    parser_graph.add_argument('-ga', '--graph_args', help='Specify arguments for graphs', nargs='+', required=False)
+    parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','volcano','radial'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
 
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    if args.output:
-        if not os.path.exists(args.output):
-            print('Creating output directory: {}'.format(args.output))
-            os.mkdir(args.output)
-        else:
-            print('Output directory already exists: {}'.format(args.output))
+    directory_builder(args.output)
 
     # Read database object or create one from trax run if none provided
     if args.mode == 'build':
-        print('Building database object...\n')
-        if args.observations and args.observations_file:
-            print('Error: Only one of --observations or --observations_file can be used. Defaulting to observations_file...\n')
-            trax2anndata(args.traxcoverage, args.observations_file, args.output).create()
-        elif args.observations_file:
-            trax2anndata(args.traxcoverage, args.observations_file, args.output).create()
-        else:
-            trax2anndata(args.traxcoverage, args.observations, args.output).create()
+        print('Building AnnData object...\n')
+        if args.observationslist and args.observationsfile:
+            print('Error: Only one of --observationslist or --observationsfile can be used. Defaulting to --observationsfile...\n')
+        if not args.observationslist and not args.observationsfile:
+            print('No observations provided. Defaulting to sample names from trax coverage file...\n')
+        if args.observationsfile:
+            args.observationslist = []
+            with open(args.observationsfile, 'r') as f:
+                for line in f:
+                    args.observationslist += line.split()
+        trax2anndata(args.traxcoverage, args.observationslist, args.output).create()
+        print('Done!\n')
     elif args.mode == 'graph':
         print('Graphing data from database object...\n')
-        anndataGrapher(args.database, args.graph_types, args.graph_args, args.output).graph()
+        anndataGrapher(args.anndata, args.graphtypes, args.output).graph()
+        print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...\n')
         parser.print_help()
