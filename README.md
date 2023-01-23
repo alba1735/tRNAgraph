@@ -31,6 +31,9 @@ Example list of observations:
 ```
 celltype treatment condition
 ```
+The following observations will automatically be generated as well and so using the following should be avoided:
+`trna`, `iso`, `amino`, `sample`, `deseq2_sizefactor`, and `refseq`.
+
 
 ### Activating the environment
 ```

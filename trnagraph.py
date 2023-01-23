@@ -14,9 +14,14 @@ class trax2anndata():
     '''
     Create h5ad AnnData object from a trax run
     '''
-    def __init__(self, traxcoverage, observations, output):
+    def __init__(self, traxdir, observations, output):
+        traxcoverage = traxdir + '/' + traxdir.split('/')[-1] + '-coverage.txt'
+        sizefactors = traxdir + '/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
+        trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
+
         self.coverage = pd.read_csv(traxcoverage, sep='\t', header=0)
-        self.size_factors = pd.read_csv(traxcoverage.split('-')[0] + '-SizeFactors.txt',sep=" ",header=0).to_dict('index')[0]
+        self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
+        self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
         self.observations = observations
         self.cov_types = ['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage',
                           'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases',
@@ -47,6 +52,9 @@ class trax2anndata():
 
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
+
+        print(adata.obs)
+        print(self.unique_counts)
 
         self.save(adata)
 
@@ -101,6 +109,7 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
+        obs_df['nreads'] = [self.unique_counts.get(i) for i in [x.split('-')[0] for x in x_df.index.values]]
         obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() 
 
         return obs_df
@@ -151,14 +160,17 @@ class trax2anndata():
         for ob in [y for y in self.observations if y != 'sample']:
             adata.obs[ob] = obs_df[ob].values
             
-        # Add the total counts per tRNA as observations-annotation to adata
-        #adata.obs['n_counts'] = adata.X.sum(axis=1)
-        
-        # Add the total reads per tRNA as observations-annotation to adata
-        ## MAKE SURE THESE AREN'T GETTING HIGHEST READS FROM GAPS?
-        #mask_out = np.isin(adata.var.coverage, ['uniquecoverage'])
-        #adata_u = adata[:,mask_out]
-        #adata.obs['n_reads'] = adata_u.X.max(axis=1)
+        # combine all columns of obs_df after trna, iso, and amino to make a unique sample column
+        adata.obs['sample'] = obs_df[[y for y in self.observations if y != 'sample']].agg('_'.join, axis=1).values
+
+        # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
+
+
+
+
+
+
+
 
         # Add size factor
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
@@ -174,6 +186,9 @@ class trax2anndata():
         return adata
 
 class anndataGrapher:
+    '''
+    Class to generate graphs from an AnnData object by calling the appropriate graphing functions
+    '''
     def __init__(self, adata, graphtypes, output):
         self.adata = ad.read_h5ad(adata)
         self.output = output
@@ -198,6 +213,9 @@ class anndataGrapher:
             print('Coverage pca plots.\n')
 
 def directory_builder(directory):
+    '''
+    Function to create output directory if it does not already exist
+    '''
     if not os.path.exists(directory):
         print('Creating output directory: {}'.format(directory))
         os.makedirs(directory, exist_ok=True)
@@ -222,7 +240,7 @@ if __name__ == '__main__':
     )
 
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
-    parser_build.add_argument('-i', '--traxcoverage', help='Specify location of trax coverage file (required)', required=True)
+    parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
     parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
 
@@ -231,6 +249,9 @@ if __name__ == '__main__':
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','volcano','radial'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
 
     args = parser.parse_args()
+
+    # Clean up trax directory path
+    if args.traxdir[-1] == '/': args.traxdir = args.traxdir[:-1]
 
     # Create output directory if it doesn't exist
     directory_builder(args.output)
@@ -247,7 +268,7 @@ if __name__ == '__main__':
             with open(args.observationsfile, 'r') as f:
                 for line in f:
                     args.observationslist += line.split()
-        trax2anndata(args.traxcoverage, args.observationslist, args.output).create()
+        trax2anndata(args.traxdir, args.observationslist, args.output).create()
         print('Done!\n')
     elif args.mode == 'graph':
         print('Graphing data from database object...\n')
