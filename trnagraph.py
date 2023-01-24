@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-import numpy as np
 import pandas as pd
 import anndata as ad
-import os
 import argparse
 
+import directory_tools
+
 # graphing functions
-import graphs_coverage
+# import graphs_coverage
 import graphs_pca
 
 class trax2anndata():
@@ -52,9 +52,6 @@ class trax2anndata():
 
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
-
-        print(adata.obs)
-        print(self.unique_counts)
 
         self.save(adata)
 
@@ -109,7 +106,7 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
-        obs_df['nreads'] = [self.unique_counts.get(i) for i in [x.split('-')[0] for x in x_df.index.values]]
+        obs_df['nreads'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() 
 
         return obs_df
@@ -141,6 +138,7 @@ class trax2anndata():
         positions = [i.split('_')[0] for i in x_df.columns.values]
         coverage = [i.split('_')[-1] for i in x_df.columns.values]
         
+        # Generate gap list
         gap_list = [True if len(i.split('.')) > 1 else False for i in positions]
         gap_list = [True if positions[i][-1] == 'a' else gap_list[i] for i in range(len(gap_list))]
         gap_list = [True if positions[i][-1] == 'b' else gap_list[i] for i in range(len(gap_list))]
@@ -160,28 +158,17 @@ class trax2anndata():
         for ob in [y for y in self.observations if y != 'sample']:
             adata.obs[ob] = obs_df[ob].values
             
+        # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
+        adata.obs['nreads'] = obs_df['nreads'].values
+
         # combine all columns of obs_df after trna, iso, and amino to make a unique sample column
         adata.obs['sample'] = obs_df[[y for y in self.observations if y != 'sample']].agg('_'.join, axis=1).values
-
-        # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
-
-
-
-
-
-
-
 
         # Add size factor
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
 
-        # Add reference sequence
+        # Add aligned reference sequence based on values in coverage file
         adata.obs['refseq'] = obs_df['refseq'].values
-
-        #if seq_build == True:
-        #    adata = self._seq_builder(adata)
-        #adata = self._mods_builder(adata) 
-        #adata = self._epi_builder(adata)
         
         return adata
 
@@ -189,14 +176,13 @@ class anndataGrapher:
     '''
     Class to generate graphs from an AnnData object by calling the appropriate graphing functions
     '''
-    def __init__(self, adata, graphtypes, output):
-        self.adata = ad.read_h5ad(adata)
-        self.output = output
-        self.graph_types = graphtypes
+    def __init__(self, args):
+        self.adata = ad.read_h5ad(args.anndata)
+        self.args = args
 
     def graph(self):
-        if self.graph_types == 'all' or 'all' in self.graph_types:
-            self.graph_types = ['coverage', 'heatmap', 'pca', 'volcano', 'radial']
+        if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
+            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'volcano', 'radar']
 
         # if 'coverage' in self.graph_types:
         #     print('Generating coverage graphs...')
@@ -205,22 +191,12 @@ class anndataGrapher:
         #     graphs_coverage.grapher(self.adata, output).create()
         #     print('Coverage graphs generated.\n')
 
-        if 'pca' in self.graph_types:
+        if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
-            output = self.output + '/pca'
-            directory_builder(output)
-            graphs_pca.grapher(self.adata, output).create()
+            output = self.args.output + '/pca'
+            directory_tools.builder(output)
+            graphs_pca.grapher(self.adata, output, self.args.pcamarkers, self.args.pcacolors).create()
             print('Coverage pca plots.\n')
-
-def directory_builder(directory):
-    '''
-    Function to create output directory if it does not already exist
-    '''
-    if not os.path.exists(directory):
-        print('Creating output directory: {}'.format(directory))
-        os.makedirs(directory, exist_ok=True)
-    else:
-        print('Output directory already exists: {}'.format(directory))     
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -230,7 +206,7 @@ if __name__ == '__main__':
             perform further analysis beyond the scope of what tRAX can do.',
         allow_abbrev=False
     )
-    parser.add_argument('-o', '--output', help='Specify output directory', default='tRNAgraph')
+    parser.add_argument('-o', '--output', help='Specify output directory', default='trnagraph')
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
@@ -246,15 +222,20 @@ if __name__ == '__main__':
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','volcano','radial'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','volcano','radar'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    # parser_graph.add_argument('-r', '--raw', help='Specify to use raw data for graphing (optional)', action='store_true') # Implement this later
+    parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
+    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: sample) (optional)', default='sample')
 
     args = parser.parse_args()
 
-    # Clean up trax directory path
-    if args.traxdir[-1] == '/': args.traxdir = args.traxdir[:-1]
+    if args.mode == 'build':
+        args.traxdir = directory_tools.path_cleaner(args.traxdir)
+    if args.mode == 'graph':
+        args.anndata = directory_tools.path_cleaner(args.anndata)
 
     # Create output directory if it doesn't exist
-    directory_builder(args.output)
+    directory_tools.builder(args.output)
 
     # Read database object or create one from trax run if none provided
     if args.mode == 'build':
@@ -272,7 +253,7 @@ if __name__ == '__main__':
         print('Done!\n')
     elif args.mode == 'graph':
         print('Graphing data from database object...\n')
-        anndataGrapher(args.anndata, args.graphtypes, args.output).graph()
+        anndataGrapher(args).graph()
         print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...\n')
