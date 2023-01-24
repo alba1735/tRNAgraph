@@ -9,7 +9,7 @@ import directory_tools
 
 # graphing functions
 # import graphs_coverage
-import graphs_pca
+import pca_tools
 
 class trax2anndata():
     '''
@@ -197,7 +197,7 @@ class anndataGrapher:
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
-            graphs_pca.grapher(self.adata, output, self.args.pcamarkers, self.args.pcacolors).create()
+            pca_tools.visualizer(self.adata, output, self.args.pcamarkers, self.args.pcacolors)
             print('Coverage pca plots.\n')
 
 if __name__ == '__main__':
