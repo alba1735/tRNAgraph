@@ -6,7 +6,7 @@ import argparse
 
 import directory_tools
 
-import sklearn.preprocessing
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ class grapher():
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
         df = df.pivot_table(index='trna', columns='sample', values='nreads')
         # Scale the data
-        df = pd.DataFrame(sklearn.preprocessing.scale(df), columns=df.columns, index=df.index)
+        df = pd.DataFrame(StandardScaler().fit_transform(df), columns=df.columns, index=df.index)
 
         # Create a PCA object
         pca = PCA(n_components=2)
@@ -54,7 +54,6 @@ class grapher():
         plt.figure(figsize=(8, 8))
         ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=sns.husl_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
         # Rename the x and y axis giving the percentage of variance explained by each PC
-        ## It might be correct to swap the x and y axis here based on the output I have been getting
         ax.set_xlabel('PC1 ({:.2f}%)'.format(evr[0]*100))
         ax.set_ylabel('PC2 ({:.2f}%)'.format(evr[1]*100))
         # Capatilize the legend and move the legend outside the plot and remove the border around it
@@ -71,7 +70,6 @@ class grapher():
         plt.gca().set_box_aspect(1)
 
         # Save the figure as a pdf without cropping the legend
-        # plt.tight_layout()
         plt.savefig('{}/{}_by_{}_pca.pdf'.format(self.output, self.pcamarkers, self.pcacolors), bbox_inches='tight')
         print('PCA graph saved to {}/{}_by_{}_pca.pdf'.format(self.output, self.pcamarkers, self.pcacolors))    
 

@@ -3,6 +3,7 @@
 import pandas as pd
 import anndata as ad
 import argparse
+import os
 
 import directory_tools
 
@@ -59,7 +60,7 @@ class trax2anndata():
         '''
         Save h5ad database object
         '''
-        print('Writing h5ad database object to {}.h5ad\n'.format(self.output))
+        print('Writing h5ad database object to {}.h5ad'.format(self.output))
         adata.write('{}.h5ad'.format(self.output))
 
     def _ref_seq_build_(self):
@@ -106,7 +107,8 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
-        obs_df['nreads'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
+        obs_df['nreads_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
+        obs_df['nreads'] = obs_df['nreads_raw']/obs_df['sizefactor']
         obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() 
 
         return obs_df
@@ -134,7 +136,6 @@ class trax2anndata():
         '''
         Build AnnData object from obs and x dataframes
         '''
-        print('Building AnnData object...')
         positions = [i.split('_')[0] for i in x_df.columns.values]
         coverage = [i.split('_')[-1] for i in x_df.columns.values]
         
@@ -159,6 +160,7 @@ class trax2anndata():
             adata.obs[ob] = obs_df[ob].values
             
         # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
+        adata.obs['nreads_raw'] = obs_df['nreads_raw'].values
         adata.obs['nreads'] = obs_df['nreads'].values
 
         # combine all columns of obs_df after trna, iso, and amino to make a unique sample column
@@ -239,11 +241,14 @@ if __name__ == '__main__':
 
     # Read database object or create one from trax run if none provided
     if args.mode == 'build':
-        print('Building AnnData object...\n')
+        # Raise exception if trax directory is empty or doesn't exist
+        if not os.path.isdir(args.traxdir):
+            raise Exception('Error: trax directory does not exist.')
+        print('Building AnnData object...')
         if args.observationslist and args.observationsfile:
-            print('Error: Only one of --observationslist or --observationsfile can be used. Defaulting to --observationsfile...\n')
+            print('Error: Only one of --observationslist or --observationsfile can be used. Defaulting to --observationsfile...')
         if not args.observationslist and not args.observationsfile:
-            print('No observations provided. Defaulting to sample names from trax coverage file...\n')
+            print('No observations provided. Defaulting to sample names from trax coverage file...')
         if args.observationsfile:
             args.observationslist = []
             with open(args.observationsfile, 'r') as f:
@@ -252,9 +257,12 @@ if __name__ == '__main__':
         trax2anndata(args.traxdir, args.observationslist, args.output).create()
         print('Done!\n')
     elif args.mode == 'graph':
-        print('Graphing data from database object...\n')
+        # Raise exception if h5ad file is empty or doesn't exist
+        if not os.path.isfile(args.anndata):
+            raise Exception('Error: h5ad file does not exist.')
+        print('Graphing data from database object...')
         anndataGrapher(args).graph()
         print('Done!\n')
     else:
-        print('Invalid operating mode. Exiting...\n')
+        print('Invalid operating mode. Exiting...')
         parser.print_help()
