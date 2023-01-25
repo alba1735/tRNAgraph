@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import numpy as np
 import pandas as pd
 import anndata as ad
 import argparse
@@ -27,14 +26,14 @@ def visualizer(adata, output, pcamarkers, pcacolors):
 
     # Create a dataframe with trna, pcamarkers parameter, and nreads from adata and create dictory of sample and pcamarkers parameter for use in seaborn
     if pcamarkers == pcacolors:
-        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads'])
+        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_unique_norm'])
         hue_dict = dict(zip(df[pcamarkers], df[pcamarkers]))
     else:
-        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads', pcacolors])
+        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_unique_norm', pcacolors])
         hue_dict = dict(zip(df[pcamarkers], df[pcacolors]))
 
     # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
-    df = df.pivot_table(index='trna', columns='sample', values='nreads')
+    df = df.pivot_table(index='trna', columns='sample', values='nreads_unique_norm')
 
     # Scale the data
     df = pd.DataFrame(StandardScaler().fit_transform(df), columns=df.columns, index=df.index)
@@ -46,6 +45,9 @@ def visualizer(adata, output, pcamarkers, pcacolors):
     print('Principal components: {}'.format([f'PC{x}' for x in range(1, len(evr)+1)]))
     print('Explained variance: {}'.format([f'{i:.4f}' for i in pca.explained_variance_]))
     print('Explained variance ratio: {}'.format([f'{i*100:.2f}%' for i in evr]))
+    # Transform the data and create a new dataframe
+    pca_index = ['PC{}'.format(x) for x in range(1, len(evr)+1)]
+    df_pca = pd.DataFrame(pca.components_, columns=df.columns, index=pca_index).T
 
     # Plot the explained variance ratio
     plt.figure(figsize=(6, 6))
@@ -59,10 +61,6 @@ def visualizer(adata, output, pcamarkers, pcacolors):
     # Save the plot
     plt.savefig('{}/{}_by_{}_evr.pdf'.format(output, pcamarkers, pcacolors), bbox_inches='tight')
     print('Explained variance ratio graph saved to {}/{}_by_{}_evr.pdf'.format(output, pcamarkers, pcacolors))
-
-    # Transform the data and create a new dataframe
-    pca_index = ['PC{}'.format(x) for x in range(1, len(evr)+1)]
-    df_pca = pd.DataFrame(pca.components_, columns=df.columns, index=pca_index).T
 
     # Plot the data with seaborn
     plt.figure(figsize=(8, 8))
@@ -102,7 +100,7 @@ def visualizer(adata, output, pcamarkers, pcacolors):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        prog='Principal Component Analysis Tools',
+        prog='pca_tools.py',
         description='Generate PCA visualizations for each sample in an AnnData object.'
     )
 

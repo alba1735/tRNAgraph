@@ -8,8 +8,8 @@ import os
 import directory_tools
 
 # graphing functions
-# import graphs_coverage
 import pca_tools
+import correlation_tools
 
 class trax2anndata():
     '''
@@ -19,10 +19,14 @@ class trax2anndata():
         traxcoverage = traxdir + '/' + traxdir.split('/')[-1] + '-coverage.txt'
         sizefactors = traxdir + '/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
         trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
+        normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
 
         self.coverage = pd.read_csv(traxcoverage, sep='\t', header=0)
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
+        normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
+        self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
+        self.normalized_read_counts = normalized_read_counts.to_dict('index')
         self.observations = observations
         self.cov_types = ['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage',
                           'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases',
@@ -107,8 +111,10 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
-        obs_df['nreads_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
-        obs_df['nreads'] = obs_df['nreads_raw']/obs_df['sizefactor']
+        obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
+        obs_df['nreads_unique_norm'] = obs_df['nreads_unique_raw']/obs_df['sizefactor']
+        for i in self.read_types:
+            obs_df['nreads_' + i + '_norm'] = [self.normalized_read_counts.get(j[0] + '_' + i).get('_'.join(j[1:])) if self.normalized_read_counts.get(j[0] + '_' + i) else 0 for j in [x.split('_') for x in x_df.index.values]]
         obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() 
 
         return obs_df
@@ -160,8 +166,10 @@ class trax2anndata():
             adata.obs[ob] = obs_df[ob].values
             
         # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
-        adata.obs['nreads_raw'] = obs_df['nreads_raw'].values
-        adata.obs['nreads'] = obs_df['nreads'].values
+        adata.obs['nreads_unique_raw'] = obs_df['nreads_unique_raw'].values
+        adata.obs['nreads_unique_norm'] = obs_df['nreads_unique_norm'].values
+        for i in self.read_types:
+            adata.obs['nreads_' + i + '_norm'] = obs_df['nreads_' + i + '_norm'].values
 
         # combine all columns of obs_df after trna, iso, and amino to make a unique sample column
         adata.obs['sample'] = obs_df[[y for y in self.observations if y != 'sample']].agg('_'.join, axis=1).values
@@ -184,21 +192,19 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'volcano', 'radar']
-
-        # if 'coverage' in self.graph_types:
-        #     print('Generating coverage graphs...')
-        #     output = self.output + '/coverage'
-        #     directory_builder(output)
-        #     graphs_coverage.grapher(self.adata, output).create()
-        #     print('Coverage graphs generated.\n')
+            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar']
 
         if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
             pca_tools.visualizer(self.adata, output, self.args.pcamarkers, self.args.pcacolors)
-            print('Coverage pca plots.\n')
+
+        if 'correlation' in self.args.graphtypes:
+            print('Generating correlation plots...')
+            output = self.args.output + '/correlation'
+            directory_tools.builder(output)
+            correlation_tools.visualizer(self.adata, output, self.args.corrmethod)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -224,10 +230,11 @@ if __name__ == '__main__':
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','volcano','radar'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca', 'correlation', 'volcano','radar'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # parser_graph.add_argument('-r', '--raw', help='Specify to use raw data for graphing (optional)', action='store_true') # Implement this later
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: sample) (optional)', default='sample')
+    parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
 
     args = parser.parse_args()
 

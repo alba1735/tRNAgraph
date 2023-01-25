@@ -7,7 +7,7 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
 ## Installation
 Dependencies can be installed using conda:
 
-```
+```bash
 conda env create -f environment.yml
 ```
 
@@ -44,7 +44,7 @@ The following observations will automatically be generated as well and so using 
 
 ### Activating the environment
 
-```
+```bash
 conda activate tRNAgraph
 ```
 
@@ -52,7 +52,7 @@ conda activate tRNAgraph
 
 The tRNAgraph.py script can be used to build a database object from a tRAX directory with the following command:
 ```bash
-python tRNAgraph.py build -i <tRAX_directory> -o <output_file> -l <list_of_observations>
+python trnagraph.py build -i <tRAX_directory> -o <output_file> -l <list_of_observations>
 ```
 
 * `-i` or `--input` is the path to the tRAX directory you want to build a AnnData database object from.
@@ -63,7 +63,7 @@ python tRNAgraph.py build -i <tRAX_directory> -o <output_file> -l <list_of_obser
 
 The tRNAgraph.py script can be used to generate a variety of visualizations from a database object with the following command:
 ```bash
-python tRNAgraph.py graph -i <input_database> -o <output_directory> -g <graph_type>
+python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_type> <graph_parameters>
 ```
 
 * `-i` or `--input` is the path to the database object you want to generate visualizations from.
@@ -85,3 +85,10 @@ The following parameters are optional and can be used to customize the graphs:
 
 * `--pcamarkers` is the observation to use for choosing which markers to populate the pca plot. By default the samples will be used as markers.
 * `--pcacolors` is the observation to use for coloring the PCA plot. If no observation is provided, the PCA plot will be colored by samples.
+
+#### Correlation
+
+* `--corrmethod` is the method to use for calculating the correlation. The following methods can be used:
+  * `pearson` - Pearson correlation coefficient.
+  * `spearman` - Spearman rank correlation.
+  * `kendall` - Kendall Tau correlation coefficient.
