@@ -12,7 +12,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
-def visualizer(adata, output, corr_method):
+def visualizer(adata, output, corr_method, corr_group):
     '''
     Generate correlation graphs for each sample in an AnnData object.
     '''
@@ -21,10 +21,10 @@ def visualizer(adata, output, corr_method):
     # Add shorter sample names flag to allow for cleaner plots
 
     # Create a correlation matrix from reads stored in adata observations
-    df = pd.DataFrame(adata.obs, columns=['trna', 'sample'] + [i for i in adata.obs.columns if '_norm' in i])
+    df = pd.DataFrame(adata.obs, columns=['trna', corr_group] + [i for i in adata.obs.columns if '_norm' in i])
 
     for i in df.columns[2:]:
-        df_corr = df.pivot_table(index='trna', columns='sample', values=i)
+        df_corr = df.pivot_table(index='trna', columns=corr_group, values=i)
         # Only plot correlation matrices with more than 20 samples will be generated
         if df_corr.max().max() < 20:
             print(f'Not enough samples to generate correlation matrix for {i}')
@@ -37,12 +37,12 @@ def visualizer(adata, output, corr_method):
             # Remove the axis labels and set the title
             ax.set_xlabel('')
             ax.set_ylabel('')
-            ax.set_title(f'{corr_method} {i.split("_")[1]} Correlation Matrix'.title())
+            ax.set_title(f'{corr_method} {corr_group} {i.split("_")[1]} Correlation Matrix'.title())
             # Set the box aspect ratio to 1 so the plot is square
             plt.gca().set_box_aspect(1)
             # Save the plot
-            plt.savefig(f'{output}/{corr_method}_{i.split("_")[1]}_correlation_matrix.pdf', bbox_inches='tight')
-            print(f'Correlation matrix for {i} saved to {output}/{corr_method}_{i.split("_")[1]}_correlation_matrix.pdf')
+            plt.savefig(f'{output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf', bbox_inches='tight')
+            print(f'Correlation matrix for {i} saved to {output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf')
 
 
 if __name__ == '__main__':
@@ -54,6 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
     parser.add_argument('-o', '--output', help='Specify output directory', default='correlation', required=False)
     parser.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
+    parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (optional)', default='sample', required=False)
 
     args = parser.parse_args()
 
@@ -62,4 +63,4 @@ if __name__ == '__main__':
 
     adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.output, args.corrmethod)
+    visualizer(adata, args.output, args.corrmethod, args.corrgroup)

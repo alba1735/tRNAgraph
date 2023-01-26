@@ -45,17 +45,18 @@ The following observations will automatically be generated as well and so using 
 ### Activating the environment
 
 ```bash
-conda activate tRNAgraph
+conda activate trnagraph
 ```
 
 ### Building a database object
 
 The tRNAgraph.py script can be used to build a database object from a tRAX directory with the following command:
 ```bash
-python trnagraph.py build -i <tRAX_directory> -o <output_file> -l <list_of_observations>
+python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_file> -l <list_of_observations>
 ```
 
 * `-i` or `--input` is the path to the tRAX directory you want to build a AnnData database object from.
+* `-s` or `--samples` is the path to the tRAX generation file containing sample names, sample groups, and fastq paths.
 * `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `trnagraph.h5ad` if no path is provided.
 * Observations are the metadata to include in the database object. This can be a list of observations `-l/--observationslist` or a tab seperated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
 

@@ -8,6 +8,7 @@ import os
 import directory_tools
 
 # graphing functions
+import coverage_tools
 import pca_tools
 import correlation_tools
 
@@ -15,24 +16,36 @@ class trax2anndata():
     '''
     Create h5ad AnnData object from a trax run
     '''
-    def __init__(self, traxdir, observations, output):
+    def __init__(self, traxdir, samples, observations, output):
+        '''
+        Initialize trax2anndata object by loading various files from tRAX run
+        '''
+        # Add unique feature column to coverage file for alignment and sorting
         traxcoverage = traxdir + '/' + traxdir.split('/')[-1] + '-coverage.txt'
-        sizefactors = traxdir + '/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
-        trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
-        normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
-
         self.coverage = pd.read_csv(traxcoverage, sep='\t', header=0)
+        self.coverage['uniquefeat'] = self.coverage['Feature'] + '_' + self.coverage['Sample']
+        self.positions = pd.unique(self.coverage['position'])
+        # Add size factors to coverage file
+        sizefactors = traxdir + '/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
+        # For adding unique counts to coverage file
+        trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
+        # For adding normalized read counts to coverage file split by read type
+        normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
+        # For adding sample groups to adata object
+        self.groups = pd.read_csv(samples, delim_whitespace=True, header=None, names=['sample','group','fastq'])
+        self.groups = dict(zip(self.groups['sample'],self.groups['group']))
+        # For adding titles to metadata observations in adata object
         self.observations = observations
+        self.output = output
+        # Names of coverage types to add to adata object from coverage file
         self.cov_types = ['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage',
                           'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases',
                           'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions']
-        self.positions = pd.unique(self.coverage['position'])
-        self.output = output
 
     def create(self):
         '''
@@ -58,15 +71,12 @@ class trax2anndata():
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
 
-        self.save(adata)
-
-    def save(self, adata):
-        '''
-        Save h5ad database object
-        '''
-        print('Writing h5ad database object to {}.h5ad'.format(self.output))
+        # Save adata object
         adata.write('{}.h5ad'.format(self.output))
+        print('Writing h5ad database object to {}.h5ad'.format(self.output))
 
+        print(adata.obs)
+        
     def _ref_seq_build_(self):
         '''
         Build reference sequence from trax coverage file
@@ -79,13 +89,10 @@ class trax2anndata():
         '''
         Build x dataframe from trax coverage file
         '''
-        x_df = self.coverage
-        x_df['uniquefeat'] = x_df['Feature'] + '_' + x_df['Sample']
-        x_df = x_df.pivot(index='uniquefeat', values=[cov_type], columns='position')
+        x_df = self.coverage.pivot(index='uniquefeat', values=[cov_type], columns='position')
         cols = x_df.columns.get_level_values(1).values
         x_df = x_df.T.reset_index(drop=True).T
         x_df.columns = cols
-        
         x_df = x_df.reindex(columns=self.positions)
         
         return x_df
@@ -115,16 +122,18 @@ class trax2anndata():
         obs_df['nreads_unique_norm'] = obs_df['nreads_unique_raw']/obs_df['sizefactor']
         for i in self.read_types:
             obs_df['nreads_' + i + '_norm'] = [self.normalized_read_counts.get(j[0] + '_' + i).get('_'.join(j[1:])) if self.normalized_read_counts.get(j[0] + '_' + i) else 0 for j in [x.split('_') for x in x_df.index.values]]
-        obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() 
+        obs_df['sample_group'] = obs_df['trna'] + ('_' + obs_df[[y for y in self.observations if y != 'sample']]).sum(axis=1).str.strip() # This is the old way of doing it trying a new method for sorting
+        # obs_df['uniquefeat'] = ['_'.join(i.split('_')[1:]) for i in obs_df.index.values]
 
         return obs_df
 
     def _group_sort_(self, obs_df, x_df):
         '''
-        Sort obs and x dataframes by sample group
+        Sort obs and x dataframes by sample group to ensure that all dfs are aligned
         '''
         obs_dict = {k:'first' for k in obs_df.columns.values if k != 'sample_group'}
         x_dict = {k:'mean' for k in x_df.columns.values}
+
         combo_dict = {**obs_dict, **x_dict}
         
         combo_df = pd.concat([obs_df,x_df], axis=1, sort=False).reset_index(drop=True)
@@ -135,7 +144,11 @@ class trax2anndata():
         
         obs_df.index = obs_df.sample_group.values
         x_df.index = obs_df.sample_group.values
-        
+
+        # Check that the index of the obs and x dataframes are the same
+        if not obs_df.index.equals(x_df.index):
+            raise ValueError('The index of the obs and x dataframes are not the same. This means somthing went wrong in the sorting process.')
+
         return obs_df, x_df
 
     def _adata_build_(self, obs_df, x_df):
@@ -173,6 +186,8 @@ class trax2anndata():
 
         # combine all columns of obs_df after trna, iso, and amino to make a unique sample column
         adata.obs['sample'] = obs_df[[y for y in self.observations if y != 'sample']].agg('_'.join, axis=1).values
+        adata.obs['group'] = [self.groups.get(i) for i in adata.obs['sample'].values]
+        adata.obs['uniquefeat'] = obs_df['uniquefeat'].values
 
         # Add size factor
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
@@ -194,17 +209,23 @@ class anndataGrapher:
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar']
 
+        if 'coverage' in self.args.graphtypes:
+            print('Generating coverage plots...')
+            output = self.args.output + '/coverage'
+            directory_tools.builder(output)
+            coverage_tools.visualizer(self.adata.copy(), self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, self.args.coveragepal, output).generate_all()
+
         if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
-            pca_tools.visualizer(self.adata, output, self.args.pcamarkers, self.args.pcacolors)
+            pca_tools.visualizer(self.adata.copy(), output, self.args.pcamarkers, self.args.pcacolors)
 
         if 'correlation' in self.args.graphtypes:
             print('Generating correlation plots...')
             output = self.args.output + '/correlation'
             directory_tools.builder(output)
-            correlation_tools.visualizer(self.adata, output, self.args.corrmethod)
+            correlation_tools.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -225,16 +246,26 @@ if __name__ == '__main__':
 
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
     parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
+    parser_build.add_argument('-s', '--samples', help='Specify samples file used to generate tRAX DB (required)', required=True)
     parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca', 'correlation', 'volcano','radar'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
-    # parser_graph.add_argument('-r', '--raw', help='Specify to use raw data for graphing (optional)', action='store_true') # Implement this later
+    # Coverage options
+    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: sample) (optional)', default='sample')
+    parser_graph.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
+    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', choices=['coverage', 'readstarts', \
+         'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', 'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
+    parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
+    parser_graph.add_argument('--coveragepal', help='Specify a palette for coverage plots (optional)', nargs='+', default=None)
+    # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: sample) (optional)', default='sample')
+    # Correlation options
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
+    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (optional)', required=False)
 
     args = parser.parse_args()
 
@@ -251,6 +282,9 @@ if __name__ == '__main__':
         # Raise exception if trax directory is empty or doesn't exist
         if not os.path.isdir(args.traxdir):
             raise Exception('Error: trax directory does not exist.')
+        # Raise exception if samples file is empty or doesn't exist
+        if not os.path.isfile(args.samples):
+            raise Exception('Error: samples file does not exist.')
         print('Building AnnData object...')
         if args.observationslist and args.observationsfile:
             print('Error: Only one of --observationslist or --observationsfile can be used. Defaulting to --observationsfile...')
@@ -261,7 +295,7 @@ if __name__ == '__main__':
             with open(args.observationsfile, 'r') as f:
                 for line in f:
                     args.observationslist += line.split()
-        trax2anndata(args.traxdir, args.observationslist, args.output).create()
+        trax2anndata(args.traxdir, args.samples, args.observationslist, args.output).create()
         print('Done!\n')
     elif args.mode == 'graph':
         # Raise exception if h5ad file is empty or doesn't exist
