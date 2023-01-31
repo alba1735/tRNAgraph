@@ -20,3 +20,6 @@
 ## correlation_tools.py
 
 * Add a function to plot the PCA with smallRNAs included
+
+## All plots
+* Add a function to check if the parameter exisits in adata columns and if not default to samples
