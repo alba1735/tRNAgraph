@@ -16,7 +16,7 @@ class trax2anndata():
     '''
     Create h5ad AnnData object from a trax run
     '''
-    def __init__(self, traxdir, samples, observations, output):
+    def __init__(self, traxdir, samples, observations, metadata=None, output):
         '''
         Initialize trax2anndata object by loading various files from tRAX run
         '''
@@ -41,6 +41,7 @@ class trax2anndata():
         self.groups = dict(zip(self.groups['sample'],self.groups['group']))
         # For adding titles to metadata observations in adata object
         self.observations = observations
+        self.metadata = pd.read_csv(metadata, delim_whitespace=True, header=None)
         self.output = output
         # Names of coverage types to add to adata object from coverage file
         self.cov_types = ['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage',
@@ -103,7 +104,15 @@ class trax2anndata():
         '''
         obs = ['trna']
         if self.observations:
+            # Make sure that observations are not going to be generated automatically
+            auto_obs = ['trna', 'iso', 'amino', 'sample', 'deseq2_sizefactor', 'refseq']
+            if any(x in self.observations for x in auto_obs):
+                raise ValueError('The following observations will automatically be generated please remove them from the observations you wish to generate: {}'.format(auto_obs))
+            # Make sure that observations are unique
+            if len(self.observations) != len(set(self.observations)):
+                raise ValueError('Observations must be unique.')
             obs += self.observations
+
         if len(obs) != len([x.split('_') for x in x_df.index.values][0]):
             diff_obs_count = abs(len(obs)-len([x.split('_') for x in x_df.index.values][0]))
             print('Number of observations does not match number of parameters in trax coverage file by {}.\nTo create a more specific database object, please provide the correct number of observations.\nAdding blank observations to database object...\n'.format(diff_obs_count))
@@ -249,6 +258,7 @@ if __name__ == '__main__':
     parser_build.add_argument('-s', '--samples', help='Specify samples file used to generate tRAX DB (required)', required=True)
     parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
+    parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to add to the database object (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
@@ -295,7 +305,7 @@ if __name__ == '__main__':
             with open(args.observationsfile, 'r') as f:
                 for line in f:
                     args.observationslist += line.split()
-        trax2anndata(args.traxdir, args.samples, args.observationslist, args.output).create()
+        trax2anndata(args.traxdir, args.samples, args.observationslist, args.metadata, args.output).create()
         print('Done!\n')
     elif args.mode == 'graph':
         # Raise exception if h5ad file is empty or doesn't exist
