@@ -16,40 +16,11 @@ conda env create -f environment.yml
 
 ## Input files
 
-tRNAgraph will work with any tRAX generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool. You can choose how you wish to impute the meta-data associated with the samples by either automatically generating the meta-data from the sample names if you follow a specific format, or you can provide a meta-data file. By default, tRNAgraph will automatically generate the meta-data from the sample names regardless of how you name the samples.
+tRNAgraph will work with any tRAX generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool.
 
-### Automatic meta-data generation
+### Metadata
 
-If you want to generate the metadata automatically all you need to do is seperate each experimental condition or observation by an underscore (`_`) with in the tRAX [samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) and incorporate them into the sample and group names.
-
-```txt
-<sample_name>_<condition-1>...<condition-n> <sample_group>_<condition-1>...<condition-n> <Fastq>
-```
-
-Including the experimental conditions in the sample names and samples groups found in coulmns 1 and 2 of the tRAX generation file the resulting database object can be used to generate more specific visualizations without a limit on the number of conditions you want to include. 
-
-Example tRAX generation file:
-
-```txt
-sample1_celltypeX_treatmentA_condition1 celltypeX_treatmentA_condition1 /path/to/fastq
-sample2_celltypeX_treatmentA_condition2 celltypeX_treatmentA_condition2 /path/to/fastq
-sample3_celltypeY_treatmentB_condition1 celltypeY_treatmentB_condition1 /path/to/fastq
-...
-```
-
-If you are using this automatic method to get the most utility out of tRNAgraph, it is recommended that either a list of observations (`-l/--observationslist`) or a file containing a list of observations (`-f/--observationsfile`) be provided. The observations should match the cateogories found in the tRAX generation file. The observations can be provided in the form of a list or a file containing a list of observations. If a file is provided, each observation should be tab seperated.
-
-Example list of observations:
-
-```txt
-celltype treatment condition
-```
-
-If no list of observations is provided then all observations will be annotated `obs_#` where `#` is the ordered observation.
-
-### Manual meta-data imputation
-
-If you want to manually impute the meta-data associated with the samples you can provide a tab seperated file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. The file should be formatted as follows:
+You will need to impute the meta-data associated with the samples if you want to generate graphs based on specific experimental conditions. To do this you can provide a whitespace/.csv/.tsv file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. If you wish to run the tool without providing a metadata file, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run. An example meta-data file is shown below:
 
 ```tsv
 sample1 sampleGroup1 celltypeX treatmentA condition1
@@ -57,7 +28,15 @@ sample2 sampleGroup1 celltypeX treatmentA condition2
 sample3 sampleGroup2 celltypeY treatmentB condition1
 ```
 
-It is recommended to also use the `-l/--observationslist` or `-f/--observationsfile` options when using this method.
+It is recommended that either a list of observations (`-l/--observationslist`) or a file containing a list of observations (`-f/--observationsfile`) be provided. The observations should match the cateogories found in the tRAX generation file not including `sample` and `group` columns. The observations can be provided in the form of a list or a file containing a list of observations. If a file is provided, each observation should be tab seperated.
+
+Example list of observations:
+
+```tsv
+celltype treatment condition
+```
+
+If no list of observations is provided then all observations will be annotated automatically `obs_#` where `#` is the ordered observation.
 
 ## Usage
 
@@ -76,9 +55,9 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 ```
 
 * `-i` or `--input` is the path to the tRAX directory you want to build a AnnData database object from.
-* `-s` or `--samples` is the path to the tRAX generation file containing sample names, sample groups, and fastq paths.
+* `-m` or `--metadata` is the path to the tRAX generation file containing sample names, sample groups, and fastq paths.
 * `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `trnagraph.h5ad` if no path is provided.
-* Observations are the metadata to include in the database object. This can be a list of observations `-l/--observationslist` or a tab seperated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
+* Observations are the metadata categories to include in the database object. This can be a list `-l/--observationslist` or a tab seperated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
 
 ### Generating visualizations
 
