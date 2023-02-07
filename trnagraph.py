@@ -11,6 +11,7 @@ import directory_tools
 import coverage_tools
 import pca_tools
 import correlation_tools
+import radar_tools
 
 class trax2anndata():
     '''
@@ -36,6 +37,9 @@ class trax2anndata():
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
+        # For adding anticoodon counts to coverage file
+        anticodoncounts = traxdir + '/' + traxdir.split('/')[-1] + '-anticodoncounts.txt'
+        self.anticodon_counts = pd.read_csv(anticodoncounts, sep='\t')
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
         self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
@@ -140,8 +144,14 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
-        obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
-        obs_df['nreads_unique_norm'] = obs_df['nreads_unique_raw']/obs_df['sizefactor']
+        # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
+        # Create unique counts for each tRNA split by type
+        for rt in ['fiveprime','threeprime','whole','other']:
+            obs_df[f'nreads_{rt}_unique_raw'] = [self.unique_counts.get(i[0]+f'_{rt}').get('_'.join(i[1:])) if self.unique_counts.get(i[0]+f'_{rt}') else 0 for i in [x.split('_') for x in x_df.index.values]]
+            obs_df[f'nreads_{rt}_unique_norm'] = obs_df[f'nreads_{rt}_unique_raw']/obs_df['sizefactor']
+        # Add total unique normalized read counts to obs dataframe
+        obs_df['nreads_total_unique_raw'] = obs_df[[f'nreads_{rt}_unique_raw' for rt in ['fiveprime','threeprime','whole','other']]].sum(axis=1)
+        obs_df['nreads_total_unique_norm'] = obs_df['nreads_total_unique_raw']/obs_df['sizefactor']
         for i in self.read_types:
             obs_df['nreads_' + i + '_norm'] = [self.normalized_read_counts.get(j[0] + '_' + i).get('_'.join(j[1:])) if self.normalized_read_counts.get(j[0] + '_' + i) else 0 for j in [x.split('_') for x in x_df.index.values]]
         obs_df['uniquefeat'] = obs_df.index.values
@@ -194,9 +204,10 @@ class trax2anndata():
         # Add custom dataframe obs
         for ob in self.observations:
             adata.obs[ob] = obs_df[ob].values 
+        # Incorporate unique anticodon counts for fiveprime, threeprime, whole, and other !!!
         # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
-        adata.obs['nreads_unique_raw'] = obs_df['nreads_unique_raw'].values
-        adata.obs['nreads_unique_norm'] = obs_df['nreads_unique_norm'].values
+        adata.obs['nreads_total_unique_raw'] = obs_df['nreads_total_unique_raw'].values
+        adata.obs['nreads_total_unique_norm'] = obs_df['nreads_total_unique_norm'].values
         for i in self.read_types:
             adata.obs['nreads_' + i + '_norm'] = obs_df['nreads_' + i + '_norm'].values
         # Add sample and group metadata
@@ -206,6 +217,8 @@ class trax2anndata():
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
         # Add aligned reference sequence based on values in coverage file
         adata.obs['refseq'] = obs_df['refseq'].values
+        # Add anticodon counts as uns
+        adata.uns['anticodon_counts'] = self.anticodon_counts
         
         return adata
 
@@ -226,18 +239,28 @@ class anndataGrapher:
             output = self.args.output + '/coverage'
             directory_tools.builder(output)
             coverage_tools.visualizer(self.adata.copy(), self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, self.args.coveragefill, output).generate_all()
+            print('Coverage plots generated.\n')
 
         if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
             pca_tools.visualizer(self.adata.copy(), output, self.args.pcamarkers, self.args.pcacolors)
+            print('PCA plots generated.\n')
 
         if 'correlation' in self.args.graphtypes:
             print('Generating correlation plots...')
             output = self.args.output + '/correlation'
             directory_tools.builder(output)
             correlation_tools.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
+            print('Correlation plots generated.\n')
+
+        if 'radar' in self.args.graphtypes:
+            print('Generating radar plots...')
+            output = self.args.output + '/radar'
+            directory_tools.builder(output)
+            radar_tools.visualizer(self.adata.copy(), output)
+            print('Radar plots generated.\n')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -274,10 +297,10 @@ if __name__ == '__main__':
     parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
-    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: sample) (optional)', default='sample')
+    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
     # Correlation options
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (optional)', required=False)
+    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
 
     args = parser.parse_args()
 
@@ -319,7 +342,7 @@ if __name__ == '__main__':
         # Raise exception if h5ad file is empty or doesn't exist
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')
-        print('Graphing data from database object...')
+        print('Graphing data from database object...\n')
         anndataGrapher(args).graph()
         print('Done!\n')
     else:

@@ -18,6 +18,8 @@ class visualizer():
     Generate coverage plots for each sample in an AnnData object.
     '''
     def __init__(self, adata, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_fill, output):
+        if coverage_grp not in adata.obs.columns:
+            raise ValueError('Specified coveragegrp not found in AnnData object.')
         self.coverage_grp = coverage_grp
         self.coverage_obs = coverage_obs
         self.coverage_type = coverage_type
@@ -103,6 +105,7 @@ class visualizer():
             plt.savefig('{}/{}_by_{}_{}_with_{}.pdf'.format(self.output, self.coverage_type, self.coverage_grp, trna, self.coverage_fill), bbox_inches='tight')
         else:
             plt.savefig('{}/{}_by_{}_{}.pdf'.format(self.output, self.coverage_type, self.coverage_grp, trna), bbox_inches='tight')
+        plt.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

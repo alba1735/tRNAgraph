@@ -43,6 +43,7 @@ def visualizer(adata, output, corr_method, corr_group):
             # Save the plot
             plt.savefig(f'{output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf', bbox_inches='tight')
             print(f'Correlation matrix for {i} saved to {output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf')
+            plt.close()
 
 
 if __name__ == '__main__':
@@ -54,7 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
     parser.add_argument('-o', '--output', help='Specify output directory', default='correlation', required=False)
     parser.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (optional)', default='sample', required=False)
+    parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
 
     args = parser.parse_args()
 

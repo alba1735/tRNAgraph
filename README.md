@@ -16,7 +16,7 @@ conda env create -f environment.yml
 
 ## Input files
 
-tRNAgraph will work with any tRAX generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool.
+tRNAgraph will work with any tRAX (Python3 Version) generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool.
 
 ### Metadata
 
@@ -70,14 +70,15 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 * `-i` or `--input` is the path to the database object you want to generate visualizations from.
 * `-o` or `--output` is the path to the output directory. By default, the output directory will be named `trnagraph` if no path is provided.
 * `-g` or `--graph` is the type of graph to generate. The following graphs can be generated:
-  * `coverage` - Generates a coverage plots.
-  * `heatmap` - Generates a heatmaps of the differantial tRNA expression.
+  * `coverage` - Generates coverage plots.
+  * `heatmap` - Generates heatmaps of the differantial tRNA expression.
   * `pca` - Generates PCA plots.
+  * `correlation` - Generates correlation plots of the tRNA coverage.
   <!-- * `tsne` - Generates a tSNE plot of the tRNA coverage for each sample. -->
   <!-- * `umap` - Generates a UMAP plot of the tRNA coverage for each sample. -->
-  * `volcano` - Generates a volcano plot of differantial tRNA expression.
-  * `radar` - Generates a radar plot of the tRNA coverage.
-  * `all` - Generates all of the above graphs.
+  * `volcano` - Generates volcano plots of differantial tRNA expression.
+  * `radar` - Generates radar plots of the tRNA coverage.
+  * `all` - Generates all of the above plots.
 
 The following parameters are optional and can be used to customize the graphs:
 
@@ -101,3 +102,7 @@ The following parameters are optional and can be used to customize the graphs:
   * `pearson` - Pearson correlation coefficient.
   * `spearman` - Spearman rank correlation.
   * `kendall` - Kendall Tau correlation coefficient.
+
+#### Radar
+
+* `--radargrp` is the observation to use for grouping the radar plots. If no observation is provided, the radar plots will be grouped by sample group.

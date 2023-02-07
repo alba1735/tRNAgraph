@@ -26,14 +26,14 @@ def visualizer(adata, output, pcamarkers, pcacolors):
 
     # Create a dataframe with trna, pcamarkers parameter, and nreads from adata and create dictory of sample and pcamarkers parameter for use in seaborn
     if pcamarkers == pcacolors:
-        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_unique_norm'])
+        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_total_unique_norm'])
         hue_dict = dict(zip(df[pcamarkers], df[pcamarkers]))
     else:
-        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_unique_norm', pcacolors])
+        df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, 'nreads_total_unique_norm', pcacolors])
         hue_dict = dict(zip(df[pcamarkers], df[pcacolors]))
 
     # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
-    df = df.pivot_table(index='trna', columns='sample', values='nreads_unique_norm')
+    df = df.pivot_table(index='trna', columns='sample', values='nreads_total_unique_norm')
 
     # Scale the data
     df = pd.DataFrame(StandardScaler().fit_transform(df), columns=df.columns, index=df.index)
@@ -61,6 +61,7 @@ def visualizer(adata, output, pcamarkers, pcacolors):
     # Save the plot
     plt.savefig('{}/{}_by_{}_evr.pdf'.format(output, pcamarkers, pcacolors), bbox_inches='tight')
     print('Explained variance ratio graph saved to {}/{}_by_{}_evr.pdf'.format(output, pcamarkers, pcacolors))
+    plt.close()
 
     # Plot the data with seaborn
     plt.figure(figsize=(8, 8))
@@ -81,6 +82,7 @@ def visualizer(adata, output, pcamarkers, pcacolors):
     # Save the plot
     plt.savefig('{}/{}_by_{}_pca.pdf'.format(output, pcamarkers, pcacolors), bbox_inches='tight')
     print('PCA graph saved to {}/{}_by_{}_pca.pdf'.format(output, pcamarkers, pcacolors))
+    plt.close()
 
     # Plot pairplot of the data with seaborn
     plt.figure(figsize=(10, 10))
@@ -97,6 +99,7 @@ def visualizer(adata, output, pcamarkers, pcacolors):
     plt.gca().set_box_aspect(1)
     plt.savefig('{}/{}_by_{}_pairplot.pdf'.format(output, pcamarkers, pcacolors), bbox_inches='tight')
     print('Pairplot graph saved to {}/{}_by_{}_pairplot.pdf'.format(output, pcamarkers, pcacolors))
+    plt.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -107,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
     parser.add_argument('-o', '--output', help='Specify output directory', default='pca', required=False)
     parser.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
-    parser.add_argument('--pcacolor', help='Specify AnnData column to color PCA markers by (default: sample) (optional)', default='sample')
+    parser.add_argument('--pcacolor', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
 
     args = parser.parse_args()
 
