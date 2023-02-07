@@ -9,8 +9,10 @@ import directory_tools
 
 # graphing functions
 import coverage_tools
+import heatmap_tools
 import pca_tools
 import correlation_tools
+import volcano_tools
 import radar_tools
 
 class trax2anndata():
@@ -149,37 +151,19 @@ class trax2anndata():
         for rt in ['fiveprime','threeprime','whole','other']:
             obs_df[f'nreads_{rt}_unique_raw'] = [self.unique_counts.get(i[0]+f'_{rt}').get('_'.join(i[1:])) if self.unique_counts.get(i[0]+f'_{rt}') else 0 for i in [x.split('_') for x in x_df.index.values]]
             obs_df[f'nreads_{rt}_unique_norm'] = obs_df[f'nreads_{rt}_unique_raw']/obs_df['sizefactor']
-        # Add total unique normalized read counts to obs dataframe
+        # Add total unique read counts to obs dataframe
         obs_df['nreads_total_unique_raw'] = obs_df[[f'nreads_{rt}_unique_raw' for rt in ['fiveprime','threeprime','whole','other']]].sum(axis=1)
         obs_df['nreads_total_unique_norm'] = obs_df['nreads_total_unique_raw']/obs_df['sizefactor']
-        for i in self.read_types:
-            obs_df['nreads_' + i + '_norm'] = [self.normalized_read_counts.get(j[0] + '_' + i).get('_'.join(j[1:])) if self.normalized_read_counts.get(j[0] + '_' + i) else 0 for j in [x.split('_') for x in x_df.index.values]]
+        # Add read counts (from bowtie2) for each tRNA split by type
+        for rt in self.read_types:
+            obs_df['nreads_' + rt + '_norm'] = [self.normalized_read_counts.get(j[0] + '_' + rt).get('_'.join(j[1:])) if self.normalized_read_counts.get(j[0] + '_' + rt) else 0 for j in [x.split('_') for x in x_df.index.values]]
+            obs_df['nreads_' + rt + '_raw'] = obs_df['nreads_' + rt + '_norm']*obs_df['sizefactor']
+        # Add total read counts (from bowtie2) to obs dataframe - excluding partial precounts, trailer counts, and antisense counts so that it matches unique counts
+        obs_df['nreads_total_raw'] = obs_df[[f'nreads_{rt}_raw' for rt in ['fiveprime','threeprime','wholecounts','other']]].sum(axis=1)
+        obs_df['nreads_total_norm'] = obs_df['nreads_total_raw']/obs_df['sizefactor']
+        # Add unique feature column to obs dataframe - this is the index of the x dataframe - not sure if this is necessary
         obs_df['uniquefeat'] = obs_df.index.values
         return obs_df
-
-    # def _group_sort_(self, obs_df, x_df):
-    #     '''
-    #     Sort obs and x dataframes by sample group to ensure that all dfs are aligned
-    #     '''
-    #     obs_dict = {k:'first' for k in obs_df.columns.values if k != 'sample_group'}
-    #     x_dict = {k:'mean' for k in x_df.columns.values}
-
-    #     combo_dict = {**obs_dict, **x_dict}
-        
-    #     combo_df = pd.concat([obs_df,x_df], axis=1, sort=False).reset_index(drop=True)
-    #     combo_df = combo_df.groupby('group', as_index=False).agg(combo_dict)
-        
-    #     obs_df = combo_df.iloc[:,:len(obs_df.columns)]
-    #     x_df = combo_df.iloc[:,len(obs_df.columns):]
-        
-    #     obs_df.index = obs_df['group'].values
-    #     x_df.index = obs_df['group'].values
-
-    #     # Check that the index of the obs and x dataframes are the same
-    #     if not obs_df.index.equals(x_df.index):
-    #         raise ValueError('The index of the obs and x dataframes are not the same. This means somthing went wrong in the sorting process.')
-
-    #     return obs_df, x_df
 
     def _adata_build_(self, obs_df, x_df):
         '''
@@ -201,18 +185,24 @@ class trax2anndata():
         adata.obs['trna'] = obs_df['trna'].values
         adata.obs['iso'] = obs_df['iso'].values
         adata.obs['amino'] = obs_df['amino'].values
-        # Add custom dataframe obs
-        for ob in self.observations:
-            adata.obs[ob] = obs_df[ob].values 
-        # Incorporate unique anticodon counts for fiveprime, threeprime, whole, and other !!!
-        # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
-        adata.obs['nreads_total_unique_raw'] = obs_df['nreads_total_unique_raw'].values
-        adata.obs['nreads_total_unique_norm'] = obs_df['nreads_total_unique_norm'].values
-        for i in self.read_types:
-            adata.obs['nreads_' + i + '_norm'] = obs_df['nreads_' + i + '_norm'].values
         # Add sample and group metadata
         adata.obs['sample'] = obs_df['sample'].values
         adata.obs['group'] = obs_df['group'].values
+        # Add custom dataframe obs
+        for ob in self.observations:
+            adata.obs[ob] = obs_df[ob].values 
+        # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
+        for rt in ['whole','fiveprime','threeprime','other']:
+            adata.obs['nreads_' + rt + '_unique_raw'] = obs_df['nreads_' + rt + '_unique_raw'].values
+            adata.obs['nreads_' + rt + '_unique_norm'] = obs_df['nreads_' + rt + '_unique_norm'].values
+        adata.obs['nreads_total_unique_raw'] = obs_df['nreads_total_unique_raw'].values
+        adata.obs['nreads_total_unique_norm'] = obs_df['nreads_total_unique_norm'].values
+        # Add the numer of reads per tRNA as observations-annotation to adata from trna normalized read counts file
+        for rt in self.read_types:
+            adata.obs['nreads_' + rt + '_raw'] = obs_df['nreads_' + rt + '_raw'].values
+            adata.obs['nreads_' + rt + '_norm'] = obs_df['nreads_' + rt + '_norm'].values
+        adata.obs['nreads_total_raw'] = obs_df['nreads_total_raw'].values
+        adata.obs['nreads_total_norm'] = obs_df['nreads_total_norm'].values
         # Add size factor
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
         # Add aligned reference sequence based on values in coverage file
@@ -241,11 +231,18 @@ class anndataGrapher:
             coverage_tools.visualizer(self.adata.copy(), self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, self.args.coveragefill, output).generate_all()
             print('Coverage plots generated.\n')
 
+        if 'heatmap' in self.args.graphtypes:
+            print('Generating heatmap plots...')
+            output = self.args.output + '/heatmap'
+            directory_tools.builder(output)
+            heatmap_tools.visualizer(self.adata.copy(), output)
+            print('Heatmap plots generated.\n')
+
         if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
-            pca_tools.visualizer(self.adata.copy(), output, self.args.pcamarkers, self.args.pcacolors)
+            pca_tools.visualizer(self.adata.copy(), output, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes)
             print('PCA plots generated.\n')
 
         if 'correlation' in self.args.graphtypes:
@@ -254,6 +251,13 @@ class anndataGrapher:
             directory_tools.builder(output)
             correlation_tools.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
             print('Correlation plots generated.\n')
+
+        if 'volcano' in self.args.graphtypes:
+            print('Generating volcano plots...')
+            output = self.args.output + '/volcano'
+            directory_tools.builder(output)
+            volcano_tools.visualizer(self.adata.copy(), output)
+            print('Volcano plots generated.\n')
 
         if 'radar' in self.args.graphtypes:
             print('Generating radar plots...')
@@ -287,17 +291,22 @@ if __name__ == '__main__':
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca', 'correlation', 'volcano','radar'], help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca', 'correlation', 'volcano','radar'], \
+        help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Coverage options
     parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: sample) (optional)', default='group')
     parser_graph.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
-    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', choices=['coverage', 'readstarts', \
-         'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', 'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
+    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
+        choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+            'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
     parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
+    parser_graph.add_argument('--pcareadtypes', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+            help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Correlation options
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
