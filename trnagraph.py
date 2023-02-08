@@ -235,7 +235,7 @@ class anndataGrapher:
             print('Generating heatmap plots...')
             output = self.args.output + '/heatmap'
             directory_tools.builder(output)
-            heatmap_tools.visualizer(self.adata.copy(), output)
+            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrt, self.args.heatcutoff, output)
             print('Heatmap plots generated.\n')
 
         if 'pca' in self.args.graphtypes:
@@ -256,7 +256,7 @@ class anndataGrapher:
             print('Generating volcano plots...')
             output = self.args.output + '/volcano'
             directory_tools.builder(output)
-            volcano_tools.visualizer(self.adata.copy(), output)
+            volcano_tools.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
             print('Volcano plots generated.\n')
 
         if 'radar' in self.args.graphtypes:
@@ -301,6 +301,10 @@ if __name__ == '__main__':
             'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
     parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
+    # Heatmap options
+    parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
+    parser_graph.add_argument('--heatrt', help='Specify readtype to use for heatmap', default='nreads_total_norm', required=False)
+    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
@@ -310,6 +314,10 @@ if __name__ == '__main__':
     # Correlation options
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
+    # Volcano options
+    parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
+    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_norm', required=False)
+    parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
 
     args = parser.parse_args()
 
