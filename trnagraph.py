@@ -303,7 +303,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--heatrt', help='Specify readtype to use for heatmap', default='nreads_total_norm', required=False)
+    parser_graph.add_argument('--heatrt', help='Specify readtype to use for heatmap', default='nreads_total_unique_norm', required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_norm', required=False)
+    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
 
     args = parser.parse_args()

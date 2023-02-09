@@ -9,7 +9,6 @@
 
 ## trnagraph.py
 
-* Clean up sorting function
 * Add a class to concatenate multiple adata objects together
   * This will be useful for cross analysis of multiple experiments, different species, etc.
   * Allow for new DeSeq2 analysis to be run on the combined object
@@ -18,6 +17,8 @@
 ## pca_tools.py
 
 * Add a function to plot the PCA with smallRNAs included
+* `tsne` - Generates a tSNE plot of the tRNA coverage for each sample. -->
+* `umap` - Generates a UMAP plot of the tRNA coverage for each sample. -->
 
 ## correlation_tools.py
 
@@ -27,10 +28,10 @@
 
 * Add a function to check if the parameter exisits in adata columns and if not default to samples
 
-# coverage_tools.py
+## coverage_tools.py
 
 * Move low coverage <20 reads to a seperate low coverage folder based on max coverage?
 
-# radar_tools.py
+## radar_tools.py
 
 * Add total amino dict not just the subset one I am using now also generate a list of all the amino acids from the adata object so it works universal to all species

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import seaborn as sns
-import pandas as pd
+import numpy as np
 import anndata as ad
 import argparse
 
@@ -20,8 +20,32 @@ def visualizer(adata, grp, readtype, cutoff, output):
     '''
     # Create a correlation matrix from reads stored in adata observations
     df = analysis_tools.log2fc_df(adata, grp, readtype, cutoff)
-    print(df)
 
+    pairs = ['_'.join(i.split('_')[1:]) for i in df.columns]
+    for pair in pairs:
+        plt.figure(figsize=(8, 8))
+        x = df[f'log2_{pair}']
+        y = -np.log10(df[f'pval_{pair}'])
+        ax = sns.scatterplot(x=x, y=y)
+        # Add a line at log2FC = 1.5 and -1.5 and pval = 0.05 and 0.001
+        ax.axvline(x=-1.5, color='black', linestyle='--')
+        ax.axvline(x=1.5, color='black', linestyle='--')
+        ax.axhline(y=1.3, color='black', linestyle='--')
+        ax.axhline(y=3, color='black', linestyle='--')
+        # Set axis limits so that the plot is square
+        if ax.get_xlim()[1] < 3 and ax.get_xlim()[0] > -3:
+            ax.set_xlim(-3, 3)
+        else:
+            ax.set_xlim(-1.1*max(abs(x)), 1.1*max(abs(x)))
+        if ax.get_ylim()[1] < 10:
+            ax.set_ylim(0, 10)
+        # Add labels
+        ax.set_xlabel('log2(fold change)')
+        ax.set_ylabel('-log10(p-value)')
+        ax.set_title(f'Volcano plot of {pair} tRNA read counts')
+        # Save figure
+        plt.savefig(f'{output}/{pair}_{readtype}_{cutoff}_volcano.pdf', bbox_inches='tight')
+        plt.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
