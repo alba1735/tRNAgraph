@@ -29,9 +29,8 @@ def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
     for pair in pairs:
         df_pairs[f'log2_{pair[0]}-{pair[1]}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
         df_pairs[f'pval_{pair[0]}-{pair[1]}'] = stats.ttest_ind_from_stats(mdf[pair[0]], sdf[pair[0]], cdf[pair[0]], mdf[pair[1]], sdf[pair[1]], cdf[pair[1]])[1]
-    # Sort df_pairs by the sum of the log2FC values for each row
-    df_pairs = df_pairs.sort_values(by=df_pairs.columns.tolist(), ascending=False)
-    # sort the columns alphabetically
+
+    # sort the columns alphabetically so log2FC are followed by pvals
     df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
 
     return df_pairs

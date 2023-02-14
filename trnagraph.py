@@ -235,7 +235,7 @@ class anndataGrapher:
             print('Generating heatmap plots...')
             output = self.args.output + '/heatmap'
             directory_tools.builder(output)
-            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrt, self.args.heatcutoff, output)
+            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrt, self.args.heatcutoff, self.args.heatbound, output)
             print('Heatmap plots generated.\n')
 
         if 'pca' in self.args.graphtypes:
@@ -305,6 +305,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrt', help='Specify readtype to use for heatmap', default='nreads_total_unique_norm', required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
+    parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')

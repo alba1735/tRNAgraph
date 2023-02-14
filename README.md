@@ -93,6 +93,7 @@ The following parameters are optional and can be used to customize the graphs:
 * `--heatgrp` is the observation to use for grouping the heatmap plots. If no observation is provided, the heatmap plots will be grouped by sample group.
 * `--heatrt` is the read type to use for the heatmap plots. By default, the heatmap plots will be generated using the total unique normalized reads.
 * `--heatcutoff` is the cutoff for reads to include in the heatmap plots. By default, the heatmap plots will discard anything with less than 80 reads.
+* `--heatbound` is the range to bound the heatmap plots. By default, the heatmap plots will be bounded by the top 25 and the bottom 25 values in the data for each comparative column.
 
 #### PCA
 
@@ -182,11 +183,11 @@ adata = adata[adata.var["coverage"] == "unique"]
 adata = adata[:, ~adata.var["gap"]]
 ```
 
-If you wanted to filter the database object further to only include samples from group `A` and tRNA `tRNA-Asp` you could use the following code:
+If you wanted to filter the database object further to only include samples from group `A` and tRNA `tRNA-Ala-AGC-1` you could use the following code:
 
 ```python
 adata = adata[adata.obs["group"] == "A"]
-adata = adata[adata.obs["trna"] == "tRNA-Asp"]
+adata = adata[adata.obs["trna"] == "tRNA-Ala-AGC-1"]
 ```
 
 The resulting table can be called using `adata.X`.
