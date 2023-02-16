@@ -91,7 +91,7 @@ The following parameters are optional and can be used to customize the graphs:
 #### Heatmap
 
 * `--heatgrp` is the observation to use for grouping the heatmap plots. If no observation is provided, the heatmap plots will be grouped by sample group.
-* `--heatrt` is the read type to use for the heatmap plots. By default, the heatmap plots will be generated using the total unique normalized reads.
+* `--heatrts` is the read types to use for the heatmap plots. By default, the heatmap plots will be generated using the total unique normalized reads.
 * `--heatcutoff` is the cutoff for reads to include in the heatmap plots. By default, the heatmap plots will discard anything with less than 80 reads.
 * `--heatbound` is the range to bound the heatmap plots. By default, the heatmap plots will be bounded by the top 25 and the bottom 25 values in the data for each comparative column.
 

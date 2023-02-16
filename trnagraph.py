@@ -14,6 +14,7 @@ import pca_tools
 import correlation_tools
 import volcano_tools
 import radar_tools
+import bar_tools
 
 class trax2anndata():
     '''
@@ -42,6 +43,12 @@ class trax2anndata():
         # For adding anticoodon counts to coverage file
         anticodoncounts = traxdir + '/' + traxdir.split('/')[-1] + '-anticodoncounts.txt'
         self.anticodon_counts = pd.read_csv(anticodoncounts, sep='\t')
+        # For adding type counts to coverage file
+        typecounts = traxdir + '/' + traxdir.split('/')[-1] + '-typecounts.txt'
+        self.type_counts = pd.read_csv(typecounts, sep='\t')
+        # For adding amino acid counts to coverage file
+        aminoacidcounts = traxdir + '/' + traxdir.split('/')[-1] + '-aminocounts.txt'
+        self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
         self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
@@ -209,6 +216,10 @@ class trax2anndata():
         adata.obs['refseq'] = obs_df['refseq'].values
         # Add anticodon counts as uns
         adata.uns['anticodon_counts'] = self.anticodon_counts
+        # Add amino acid counts as uns
+        adata.uns['amino_counts'] = self.amino_counts
+        # Add type counts as uns
+        adata.uns['type_counts'] = self.type_counts
         
         return adata
 
@@ -222,7 +233,7 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar']
+            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
 
         if 'coverage' in self.args.graphtypes:
             print('Generating coverage plots...')
@@ -232,11 +243,11 @@ class anndataGrapher:
             print('Coverage plots generated.\n')
 
         if 'heatmap' in self.args.graphtypes:
-            print('Generating heatmap plots...')
+            print('Generating heatmaps...')
             output = self.args.output + '/heatmap'
             directory_tools.builder(output)
-            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrt, self.args.heatcutoff, self.args.heatbound, output)
-            print('Heatmap plots generated.\n')
+            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
+            print('Heatmaps generated.\n')
 
         if 'pca' in self.args.graphtypes:
             print('Generating pca plots...')
@@ -266,6 +277,13 @@ class anndataGrapher:
             radar_tools.visualizer(self.adata.copy(), output)
             print('Radar plots generated.\n')
 
+        if 'bar' in self.args.graphtypes:
+            print('Generating bar plots...')
+            output = self.args.output + '/bar'
+            directory_tools.builder(output)
+            bar_tools.visualizer(self.adata.copy(), output)
+            print('Bar plots generated.\n')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='tRNAgraph',
@@ -291,7 +309,7 @@ if __name__ == '__main__':
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca', 'correlation', 'volcano','radar'], \
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Coverage options
     parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: sample) (optional)', default='group')
@@ -303,9 +321,13 @@ if __name__ == '__main__':
     parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--heatrt', help='Specify readtype to use for heatmap', default='nreads_total_unique_norm', required=False)
+    parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
+    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
