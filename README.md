@@ -180,7 +180,7 @@ import anndata as ad
 
 adata = ad.read_h5ad("tRNAgraph.h5ad")
 adata = adata[adata.var["coverage"] == "unique"]
-adata = adata[:, ~adata.var["gap"]]
+adata = adata[adata.var["gap"] == False]
 ```
 
 If you wanted to filter the database object further to only include samples from group `A` and tRNA `tRNA-Ala-AGC-1` you could use the following code:
