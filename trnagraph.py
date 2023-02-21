@@ -4,6 +4,7 @@ import pandas as pd
 import anndata as ad
 import argparse
 import os
+import sys
 
 import directory_tools
 
@@ -114,8 +115,8 @@ class trax2anndata():
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
         # Save adata object
-        adata.write('{}.h5ad'.format(self.output))
-        print('Writing h5ad database object to {}.h5ad'.format(self.output))
+        adata.write('{}'.format(self.output))
+        print('Writing h5ad database object to {}'.format(self.output))
         
     def _ref_seq_build_(self):
         '''
@@ -292,7 +293,7 @@ if __name__ == '__main__':
             perform further analysis beyond the scope of what tRAX can do.',
         allow_abbrev=False
     )
-    parser.add_argument('-o', '--output', help='Specify output directory', default='trnagraph')
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='trnagraph')
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
@@ -306,11 +307,15 @@ if __name__ == '__main__':
     parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
     parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
+    parser_build.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph.h5ad')
+    parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
+    parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     # Coverage options
     parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: sample) (optional)', default='group')
     parser_graph.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
@@ -344,13 +349,13 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    # Set log file if specified
+    sys.stdout = open(args.log, 'w') if args.log else sys.stdout
+
     if args.mode == 'build':
         args.traxdir = directory_tools.path_cleaner(args.traxdir)
     if args.mode == 'graph':
         args.anndata = directory_tools.path_cleaner(args.anndata)
-
-    # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
 
     # Read database object or create one from trax run if none provided
     if args.mode == 'build':
@@ -379,6 +384,8 @@ if __name__ == '__main__':
         trax2anndata(args.traxdir, args.metadata, args.observationslist, args.output).create()
         print('Done!\n')
     elif args.mode == 'graph':
+        # Create output directory if it doesn't exist
+        directory_tools.builder(args.output)
         # Raise exception if h5ad file is empty or doesn't exist
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')

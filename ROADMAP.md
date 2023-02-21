@@ -3,9 +3,10 @@
 ## General
 
 * Add options to compute with RAW counts and alternative normalization methods
-* https://stackoverflow.com/questions/7498595/python-argparse-add-argument-to-multiple-subparsers
+* Argparse updates [stackoverflow thread](https://stackoverflow.com/questions/7498595/python-argparse-add-argument-to-multiple-subparsers)
 * Add multiprocessing to speed up the analysis via the graph generation
 * Add a command to run both create and build in one command, skipping build if it already exists
+* Add combination PDF plots to each graph type as needed
 
 ## trnagraph.py
 
@@ -34,4 +35,4 @@
 
 ## radar_tools.py
 
-* Add total amino dict not just the subset one I am using now also generate a list of all the amino acids from the adata object so it works universal to all species
+* Add total amino dict not just the subset one I am using now also generate a list of all the amino acids from the adata object so it works universal to all species.

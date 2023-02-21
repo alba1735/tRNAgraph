@@ -1,4 +1,4 @@
-name: trnagraph
+name: tRNAgraph
 channels:
   - conda-forge
   - bioconda
@@ -10,3 +10,4 @@ dependencies:
   - 'matplotlib'
   - 'seaborn'
   - 'anndata'
+  - 'snakemake'
