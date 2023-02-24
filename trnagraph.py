@@ -39,6 +39,10 @@ class trax2anndata():
         # For adding normalized read counts to coverage file split by read type
         normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
+        # Clean all non tRNAs from normalized read counts by removing all rows that do not have a tRNA in the feature column
+        non_trna_read_counts = normalized_read_counts[~(normalized_read_counts.index.str.contains('tRNA'))]
+        self.non_trna_read_counts = non_trna_read_counts[~(non_trna_read_counts.index.str.contains('tRX'))]
+        normalized_read_counts = normalized_read_counts[(normalized_read_counts.index.str.contains('tRNA')) | (normalized_read_counts.index.str.contains('tRX'))]
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
         # For adding anticoodon counts to coverage file
@@ -114,6 +118,10 @@ class trax2anndata():
         adata = self._adata_build_(obs_df,x_df)
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
+        # Quality check adata by dropping NaN values and printing summary
+        if adata.obs.isna().any(axis=0).any():
+            print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or have a different number of observations per sample. ' \
+                  'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct:\n{}'.format(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist()))
         # Save adata object
         adata.write('{}'.format(self.output))
         print('Writing h5ad database object to {}'.format(self.output))
@@ -221,6 +229,8 @@ class trax2anndata():
         adata.uns['amino_counts'] = self.amino_counts
         # Add type counts as uns
         adata.uns['type_counts'] = self.type_counts
+        # Add non tRNA counts as uns
+        adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         
         return adata
 
@@ -237,10 +247,18 @@ class anndataGrapher:
             self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
 
         if 'coverage' in self.args.graphtypes:
-            print('Generating coverage plots...')
             output = self.args.output + '/coverage'
             directory_tools.builder(output)
-            coverage_tools.visualizer(self.adata.copy(), self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, self.args.coveragefill, output).generate_all()
+            if self.args.combineonly:
+                print('Generating combined coverage plots...')
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_combine()
+            else:
+                print('Generating individual coverage plots...')
+                directory_tools.builder(output+'/single')
+                directory_tools.builder(output+'/single/low_coverage')
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_split()
+                print('Generating combined coverage plots...')
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_combine()
             print('Coverage plots generated.\n')
 
         if 'heatmap' in self.args.graphtypes:
@@ -312,18 +330,19 @@ if __name__ == '__main__':
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
-    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
+    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     # Coverage options
-    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: sample) (optional)', default='group')
+    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group')
     parser_graph.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
     parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
         choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
             'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
-    parser_graph.add_argument('--coveragefill', choices=['fill', 'ci', 'none'], help='Specify wether to fill area under coverage plots or use confidence intervals (default: ci) (optional)', default='ci')
+    parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
@@ -332,7 +351,7 @@ if __name__ == '__main__':
                 nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
-    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', required=False)
+    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')

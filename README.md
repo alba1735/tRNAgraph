@@ -77,6 +77,8 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `volcano` - Generates volcano plots of differential tRNA expression.
   * `radar` - Generates radar plots of the tRNA coverage.
   * `all` - Generates all of the above plots.
+* `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots as they can take a long time to generate.
+* `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
 The following parameters are optional and can be used to customize the graphs:
 
@@ -86,7 +88,7 @@ The following parameters are optional and can be used to customize the graphs:
 * `--coverageobs` is the observation to use for coloring the coverage plots. If no observation is provided, the coverage plots will be colored by sample group. Multiple observations can be provided.
 * `--coveragetype` is the type of tRNA coverage to plot, by default it will plot unique coverage. All posible coverage types match the [tRAX coverage types](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
 * `--coveragegap` is whether to include tRNA gaps in the coverage plots. By default, tRNA gaps will be skipped in the coverage plots.
-* `--coveragefill` is whether to fill the area under the coverage plots `fill` or include a confidence interval `ci`. By default, a confidence interval will be included in the coverage plots.
+* `--combineonly` is whether to only plot the combined coverage plots. By default, the coverage plots will be plotted for each individual tRNA as well as the combined coverage plots.
 
 #### Heatmap
 

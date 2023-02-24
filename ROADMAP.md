@@ -3,8 +3,6 @@
 ## General
 
 * Add options to compute with RAW counts and alternative normalization methods
-* Argparse updates [stackoverflow thread](https://stackoverflow.com/questions/7498595/python-argparse-add-argument-to-multiple-subparsers)
-* Add multiprocessing to speed up the analysis via the graph generation
 * Add a command to run both create and build in one command, skipping build if it already exists
 * Add combination PDF plots to each graph type as needed
 
@@ -23,15 +21,15 @@
 
 ## correlation_tools.py
 
-* Add a function to plot the PCA with smallRNAs included
+* Add a function to plot the correlation with smallRNAs
+
+## coverage_tools.py
+
+* add a function to sort the combined coverage from most to least abundant
 
 ## All plots
 
 * Add a function to check if the parameter exisits in adata columns and if not default to samples
-
-## coverage_tools.py
-
-* Move low coverage <20 reads to a seperate low coverage folder based on max coverage?
 
 ## radar_tools.py
 
