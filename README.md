@@ -77,6 +77,8 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `volcano` - Generates volcano plots of differential tRNA expression.
   * `radar` - Generates radar plots of the tRNA coverage.
   * `all` - Generates all of the above plots.
+* `--filterobs` is file that can be provided to filter the observations used for generating the graphs. Each line should contain the obvseration name and the value to filter on separated by a tab. Multiple observations can be provided.
+* `--filtervar` is file that can be provided to filter the variables used for generating the graphs. Each line should contain the variable name and the value to filter on separated by a tab. Multiple variables can be provided.
 * `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots as they can take a long time to generate.
 * `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
