@@ -58,6 +58,7 @@ class trax2anndata():
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
         self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
         # For adding categories to adata object
+
         self.observations = observations
         if self.observations:
             # Make sure that observations are not going to be generated automatically
@@ -121,10 +122,11 @@ class trax2anndata():
         # Quality check adata by dropping NaN values and printing summary
         if adata.obs.isna().any(axis=0).any():
             print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or have a different number of observations per sample. ' \
+                  'Another consideration is to make sure your .tsv/.csv is using tabs or commas appropriately. ' \
                   'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct:\n{}'.format(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist()))
         # Save adata object
-        adata.write('{}'.format(self.output))
-        print('Writing h5ad database object to {}'.format(self.output))
+        adata.write(f'{self.output}')
+        print(f'Writing h5ad database object to {self.output}')
         
     def _ref_seq_build_(self):
         '''
@@ -246,6 +248,27 @@ class anndataGrapher:
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
 
+        if self.args.filterobs or self.args.filtervar:
+            print('Filtering AnnData object...')
+            filter_name = 'filtered'
+            if self.args.filterobs:
+                with open(self.args.filterobs, 'r') as fo:
+                    for l in fo.readlines():
+                        l = l.strip().split()
+                        print('Filtering AnnData object by observation: ' + l[0] + ' , ' + l[1])
+                        self.adata = self.adata[self.adata.obs[l[0]] == l[1], :]
+                        filter_name += '_' + l[0] + '_' + l[1]
+            if self.args.filtervar:
+                with open(self.args.filtervar, 'r') as fv:
+                    for l in fv.readlines():
+                        l = l.strip().split()
+                        print('Filtering AnnData object by variable: ' + l[0] + ' , ' + l[1])
+                        self.adata = self.adata[:, self.adata.var[l[0]] == l[1]]
+                        filter_name += '_' + l[0] + '_' + l[1]
+
+            self.args.output = self.args.output + '/' + filter_name
+            directory_tools.builder(self.args.output)
+
         if 'coverage' in self.args.graphtypes:
             output = self.args.output + '/coverage'
             directory_tools.builder(output)
@@ -333,6 +356,10 @@ if __name__ == '__main__':
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    # Add argument to filter parameters from AnnData object
+    parser_graph.add_argument('--filterobs', help='Specify a file containing observations to filter out (optional)', default=None)
+    parser_graph.add_argument('--filtervar', help='Specify a file containing variables to filter out (optional)', default=None)
+    # Options to imporve speed or log output
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     # Coverage options
