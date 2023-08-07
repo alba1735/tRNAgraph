@@ -5,6 +5,7 @@ import anndata as ad
 import argparse
 import os
 import sys
+import json
 
 import directory_tools
 
@@ -248,40 +249,42 @@ class anndataGrapher:
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
 
-        if self.args.filterobs or self.args.filtervar:
-            print('Filtering AnnData object...')
-            filter_name = 'filtered'
-            if self.args.filterobs:
-                with open(self.args.filterobs, 'r') as fo:
-                    for l in fo.readlines():
-                        l = l.strip().split()
-                        print('Filtering AnnData object by observation: ' + l[0] + ' , ' + l[1])
-                        self.adata = self.adata[self.adata.obs[l[0]] == l[1], :]
-                        filter_name += '_' + l[0] + '_' + l[1]
-            if self.args.filtervar:
-                with open(self.args.filtervar, 'r') as fv:
-                    for l in fv.readlines():
-                        l = l.strip().split()
-                        print('Filtering AnnData object by variable: ' + l[0] + ' , ' + l[1])
-                        self.adata = self.adata[:, self.adata.var[l[0]] == l[1]]
-                        filter_name += '_' + l[0] + '_' + l[1]
-
-            self.args.output = self.args.output + '/' + filter_name
-            directory_tools.builder(self.args.output)
+        if self.args.config:
+            with open(self.args.config, 'r') as f:
+                d_config = json.load(f)
+            if 'name' in d_config:
+                self.args.output += '/' + d_config['name']
+                directory_tools.builder(self.args.output)
+            if 'obs' in d_config:
+                for k,v in d_config['obs'].items():
+                    print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
+                    self.adata = self.adata[self.adata.obs[k].isin(v), :]
+            if 'var' in d_config:
+                for k,v in d_config['var'].items():
+                    print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
+                    self.adata = self.adata[:, self.adata.var[k].isin(v)]
+        else:
+            d_config = {}
 
         if 'coverage' in self.args.graphtypes:
             output = self.args.output + '/coverage'
             directory_tools.builder(output)
+
+            colormap = None
+            if 'colormap' in d_config:
+                if self.args.coveragegrp in d_config['colormap']:
+                    colormap = d_config['colormap'][self.args.coveragegrp]
+
             if self.args.combineonly:
                 print('Generating combined coverage plots...')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_combine()
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
             else:
                 print('Generating individual coverage plots...')
                 directory_tools.builder(output+'/single')
                 directory_tools.builder(output+'/single/low_coverage')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_split()
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_split()
                 print('Generating combined coverage plots...')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, output).generate_combine()
+                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
             print('Coverage plots generated.\n')
 
         if 'heatmap' in self.args.graphtypes:
@@ -357,8 +360,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
-    parser_graph.add_argument('--filterobs', help='Specify a file containing observations to filter out (optional)', default=None)
-    parser_graph.add_argument('--filtervar', help='Specify a file containing variables to filter out (optional)', default=None)
+    parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
     # Options to imporve speed or log output
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)

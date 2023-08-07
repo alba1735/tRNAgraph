@@ -13,6 +13,7 @@ from multiprocessing import Pool
 import directory_tools
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mplcolors
 from matplotlib.backends.backend_pdf import PdfPages
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
@@ -23,7 +24,7 @@ class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
     '''
-    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, output):
+    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, colormap, output):
         self.threads = threads
         if coverage_grp not in adata.obs.columns:
             raise ValueError('Specified coveragegrp not found in AnnData object.')
@@ -41,8 +42,11 @@ class visualizer():
                                 'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.')
         # Clean AnnData object for plotting
         self.adata = self.clean_adata(adata)
-        coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
-        self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
+        if colormap != None:
+            self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
+        else:
+            coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
+            self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
 
     def clean_adata(self, adata):
@@ -194,6 +198,7 @@ if __name__ == '__main__':
             'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
     parser.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_false', required=False)
+    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
     args = parser.parse_args()
 
@@ -206,7 +211,7 @@ if __name__ == '__main__':
     adata = ad.read_h5ad(args.anndata)
 
     if args.combineonly:
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.output).generate_combined()
+        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()
     else:
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.output).generate_split()
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.output).generate_combined()
+        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_split()
+        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()

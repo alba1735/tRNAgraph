@@ -77,8 +77,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `volcano` - Generates volcano plots of differential tRNA expression.
   * `radar` - Generates radar plots of the tRNA coverage.
   * `all` - Generates all of the above plots.
-* `--filterobs` is file that can be provided to filter the observations used for generating the graphs. Each line should contain the obvseration name and the value to filter on separated by a tab. Multiple observations can be provided.
-* `--filtervar` is file that can be provided to filter the variables used for generating the graphs. Each line should contain the variable name and the value to filter on separated by a tab. Multiple variables can be provided.
+* `--config` is an optional flag to the path to a JSON file containing additonal graph parameters. [See configuration section below for more details.](#configuration)
 * `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots as they can take a long time to generate.
 * `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
@@ -173,7 +172,7 @@ The variables are the metadata categories that are used to filter the read cover
 * `positions` - The canonical Sprinzl positions.
 * `coverage` - The coverage type matching coverage types found in the tRAX coverage file.
 
-Since all coverage types are stored in the database object it is useful to specify which coverage type you want to use if you plan on using the database object for further analysis. 
+Since all coverage types are stored in the database object it is useful to specify which coverage type you want to use if you plan on using the database object for further analysis.
 
 ### Downstream Analysis and Filtering
 
@@ -195,3 +194,30 @@ adata = adata[adata.obs["trna"] == "tRNA-Ala-AGC-1"]
 ```
 
 The resulting table can be called using `adata.X`.
+
+### Configuration
+
+A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank and they will be skipped.
+
+* `name` - Is a name for the filtering configuration and will be saved as a subfolder in the output directory.
+* `obs` and `var` -  Are conditions to filter on in the AnnData observation and variable categories respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only the values in the list. If no values are provided, the data will not be filtered on that category.
+* `colormap` - It is a dictionary of dictionaries that allows custom colormaps to be used for the observations. The first level of the dictionary is the observation category, and the second level is the value of color. The value can be a hex color code or an RGB tuple value. If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are being generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
+
+```json
+{
+    "name": "name",
+    "obs": {
+        "observation_1": ["value1", "value2"],
+        "observation_2": ["value1"]
+    },
+    "var": {
+        "variable_1": ["value1", "value2"]
+    },
+    "colormap": {
+        "observation_1": {
+            "value1": "#000000",
+            "value2": "#FFFFFF"
+        }
+    }
+}
+```
