@@ -7,12 +7,13 @@ import argparse
 import directory_tools
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, output):
+def visualizer(adata, colormap, output):
     '''
     Generate barplots for readtypes and isoforms.
     '''
@@ -28,14 +29,28 @@ def visualizer(adata, output):
     # Load data from AnnData
     for count_type in ['type_counts', 'amino_counts']:
         df = adata.uns[count_type]
-        # Create counts barplots
-        split_barplots(df.copy(), count_type, output)
+
+        if colormap != None:
+            colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
+            use_colormap = True
+            for v in df.columns.unique():
+                if v not in colormap:
+                    print(f'Color {v} not found in colormap. Using default colors instead.')
+                    use_colormap = False
+                    break
+
+        if use_colormap:
+            print('cmap')
+            split_barplots(df.copy(), count_type, output, colormap=colormap)
+            split_barplots(df*100/df.sum(), count_type, output, colormap=colormap, percent=True)
+        else:
+            split_barplots(df.copy(), count_type, output)
+            split_barplots(df*100/df.sum(), count_type, output, percent=True)
+        
         stacked_barplots(df.copy(), count_type, output)
-        # Creat percentage barplots
-        split_barplots(df*100/df.sum(), count_type, output, percent=True)
         stacked_barplots(df*100/df.sum(), count_type, output, percent=True)
 
-def split_barplots(df, count_type, output, percent=False):
+def split_barplots(df, count_type, output, colormap=None, percent=False):
     '''
     Create split barplots for readtypes.
     '''
@@ -44,10 +59,11 @@ def split_barplots(df, count_type, output, percent=False):
     fig, ax = plt.subplots(figsize=(10, 10))
     # Melt the dataframe so it can be used for plotting
     df = df.melt(id_vars='type', var_name='group', value_name='count')
-    # Create palette for barplot
-    pal = sns.husl_palette(len(df['group'].unique()))
     # Create barplot for readtypes
-    sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=pal, data=df, ax=ax)
+    if colormap != None:
+        sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=colormap, data=df, ax=ax)
+    else:
+        sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=sns.husl_palette(len(df['group'].unique())), data=df, ax=ax)
     # Legend
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles=handles, labels=labels, loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
@@ -131,6 +147,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
     parser.add_argument('-o', '--output', help='Specify output directory', default='barplot', required=False)
+    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
     args = parser.parse_args()
 
@@ -139,4 +156,4 @@ if __name__ == '__main__':
 
     adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.output)
+    visualizer(adata, args.colormap, args.output)

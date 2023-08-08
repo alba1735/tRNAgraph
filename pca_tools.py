@@ -11,12 +11,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, output, pcamarkers, pcacolors, pcareadtypes):
+def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
     '''
     Generate PCA visualizations for each sample in an AnnData object.
     '''
@@ -40,6 +41,14 @@ def visualizer(adata, output, pcamarkers, pcacolors, pcareadtypes):
         else:
             df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, rt, pcacolors])
             hue_dict = dict(zip(df[pcamarkers], df[pcacolors]))
+        if colormap != None:
+            colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
+            for v in hue_dict.values():
+                if v not in colormap:
+                    print(f'Color {v} not found in colormap. Using default colors instead.')
+                    colormap = None
+                    break
+
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
         df = df.pivot_table(index='trna', columns='sample', values=rt)
         # Scale the data
@@ -72,7 +81,10 @@ def visualizer(adata, output, pcamarkers, pcacolors, pcareadtypes):
 
         # Plot the data with seaborn
         plt.figure(figsize=(8, 8))
-        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=sns.husl_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
+        if colormap:
+            ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=colormap, hue=hue_dict, legend='full')
+        else:
+            ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=sns.husl_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
         ax.set_xlabel('PC1 ({:.2f}%)'.format(evr[0]*100))
         ax.set_ylabel('PC2 ({:.2f}%)'.format(evr[1]*100))
         # Capatilize the legend and move the legend outside the plot and remove the border around it
@@ -98,7 +110,10 @@ def visualizer(adata, output, pcamarkers, pcacolors, pcareadtypes):
         df_pca.columns = ['PC{} ({:.2f}%)'.format(i, evr[i-1]*100) for i in range(1, len(df_pca.columns)+1)]
         df_pca[pcacolors.capitalize()] = [hue_dict[x] for x in df_pca.index]
         # Plot the pairplot
-        ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=sns.husl_palette(len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
+        if colormap:
+            ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=colormap, hue_order=sorted(set(hue_dict.values())))
+        else:
+            ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=sns.husl_palette(len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
         # Remove the ticks and tick labels
         ax.tick_params(axis='both', which='both', bottom=False, top=False,
                        left=False, right=False, labelbottom=False, labelleft=False)
@@ -130,6 +145,7 @@ if __name__ == '__main__':
                         choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 
                         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'],
                         help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
+    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
     args = parser.parse_args()
 
@@ -138,4 +154,4 @@ if __name__ == '__main__':
 
     adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.output, args.pcamarkers, args.pcacolor, args.pcareadtypes)
+    visualizer(adata, args.pcamarkers, args.pcacolor, args.pcareadtypes, args.colormap, args.output)

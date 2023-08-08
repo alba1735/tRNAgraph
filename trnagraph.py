@@ -256,9 +256,20 @@ class anndataGrapher:
                 self.args.output += '/' + d_config['name']
                 directory_tools.builder(self.args.output)
             if 'obs' in d_config:
+                # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
+                uns_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
+                uns_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
                 for k,v in d_config['obs'].items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
+                    # Filter all uns columns by the observation and update the uns_dict
+                    sub_uns_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
+                    sub_uns_dict.update(dict(zip(self.adata.obs['group'], self.adata.obs[k])))
+                    uns_dict = {i:False if sub_uns_dict.get(i,False) not in v else True for i,j in uns_dict.items()}
+                    # Filter the adata object by the observation
                     self.adata = self.adata[self.adata.obs[k].isin(v), :]
+                # Filter uns columns by the uns_dict
+                for uns in self.adata.uns:
+                    self.adata.uns[uns] = self.adata.uns[uns].loc[:, [i for i in self.adata.uns[uns].columns.values if uns_dict[i]]]
             if 'var' in d_config:
                 for k,v in d_config['var'].items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
@@ -295,10 +306,15 @@ class anndataGrapher:
             print('Heatmaps generated.\n')
 
         if 'pca' in self.args.graphtypes:
+            colormap = None
+            if 'colormap' in d_config:
+                if self.args.pcacolors in d_config['colormap']:
+                    colormap = d_config['colormap'][self.args.pcacolors]
+
             print('Generating pca plots...')
             output = self.args.output + '/pca'
             directory_tools.builder(output)
-            pca_tools.visualizer(self.adata.copy(), output, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes)
+            pca_tools.visualizer(self.adata.copy(), self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output)
             print('PCA plots generated.\n')
 
         if 'correlation' in self.args.graphtypes:
@@ -316,17 +332,27 @@ class anndataGrapher:
             print('Volcano plots generated.\n')
 
         if 'radar' in self.args.graphtypes:
+            colormap = None
+            if 'colormap' in d_config:
+                if self.args.radargrp in d_config['colormap']:
+                    colormap = d_config['colormap'][self.args.radargrp]
+
             print('Generating radar plots...')
             output = self.args.output + '/radar'
             directory_tools.builder(output)
-            radar_tools.visualizer(self.adata.copy(), output)
+            radar_tools.visualizer(self.adata.copy(), self.args.radargrp, colormap, output)
             print('Radar plots generated.\n')
 
         if 'bar' in self.args.graphtypes:
+            colormap = None
+            if 'colormap' in d_config:
+                if 'group' in d_config['colormap']:
+                    colormap = d_config['colormap']['group']
+
             print('Generating bar plots...')
             output = self.args.output + '/bar'
             directory_tools.builder(output)
-            bar_tools.visualizer(self.adata.copy(), output)
+            bar_tools.visualizer(self.adata.copy(), colormap, output)
             print('Bar plots generated.\n')
 
 if __name__ == '__main__':
@@ -376,8 +402,8 @@ if __name__ == '__main__':
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
          'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+            help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
     parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
@@ -394,6 +420,8 @@ if __name__ == '__main__':
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
     parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
+    # Radar options
+    parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
 
     args = parser.parse_args()
 

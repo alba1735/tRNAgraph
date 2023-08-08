@@ -144,3 +144,4 @@ Snakefile
 .snakemake
 .log
 screenlog.0
+config.json
