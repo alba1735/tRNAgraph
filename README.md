@@ -54,10 +54,11 @@ The tRNAgraph.py script can be used to build a database object from a tRAX direc
 python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_file> -l <list_of_observations>
 ```
 
-* `-i` or `--input` is the path to the tRAX directory you want to build an AnnData database object from.
+* `-i` or `--traxdir` is the path to the tRAX directory you want to build an AnnData database object from.
 * `-m` or `--metadata` is the path to the tRAX generation file containing sample names, sample groups, and fastq paths.
 * `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `trnagraph.h5ad` if no path is provided.
 * Observations are the metadata categories to include in the database object. This can be a list `-l/--observationslist` or a tab separated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
+* `--log` is wether to output a log of the shell commands used to generate the AnnData object. By default, the log will not be output.
 
 ### Generating visualizations
 
@@ -67,7 +68,7 @@ The tRNAgraph.py script can be used to generate a variety of visualizations from
 python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_type> <graph_parameters>
 ```
 
-* `-i` or `--input` is the path to the database object you want to generate visualizations from.
+* `-i` or `--anndata` is the path to the database object you want to generate visualizations from.
 * `-o` or `--output` is the path to the output directory. By default, the output directory will be named `trnagraph` if no path is provided.
 * `-g` or `--graph` is the type of graph to generate. The following graphs can be generated:
   * `coverage` - Generates coverage plots.
@@ -195,6 +196,23 @@ adata = adata[adata.obs["trna"] == "tRNA-Ala-AGC-1"]
 
 The resulting table can be called using `adata.X`.
 
+### Merge
+
+Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
+
+```bash
+python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
+```
+
+* `-i1` or `--anndata1` - The first input database object.
+* `-i2` or `--anndata2` - The second input database object.
+* `-o` - The output database object.
+* `--dropno` - Whether to drop samples that are not found in both nontRNA_counts files. By default, samples that are not found in both nontRNA_counts files are kept and filled with zeros.
+  * Different sequencing methods as well as the input GTF for tRAX can yeild vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
+* `--droprna` - Whether to drop samples that are not found in both type_counts files. By default, samples that are not found in both type_counts files are kept and filled with zeros.
+  * Different sequencing methods as well as the input GTF for tRAX can yeild vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
+* `--log` is wether to output a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
+
 ### Configuration
 
 A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank and they will be skipped.
@@ -202,6 +220,7 @@ A JSON file can be used for complicated filtering and grouping of the data as we
 * `name` - Is a name for the filtering configuration and will be saved as a subfolder in the output directory.
 * `obs` and `var` -  Are conditions to filter on in the AnnData observation and variable categories respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only the values in the list. If no values are provided, the data will not be filtered on that category.
 * `colormap` - It is a dictionary of dictionaries that allows custom colormaps to be used for the observations. The first level of the dictionary is the observation category, and the second level is the value of color. The value can be a hex color code or an RGB tuple value. If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are being generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
+  * `group` - Some plots default to using this category for ploting making a colormap with this name will override the default colormap in those cases.
 
 ```json
 {

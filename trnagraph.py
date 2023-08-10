@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import numpy as np
 import pandas as pd
 import anndata as ad
 import argparse
@@ -63,7 +64,7 @@ class trax2anndata():
         self.observations = observations
         if self.observations:
             # Make sure that observations are not going to be generated automatically
-            auto_obs = ['trna', 'iso', 'amino', 'sample', 'group', 'deseq2_sizefactor', 'refseq']
+            auto_obs = ['trna', 'iso', 'amino', 'sample', 'group', 'deseq2_sizefactor', 'refseq', 'dataset']
             if any(x in self.observations for x in auto_obs):
                 raise ValueError('The following observation categories will automatically be generated please remove these if you included them: {}'.format(auto_obs))
             # Make sure that observations are unique
@@ -125,6 +126,8 @@ class trax2anndata():
             print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or have a different number of observations per sample. ' \
                   'Another consideration is to make sure your .tsv/.csv is using tabs or commas appropriately. ' \
                   'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct:\n{}'.format(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist()))
+        # Add output name to adata object index
+        adata.obs.index = [self.output.split('.')[0] + '_' + str(x) for x in adata.obs.index] 
         # Save adata object
         adata.write(f'{self.output}')
         print(f'Writing h5ad database object to {self.output}')
@@ -201,6 +204,7 @@ class trax2anndata():
         adata.var['positions'] = positions
         adata.var['coverage'] = coverage
         # Add metadata dataframe
+        adata.obs['dataset'] = os.path.basename(self.output) # Name of the dataset output file - Usefull for combining multiple datasets if the merge function is used
         adata.obs['trna'] = obs_df['trna'].values
         adata.obs['iso'] = obs_df['iso'].values
         adata.obs['amino'] = obs_df['amino'].values
@@ -355,6 +359,57 @@ class anndataGrapher:
             bar_tools.visualizer(self.adata.copy(), colormap, output)
             print('Bar plots generated.\n')
 
+class anndataMerger():
+    '''
+    Class for merging multiple AnnData objects into a single object. This is useful for combining multiple tRAX runs into a single object for analysis.
+    '''
+    def __init__(self, args):
+        self.adata1 = ad.read_h5ad(args.anndata1)
+        self.adata2 = ad.read_h5ad(args.anndata2)
+        self.args = args
+
+    def merge(self):
+        if len(np.intersect1d(self.adata1.obs.index, self.adata2.obs.index))>0:
+            raise Exception('WARNING: The two AnnData objects have overlapping indices. This will cause issues with merging as duplicate groups/samples may occur. \
+                  Regenerate your input annData objects with unique sample names across all merged objects.\n')
+        # print diff in columns betwen adata1 and adata2
+        if len(np.setdiff1d(self.adata1.obs.columns, self.adata2.obs.columns))>0 or len(np.setdiff1d(self.adata2.obs.columns, self.adata1.obs.columns))>0:
+            print('The following columns are not present in each AnnData object and will be dropped:\n'+ \
+                  ' '.join(set(np.setdiff1d(self.adata1.obs.columns, self.adata2.obs.columns)) | set(np.setdiff1d(self.adata2.obs.columns, self.adata1.obs.columns))))
+        # Merge uns data
+        amino_counts = pd.concat([self.adata1.uns['amino_counts'], self.adata2.uns['amino_counts']], axis=1).fillna(0)
+        self.adata1.uns['amino_counts'] = amino_counts
+        self.adata2.uns['amino_counts'] = amino_counts
+        anticodon_counts = pd.concat([self.adata1.uns['anticodon_counts'], self.adata2.uns['anticodon_counts']], axis=1).fillna(0)
+        self.adata1.uns['anticodon_counts'] = anticodon_counts
+        self.adata2.uns['anticodon_counts'] = anticodon_counts
+        # Correct for non-tRNA counts having different genes
+        if self.args.dropno:
+            nontRNA_counts = pd.concat([self.adata1.uns['nontRNA_counts'], self.adata2.uns['nontRNA_counts']], axis=1).dropna()
+        else:
+            print(str(len(set(np.setdiff1d(self.adata1.uns['nontRNA_counts'].index, self.adata2.uns['nontRNA_counts'].index))))+' genes are not present in AnnData object 1 and '+ \
+                  str(len(set(np.setdiff1d(self.adata2.uns['nontRNA_counts'].index, self.adata1.uns['nontRNA_counts'].index))))+' genes are not present in AnnData object 2. '+\
+                  'They will be filled with 0 counts where no overlap occurs. If you wish to remove these genes instead, please use the --dropno option.\n')
+            nontRNA_counts = pd.concat([self.adata1.uns['nontRNA_counts'], self.adata2.uns['nontRNA_counts']], axis=1).fillna(0)
+        self.adata1.uns['nontRNA_counts'] = nontRNA_counts
+        self.adata2.uns['nontRNA_counts'] = nontRNA_counts
+        # Correct for missing RNA categories in uns type_counts
+        if self.args.droprna:
+            type_counts = pd.concat([self.adata1.uns['type_counts'], self.adata2.uns['type_counts']], axis=1).dropna()
+        else:
+            if len(np.setdiff1d(self.adata1.uns['type_counts'].index, self.adata2.uns['type_counts'].index))>0 or len(np.setdiff1d(self.adata2.uns['type_counts'].index, self.adata1.uns['type_counts'].index))>0:
+                print('The following RNA categories are not present in each AnnData object and will be filled with 0 counts:\n'+ \
+                      ' '.join(set(np.setdiff1d(self.adata1.uns['type_counts'].index, self.adata2.uns['type_counts'].index)) | set(np.setdiff1d(self.adata2.uns['type_counts'].index, self.adata1.uns['type_counts'].index)))+'\n'+ \
+                      'If you wish to remove these RNA categories instead, please use the --droprna option.\n')
+            type_counts = pd.concat([self.adata1.uns['type_counts'], self.adata2.uns['type_counts']], axis=1).fillna(0)      
+        self.adata1.uns['type_counts'] = type_counts
+        self.adata2.uns['type_counts'] = type_counts
+        # Merge AnnData objects
+        self.adata = ad.concat([self.adata1, self.adata2], merge='unique', uns_merge='same')
+        # Save merged AnnData object
+        self.adata.write(f'{self.args.output}')
+        print(f'Writing h5ad database object to {self.args.output}')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='tRNAgraph',
@@ -367,7 +422,7 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
-        description='Choose between building a database object or graphing data from an existing database object',
+        description='Choose between building a database object, mergeing two database objects together, or graphing data from an existing database object',
         dest='mode',
         required=True
     )
@@ -377,8 +432,16 @@ if __name__ == '__main__':
     parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
     parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
-    parser_build.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph.h5ad')
+    parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: trnagraph.h5ad) (optional)', default='trnagraph.h5ad')
     parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
+
+    parser_merge = subparsers.add_parser("merge", help="Merge data from two existing h5ad AnnData objects")
+    parser_merge.add_argument('-i1', '--anndata1', help='Specify location of first h5ad object (required)', required=True)
+    parser_merge.add_argument('-i2', '--anndata2', help='Specify location of second h5ad object (required)', required=True)
+    parser_merge.add_argument('--dropno', help='Drop non tRNAs genes that are not present in both AnnData objects (optional)', action='store_true')
+    parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
+    parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: trnagraph_merge.h5ad) (optional)', default='trnagraph_merge.h5ad')
+    parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
@@ -458,6 +521,15 @@ if __name__ == '__main__':
                     args.observationslist += line.split()
         
         trax2anndata(args.traxdir, args.metadata, args.observationslist, args.output).create()
+        print('Done!\n')
+    elif args.mode == 'merge':
+        # Raise exception if h5ad file is empty or doesn't exist
+        if not os.path.isfile(args.anndata1):
+            raise Exception('Error: first h5ad file does not exist.')
+        if not os.path.isfile(args.anndata2):
+            raise Exception('Error: second h5ad file does not exist.')
+        print('Merging database objects...\n')
+        anndataMerger(args).merge()
         print('Done!\n')
     elif args.mode == 'graph':
         # Create output directory if it doesn't exist
