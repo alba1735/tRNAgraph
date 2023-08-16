@@ -15,9 +15,10 @@ def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
     mdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='mean')
     cdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='count')
     # For rows in df if a value is less than readcount_cutoff, drop the row from df
-    sdf = sdf[mdf >= readcount_cutoff]
-    mdf = mdf[mdf >= readcount_cutoff]
-    cdf = cdf[mdf >= readcount_cutoff]
+    mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
+    sdf = sdf[mean_drop_list]
+    mdf = mdf[mean_drop_list]
+    cdf = cdf[mean_drop_list]
     # Drop rows with NaN values
     sdf = sdf.dropna()
     mdf = mdf.dropna()

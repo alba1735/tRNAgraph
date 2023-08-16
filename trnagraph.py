@@ -18,6 +18,7 @@ import correlation_tools
 import volcano_tools
 import radar_tools
 import bar_tools
+import compare_tools
 
 class trax2anndata():
     '''
@@ -251,7 +252,7 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
+            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar', 'compare']
 
         if self.args.config:
             with open(self.args.config, 'r') as f:
@@ -359,6 +360,13 @@ class anndataGrapher:
             bar_tools.visualizer(self.adata.copy(), colormap, output)
             print('Bar plots generated.\n')
 
+        if 'compare' in self.args.graphtypes:
+            print('Generating comparison plots...')
+            output = self.args.output + '/compare'
+            directory_tools.builder(output)
+            compare_tools.visualizer(self.adata.copy(), self.args.comparegrp, output)
+            print('Comparison plots generated.\n')
+
 class anndataMerger():
     '''
     Class for merging multiple AnnData objects into a single object. This is useful for combining multiple tRAX runs into a single object for analysis.
@@ -446,7 +454,7 @@ if __name__ == '__main__':
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar'], \
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
@@ -467,7 +475,7 @@ if __name__ == '__main__':
          'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
             help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
                 nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False)
+    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
     parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
     # PCA options
@@ -485,6 +493,8 @@ if __name__ == '__main__':
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # Compare options
+    parser_graph.add_argument('--comparegrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
 
     args = parser.parse_args()
 
