@@ -28,7 +28,7 @@ def visualizer(adata, colormap, output):
 
     # Load data from AnnData
     for count_type in ['type_counts', 'amino_counts']:
-        df = adata.uns[count_type]
+        df = adata.uns[count_type].copy()
 
         if colormap != None:
             colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}

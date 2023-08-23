@@ -121,6 +121,11 @@ The following parameters are optional and can be used to customize the graphs:
 
 * `--radargrp` is the observation to use for grouping the radar plots. If no observation is provided, the radar plots will be grouped by sample group.
 
+#### Compare
+
+* `--comparegrp1` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
+* `--comparegrp2` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
+
 ## Database Variables
 
 The database object aggregates all the information from the tRAX directory into a single object allowing for easy calls to the data. In addition to being able to use the following variables as flags for figure generation, they can be used for further analysis and data manipulation independent of tRNAgraph.
@@ -147,16 +152,16 @@ The observations are the metadata categories that are used to group and color th
   * `nreads_total_unique_raw` - The raw number of uniquely mapped total counts in the sample. This is the sum of the above categories.
   * `nreads_total_unique_norm` - The normalized number of uniquely mapped total counts in the sample. This is the sum of the above categories.
 * The multi-mapped reads are the reads that map via alignment but ambiguous reads are randomly assigned and can be broken down into the following categories:
-  * `nreads wholecounts_raw` - The raw number of whole-counts in the sample.
-  * `nreads wholecounts_norm` - The normalized number of whole-counts in the sample.
-  * `nreads fiveprime_raw` - The raw number of 5' end counts in the sample.
-  * `nreads fiveprime_norm` - The normalized number of 5' end counts in the sample.
-  * `nreads threeprime_raw` - The raw number of 3' end counts in the sample.
-  * `nreads threeprime_norm` - The normalized number of 3' end counts in the sample.
-  * `nreads other_raw` - The raw number of other counts in the sample.
-  * `nreads other_norm` - The normalized number of other counts in the sample.
-  * `nreads total_raw` - The raw number of total counts in the sample. This is the sum of the above categories.
-  * `nreads total_norm` - The normalized number of total counts in the sample. This is the sum of the above categories.
+  * `nreads_wholecounts_raw` - The raw number of whole-counts in the sample.
+  * `nreads_wholecounts_norm` - The normalized number of whole-counts in the sample.
+  * `nreads_fiveprime_raw` - The raw number of 5' end counts in the sample.
+  * `nreads_fiveprime_norm` - The normalized number of 5' end counts in the sample.
+  * `nreads_threeprime_raw` - The raw number of 3' end counts in the sample.
+  * `nreads_threeprime_norm` - The normalized number of 3' end counts in the sample.
+  * `nreads_other_raw` - The raw number of other counts in the sample.
+  * `nreads_other_norm` - The normalized number of other counts in the sample.
+  * `nreads_total_raw` - The raw number of total counts in the sample. This is the sum of the above categories.
+  * `nreads_total_norm` - The normalized number of total counts in the sample. This is the sum of the above categories.
   * The following additional categories are also found under multi-mapped reads:
   * `nreads_wholeprecounts_raw` - The raw number of whole-precounts in the sample.
   * `nreads_wholeprecounts_norm` - The normalized number of whole-precounts in the sample.

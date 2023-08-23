@@ -35,3 +35,48 @@ def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
     df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
 
     return df_pairs
+
+def log2fc_compare_df(adata, countgrp, comparison_groups, readtype, readcount_cutoff):
+    '''
+    Calculate log2FC of tRNA read counts between multiple groups.
+    '''
+    df = pd.DataFrame(adata.obs, columns=[countgrp, *comparison_groups, readtype])
+    # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
+    sdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='std')
+    mdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='mean')
+    cdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='count')
+    # For rows in df if a value is less than readcount_cutoff, drop the row from df
+    mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
+    sdf = sdf[mean_drop_list]
+    mdf = mdf[mean_drop_list]
+    cdf = cdf[mean_drop_list]
+    # Drop rows with NaN values
+    sdf = sdf.dropna()
+    mdf = mdf.dropna()
+    cdf = cdf.dropna()
+    # Make sure all indexs of sdf, mdf, and cdf are the same dropping any that are not
+    sdf = sdf[sdf.index.isin(mdf.index)]
+    sdf = sdf[sdf.index.isin(cdf.index)]
+    mdf = mdf[mdf.index.isin(sdf.index)]
+    mdf = mdf[mdf.index.isin(cdf.index)]
+    cdf = cdf[cdf.index.isin(sdf.index)]
+    cdf = cdf[cdf.index.isin(mdf.index)]
+    # Create a dict where the keys are the first level of the multiindex and the values are the second level
+    pairs = {i: list(mdf.columns.get_level_values(1)[mdf.columns.get_level_values(0) == i]) for i in mdf.columns.get_level_values(0).unique()}
+    # Subset the value lists in each key-value pair to only include values found in all key-pair values
+    ppairs = list(itertools.combinations(set.intersection(*map(set,pairs.values())), 2))
+    pairs = list(pairs.keys())
+    # Sort the tuples in ppairs so the first element is always alphabetical
+    ppairs = [tuple(sorted(i)) for i in ppairs]
+    # Print combinations of comparison groups as a tuple for multiindex columns
+    pppairs = list(itertools.product(pairs,ppairs))
+    pppairs = [tuple(['log2',i[0],i[1][0]+'-'+i[1][1]]) for i in pppairs] + [tuple(['pval',i[0],i[1][0]+'-'+i[1][1]]) for i in pppairs]
+    # Create empty df of log2FC values for each pair with a multiindex column
+    df_pairs = pd.DataFrame(0, index=mdf.index, columns=pd.MultiIndex.from_tuples(pppairs, names=['stats', 'cgrp1', 'cgrp2']))
+    for cgrp1 in pairs:
+        for cgrp2 in ppairs:
+            df_pairs.loc[:, ('log2', cgrp1, cgrp2[0]+'-'+cgrp2[1])] = np.log2(mdf[cgrp1][cgrp2[1]]) - np.log2(mdf[cgrp1][cgrp2[0]])
+            df_pairs.loc[:, ('pval', cgrp1, cgrp2[0]+'-'+cgrp2[1])] = stats.ttest_ind_from_stats(mdf[cgrp1][cgrp2[0]], sdf[cgrp1][cgrp2[0]], cdf[cgrp1][cgrp2[0]], 
+                                                                                                 mdf[cgrp1][cgrp2[1]], sdf[cgrp1][cgrp2[1]], cdf[cgrp1][cgrp2[1]])[1]
+
+    return df_pairs

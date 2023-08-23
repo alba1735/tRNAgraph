@@ -361,10 +361,15 @@ class anndataGrapher:
             print('Bar plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
+            colormap = None
+            if 'colormap' in d_config:
+                if self.args.comparegrp1 in d_config['colormap']:
+                    colormap = d_config['colormap'][self.args.comparegrp1]
+
             print('Generating comparison plots...')
             output = self.args.output + '/compare'
             directory_tools.builder(output)
-            compare_tools.visualizer(self.adata.copy(), self.args.comparegrp, output)
+            compare_tools.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
             print('Comparison plots generated.\n')
 
 class anndataMerger():
@@ -494,7 +499,8 @@ if __name__ == '__main__':
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
     # Compare options
-    parser_graph.add_argument('--comparegrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
 
     args = parser.parse_args()
 

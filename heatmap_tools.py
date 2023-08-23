@@ -39,6 +39,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
                 # subset df to only include the top and bottom heatbound values only if the heatmap is larger than heatbound
                 if len(tdf) > heatbound:
                     tdf = pd.concat([tdf.iloc[:heatbound, :], tdf.iloc[-heatbound:, :]])
+                    
                 # Create a heatmap
                 if len(tdf.columns)>=20:
                     fig, axs = plt.subplots(1, 2, figsize=(16,12))
