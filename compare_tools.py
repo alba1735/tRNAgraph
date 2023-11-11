@@ -38,7 +38,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
         cgrp1list = df.columns.get_level_values('cgrp1').unique()
         cgrp2list = df.columns.get_level_values('cgrp2').unique()
         # Create a bar widths table for amount of values in cgrp1
-        barwidths = np.linspace(0, 1, len(cgrp1list)+1)
+        barwidths = np.linspace(0.1, 0.9, len(cgrp1list)+1)
         bardiff = np.diff(barwidths)[0]
         barwidths = {k:v for k,v in zip(cgrp1list, barwidths)}
         # Enumerate the index of the dataframe so that the bar heights can be adjusted
@@ -52,10 +52,11 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
                                 height=bardiff, linewidth=bardiff, edgecolor=pal[cgrp1], label=cgrp1)
                         # ax.hlines(y+0.25, xmin=xminmax[0], xmax=xminmax[1], color='lightgray', linewidth=bardiff, zorder=-1)
                         # ax.hlines(y+0.75, xmin=xminmax[0], xmax=xminmax[1], color='lightgray', linewidth=bardiff, zorder=-1)
-                        ax.barh(y+0.2, xminmax, color='lightgray', align='edge', height=0.6, linewidth=0, zorder=-1)
+                        ax.barh(y+0.4, xminmax, color='lightgray', align='edge', height=0.2, linewidth=0, zorder=-2)
                     else:
                         ax.barh(y+barwidths[cgrp1], df.loc[posname, ('log2',cgrp1,cgrp2)], color='white', align='edge',
                                 height=bardiff, linewidth=bardiff, edgecolor=pal[cgrp1], label=cgrp1)
+                    ax.hlines(y+0.5, xmin=xminmax[0], xmax=xminmax[1], color='lightgray', linewidth=0.5, zorder=1)
             # Set the xlim to the xminmax
             ax.set_xlim(xminmax)
             ax.set_xlabel('Log2 Fold-Change')
@@ -67,7 +68,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
             # Set ymin and ymax to -0.5 and len(df.index)+0.5
             ax.set_ylim(-0.5, len(df.index)+0.5)
             # Add light gray vertical lines at each integer
-            ax.vlines(np.arange(round(xminmax[0]), round(xminmax[1])), ymin=-0.5, ymax=len(df.index)+0.5, color='lightgray',linewidth=0.5, zorder=-1)
+            ax.vlines(np.arange(round(xminmax[0]), round(xminmax[1])), ymin=-0.5, ymax=len(df.index)+0.5, color='lightgray',linewidth=0.5, zorder=-2)
             # Add a legend made manually from the bar colors
             handles = [plt.Rectangle((0,0),1,1, color=pal[i]) for i in cgrp1list] + \
                 [plt.Rectangle((0,0),1,1, color='white')] + \

@@ -10,4 +10,7 @@ dependencies:
   - 'matplotlib'
   - 'seaborn'
   - 'anndata'
-  - 'snakemake'
+  - 'logomaker'
+  - 'statannot'
+  - 'umap-learn'
+  - 'hdbscan'

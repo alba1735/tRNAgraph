@@ -169,6 +169,8 @@ The observations are the metadata categories that are used to group and color th
   * `nreads_partialprecounts_norm` - The normalized number of partial-precounts in the sample.
   * `nreads_trailercounts_raw` - The raw number of trailer-counts in the sample.
   * `nreads_trailercounts_norm` - The normalized number of trailer-counts in the sample.
+* `fragment` - The type of fragment in the sample. This includes `fiveprime_half`, `fiveprime_fragment`, `threeprime_half`, `threeprime_fragment`, `whole`, `other_fragment`, and `multiple_fragment`.
+  * The `multiple_fragment` category is used for reads that dip in the middle of reads and are not considered whole or partial reads.
 
 ### Variables
 
@@ -176,7 +178,9 @@ The variables are the metadata categories that are used to filter the read cover
 
 * `gap` - Whether a position is a gap in canonical Sprinzl positions. These gaps are skipped in the coverage plots so that they can be easier to interpret when comparing different tRNAs.
 * `positions` - The canonical Sprinzl positions.
-* `coverage` - The coverage type matching coverage types found in the tRAX coverage file.
+* `coverage` - The coverage type matching coverage types found in the [tRAX coverage file](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
+* `half` - Wether the position is a 3' or 5' half position or in the center of a read.
+* `location` - The portion of the tRNA relative to the sprinzl positions. This includes `fiveprime_acceptorstem`, `threeprime_acceptorstem`, `a_to_d_internal`, `dstem`, `dloop`, `d_to_anticodon_internal`, `fiveprime_anticodonstem`, `threeprime_anticodonstem`, `anticodonloop`, `anticodon_to_t_internal`, `extensionloop`, `tstem`, and `tloop`.
 
 Since all coverage types are stored in the database object it is useful to specify which coverage type you want to use if you plan on using the database object for further analysis.
 
@@ -217,6 +221,12 @@ python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output
 * `--droprna` - Whether to drop samples that are not found in both type_counts files. By default, samples that are not found in both type_counts files are kept and filled with zeros.
   * Different sequencing methods as well as the input GTF for tRAX can yeild vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
 * `--log` is wether to output a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
+
+### Cluster
+
+The database object can be clustered using the `cluster` function. The following code will cluster the database object and save the result to the same database object:
+
+!!WORK IN PROGRESS!!
 
 ### Configuration
 

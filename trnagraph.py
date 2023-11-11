@@ -7,10 +7,8 @@ import argparse
 import os
 import sys
 import json
-
+# Custom functions
 import directory_tools
-
-# graphing functions
 import coverage_tools
 import heatmap_tools
 import pca_tools
@@ -19,6 +17,14 @@ import volcano_tools
 import radar_tools
 import bar_tools
 import compare_tools
+# Cluster functions
+import umap
+from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import Normalizer
+import hdbscan
+# Plotting functions
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 class trax2anndata():
     '''
@@ -204,6 +210,54 @@ class trax2anndata():
         adata.var['gap'] = gap_list
         adata.var['positions'] = positions
         adata.var['coverage'] = coverage
+        # Create sprinzl position and fragment type information
+        loc_dict, loc_half_dict = {}, {}
+        # Define the location of acceptor stem
+        loc_dict.update({i:'fiveprime_acceptorstem' for i in [str(i) for i in range(-1,8)]})
+        loc_dict.update({i:'threeprime_acceptorstem' for i in [str(i) for i in range(66,77)]})
+        loc_half_dict.update({i:'fiveprime' for i in [str(i) for i in range(-1,8)]})
+        loc_half_dict.update({i:'threeprime' for i in [str(i) for i in range(66,77)]})
+        # Define the location of acceptor stem to d stem
+        loc_a_to_d_internal = ['8','9']
+        loc_dict.update({i:'a_to_d_internal' for i in loc_a_to_d_internal})
+        loc_half_dict.update({i:'fiveprime' for i in loc_a_to_d_internal})
+        # Define the location of d stem and loop
+        loc_dstem = [str(i) for i in range(10,14)] + [str(i) for i in range(22,26)]
+        loc_dict.update({i:'dstem' for i in loc_dstem})
+        loc_half_dict.update({i:'fiveprime' for i in loc_dstem})
+        loc_dloop = [str(i) for i in range(14,22)] + ['17a','20a','20b']
+        loc_dict.update({i:'dloop' for i in loc_dloop})
+        loc_half_dict.update({i:'fiveprime' for i in loc_dloop})
+        # Define the location of d stem to anticodon stem
+        loc_d_to_anticodon_internal = ['26']
+        loc_dict.update({i:'d_to_anticodon_internal' for i in loc_d_to_anticodon_internal})
+        loc_half_dict.update({i:'fiveprime' for i in loc_d_to_anticodon_internal})
+        # Define the location of anticodon stem and loop
+        loc_dict.update({i:'fiveprime_anticodonstem' for i in range(27,32)})
+        loc_dict.update({i:'threeprime_anticodonstem' for i in range(39,44)})
+        loc_half_dict.update({i:'center' for i in range(27,32)})
+        loc_half_dict.update({i:'center' for i in range(39,44)})
+        loc_anticodonloop = [str(i) for i in range(32,39)]
+        loc_dict.update({i:'anticodonloop' for i in loc_anticodonloop})
+        loc_half_dict.update({i:'center' for i in loc_anticodonloop})
+        # Define the location of anticodon stem to t stem
+        loc_anticodon_to_t_internal = [str(i) for i in range(44,49)]
+        loc_dict.update({i:'anticodon_to_t_internal' for i in loc_anticodon_to_t_internal})
+        loc_half_dict.update({i:'threeprime' for i in loc_anticodon_to_t_internal})
+        # Define the location of extension loop
+        loc_e = ['e' + str(i) for i in range(1,20)]
+        loc_dict.update({i:'extensionloop' for i in loc_e})
+        loc_half_dict.update({i:'threeprime' for i in loc_e})
+        # Define the location of t stem and loop
+        loc_tstem = [str(i) for i in range(49,54)] + [str(i) for i in range(61,66)]
+        loc_dict.update({i:'tstem' for i in loc_tstem})
+        loc_half_dict.update({i:'threeprime' for i in loc_tstem})
+        loc_tloop = [str(i) for i in range(54,61)]
+        loc_dict.update({i:'tloop' for i in loc_tloop})
+        loc_half_dict.update({i:'threeprime' for i in loc_tloop})
+        # Add the location data to adata object
+        adata.var['location'] = adata.var['positions'].map(loc_dict)
+        adata.var['half'] = adata.var['positions'].map(loc_half_dict)
         # Add metadata dataframe
         adata.obs['dataset'] = os.path.basename(self.output) # Name of the dataset output file - Usefull for combining multiple datasets if the merge function is used
         adata.obs['trna'] = obs_df['trna'].values
@@ -214,7 +268,7 @@ class trax2anndata():
         adata.obs['group'] = obs_df['group'].values
         # Add custom dataframe obs
         for ob in self.observations:
-            adata.obs[ob] = obs_df[ob].values 
+            adata.obs[ob] = obs_df[ob].values
         # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
         for rt in ['whole','fiveprime','threeprime','other']:
             adata.obs['nreads_' + rt + '_unique_raw'] = obs_df['nreads_' + rt + '_unique_raw'].values
@@ -227,6 +281,41 @@ class trax2anndata():
             adata.obs['nreads_' + rt + '_norm'] = obs_df['nreads_' + rt + '_norm'].values
         adata.obs['nreads_total_raw'] = obs_df['nreads_total_raw'].values
         adata.obs['nreads_total_norm'] = obs_df['nreads_total_norm'].values
+        # Add fragment type classification to the adata object
+        fragtype = []
+        for i in range(adata.shape[0]):
+            fiveprimereadends = adata.obs['nreads_fiveprime_unique_norm'].iloc[i]
+            fiveprimemean = adata.X[i][adata.var['half']=='fiveprime'].mean()
+            fiveprimestd = np.std(adata.X[i][adata.var['half']=='fiveprime'])
+            threeprimereadends = adata.obs['nreads_threeprime_unique_norm'].iloc[i]
+            threeprimemean = adata.X[i][adata.var['half']=='threeprime'].mean()
+            threeprimestd = np.std(adata.X[i][adata.var['half']=='threeprime'])
+            totalreads = adata.obs['nreads_total_unique_norm'].iloc[i]
+            totalstd = np.std(adata.X[i])
+            centermean = adata.X[i][adata.var['half']=='center'].mean()
+            centerstd = np.std(adata.X[i][adata.var['half']=='center'])
+            # If the readend counts are more than 2 standard deviations away from the opposite end then it is a fragment
+            if totalreads <= 20:
+                fragtype.append('low_coverage')
+            elif fiveprimereadends > np.abs(threeprimereadends + 2*totalstd):
+                if np.abs(centermean - adata.X[i][adata.var['location']=='fiveprime_acceptorstem'].mean()) < fiveprimestd:
+                    fragtype.append('fiveprime_half')
+                else:
+                    fragtype.append('fiveprime_fragment')
+            elif threeprimereadends > np.abs(fiveprimereadends + 2*totalstd):
+                if np.abs(centermean - adata.X[i][adata.var['location']=='threeprime_acceptorstem'].mean()) < threeprimestd:
+                    fragtype.append('threeprime_half')
+                else:
+                    fragtype.append('threeprime_fragment')
+            else:
+                if np.abs(fiveprimemean - threeprimemean) > totalstd:
+                    fragtype.append('other_fragment')
+                elif np.abs(adata.X[i][adata.var['location']=='fiveprime_acceptorstem'].mean() - \
+                            adata.X[i][adata.var['location']=='threeprime_acceptorstem'].mean()) > centermean + centerstd:
+                    fragtype.append('multiple_fragment')
+                else:
+                    fragtype.append('whole')
+        adata.obs['fragment'] = fragtype
         # Add size factor
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
         # Add aligned reference sequence based on values in coverage file
@@ -252,7 +341,7 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar', 'compare']
+            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
 
         if self.args.config:
             with open(self.args.config, 'r') as f:
@@ -349,15 +438,17 @@ class anndataGrapher:
             print('Radar plots generated.\n')
 
         if 'bar' in self.args.graphtypes:
-            colormap = None
+            colormap_tc, colormap_bg = None, None
             if 'colormap' in d_config:
+                if self.args.bargrp in d_config['colormap']:
+                    colormap_bg = d_config['colormap'][self.args.bargrp]
                 if 'group' in d_config['colormap']:
-                    colormap = d_config['colormap']['group']
+                    colormap_tc = d_config['colormap']['group']
 
             print('Generating bar plots...')
             output = self.args.output + '/bar'
             directory_tools.builder(output)
-            bar_tools.visualizer(self.adata.copy(), colormap, output)
+            bar_tools.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
             print('Bar plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -423,6 +514,90 @@ class anndataMerger():
         self.adata.write(f'{self.args.output}')
         print(f'Writing h5ad database object to {self.args.output}')
 
+class anndataCluster():
+    '''
+    Class for performing UMAP clustering on an AnnData object
+    '''
+    def __init__(self, args):
+        self.adata = ad.read_h5ad(args.anndata)
+        self.randomstate = args.randomstate
+        self.neighbors_cluster = args.neighborsclu
+        self.neighbors_plot = args.neighborsstd
+        self.output = args.output + '/clustering'
+        directory_tools.builder(self.output)
+
+    def main(self):
+        print('Performing UMAP clustering...')
+        # Preprocess AnnData object
+        adata_sub = self.adataPreprocess(self.adata.copy())
+        # Apply a standardscaler to the data and reduce dimensions
+        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=self.neighbors_plot).fit_transform(adata_sub.X)
+        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=self.neighbors_cluster, min_dist=0.0, n_components=12).fit_transform(adata_sub.X)
+        # Perform clustering with HDBSCAN
+        cluster_labels = hdbscan.HDBSCAN(min_samples=5, min_cluster_size=40).fit_predict(cluster_embedding)
+        clustered = (cluster_labels >= 0)
+        # Save the clustered data to csv
+        adata_sub.obs['umap1'] = standard_embedding[:,0]
+        adata_sub.obs['umap2'] = standard_embedding[:,1]
+        adata_sub.obs['cluster'] = cluster_labels
+        adata_sub.obs['clustered'] = clustered
+        adata_sub.obs.to_csv(self.output + '/umap.csv')
+        # Plot the UMAP projection
+        self.clusterPlot(standard_embedding, cluster_labels, clustered, adata_sub)
+
+    def adataPreprocess(self, adata):
+        '''
+        Preprocess AnnData object for clustering
+        '''
+        # Clean up the data by removing gaps from var and subsetting the var to uniquecoverage, readstarts, readends, mismatchedbases, and deletions
+        adata = adata[:, ~adata.var['gap']]
+        adata = adata[:, adata.var['coverage'].isin(['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])]
+        # Filter out Und samples from that amino acid category
+        adata = adata[~(adata.obs['amino'] == 'Und'), :]
+        # Filter out samples with low coverage
+        adata = adata[adata.obs['nreads_total_unique_raw'] > 20, :]
+        # Normalize the each read at each position by the total coverage
+        # adata.X = Normalizer().fit_transform(adata.X)
+        # Scale the data
+        adata.X = RobustScaler().fit_transform(adata.X)
+
+        return adata
+    
+    def clusterPlot(self, embedding, cluster_labels, clustered, adata):
+        # Create a 2 x 2 subplot with the umap projection and the cluster labels as the last subplot
+        fig, axs = plt.subplots(3, 3, figsize=(20,20))
+        # Plot first through eigth subplots
+        plot_list = [('Amino Acid','amino',0,0), ('Tissue Type','tissuetype',0,1), ('Treatment','treatment',0,2), \
+                     ('Timepoint','timepoint',1,0), ('Fragment Type','fragment',1,1), ('Group','group',1,2), \
+                     ('Sample','sample',2,0), ('Dataset','dataset',2,1)]
+        for i in plot_list:
+            pal = sns.color_palette("hls", len(pd.unique(adata.obs[i[1]][clustered])))
+            sns.scatterplot(x=embedding[~clustered, 0], y=embedding[~clustered, 1], s=1, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][~clustered], palette=pal)
+            axs[i[2],i[3]].set_title(i[0])
+            axs[i[2],i[3]].set_xlabel('UMAP 1')
+            axs[i[2],i[3]].set_ylabel('UMAP 2')
+            axs[i[2],i[3]].set_xticks([])
+            axs[i[2],i[3]].set_yticks([])
+            # Create legend from pal adding 
+            axs[i[2],i[3]].legend(pd.unique(adata.obs[i[1]]), loc='upper right')
+        # Plot ninth subplot colored by cluster
+        pal = sns.color_palette("hls", len(pd.unique(cluster_labels[clustered])))
+        sns.scatterplot(x=embedding[~clustered, 0], y=embedding[~clustered, 1], s=1, ax=axs[2,2], c=(0.5,0.5,0.5), alpha=0.5)
+        sns.scatterplot(x=embedding[clustered, 0], y=embedding[clustered, 1], s=1, ax=axs[2,2], hue=cluster_labels[clustered], palette=pal)
+        axs[2,2].set_title('HDBSCAN')
+        axs[2,2].set_xlabel('UMAP 1')
+        axs[2,2].set_ylabel('UMAP 2')
+        axs[2,2].set_xticks([])
+        axs[2,2].set_yticks([])
+        axs[2,2].legend(pd.unique(cluster_labels[clustered]), loc='upper right')
+        # Set aspect ratio to 'equal' so that umap projection is not distorted
+        plt.gca().set_aspect('equal', 'datalim')
+        # Add title
+        plt.title('UMAP projection of the tRNA dataset')
+        # Save figure
+        plt.tight_layout()
+        plt.savefig(self.output + '/umap.pdf')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='tRNAgraph',
@@ -455,6 +630,14 @@ if __name__ == '__main__':
     parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
     parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: trnagraph_merge.h5ad) (optional)', default='trnagraph_merge.h5ad')
     parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
+
+    parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
+    parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_cluster.add_argument('-n1', '--neighborsstd', help='Specify number of neighbors to use for UMAP Plotting (default: 25) (optional)', default=25, type=int)
+    parser_cluster.add_argument('-n2', '--neighborsclu', help='Specify number of neighbors to use for UMAP Clustering (default: 200) (optional)', default=100, type=int)
+    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP (default: 19) (optional)', default=19, type=int)
+    parser_cluster.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
+    parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
 
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
@@ -498,6 +681,8 @@ if __name__ == '__main__':
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # Bar options
+    parser_graph.add_argument('--bargrp', help='Specify AnnData column to group by (default: sample) (optional)', default='sample', required=False)
     # Compare options
     parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
@@ -546,6 +731,13 @@ if __name__ == '__main__':
             raise Exception('Error: second h5ad file does not exist.')
         print('Merging database objects...\n')
         anndataMerger(args).merge()
+        print('Done!\n')
+    elif args.mode == 'cluster':
+        # Raise exception if h5ad file is empty or doesn't exist
+        if not os.path.isfile(args.anndata):
+            raise Exception('Error: h5ad file does not exist.')
+        print('Clustering data from database object...\n')
+        anndataCluster(args).main()
         print('Done!\n')
     elif args.mode == 'graph':
         # Create output directory if it doesn't exist
