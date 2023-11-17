@@ -10,7 +10,7 @@ from itertools import repeat
 
 from multiprocessing import Pool
 
-import directory_tools
+import toolsDirectory
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -203,10 +203,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
+    toolsDirectory.builder(args.output)
     if args.splitpdfs:
-        directory_tools.builder(args.output+'/single')
-        directory_tools.builder(args.output+'/single/low_coverage')
+        toolsDirectory.builder(args.output+'/single')
+        toolsDirectory.builder(args.output+'/single/low_coverage')
 
     adata = ad.read_h5ad(args.anndata)
 

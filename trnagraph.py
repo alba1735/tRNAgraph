@@ -8,15 +8,16 @@ import os
 import sys
 import json
 # Custom functions
-import directory_tools
-import coverage_tools
-import heatmap_tools
-import pca_tools
-import correlation_tools
-import volcano_tools
-import radar_tools
-import bar_tools
-import compare_tools
+import toolsDirectory
+import plotsCoverage
+import plotsHeatmap
+import plotsPca
+import plotsCorrelation
+import plotsVolcano
+import plotsRadar
+import plotsBar
+import plotsCompare
+import plotsCluster
 # Cluster functions
 import umap
 from sklearn.preprocessing import RobustScaler
@@ -348,7 +349,7 @@ class anndataGrapher:
                 d_config = json.load(f)
             if 'name' in d_config:
                 self.args.output += '/' + d_config['name']
-                directory_tools.builder(self.args.output)
+                toolsDirectory.builder(self.args.output)
             if 'obs' in d_config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 uns_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
@@ -373,7 +374,7 @@ class anndataGrapher:
 
         if 'coverage' in self.args.graphtypes:
             output = self.args.output + '/coverage'
-            directory_tools.builder(output)
+            toolsDirectory.builder(output)
 
             colormap = None
             if 'colormap' in d_config:
@@ -382,21 +383,21 @@ class anndataGrapher:
 
             if self.args.combineonly:
                 print('Generating combined coverage plots...')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
+                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
             else:
                 print('Generating individual coverage plots...')
-                directory_tools.builder(output+'/single')
-                directory_tools.builder(output+'/single/low_coverage')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_split()
+                toolsDirectory.builder(output+'/single')
+                toolsDirectory.builder(output+'/single/low_coverage')
+                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_split()
                 print('Generating combined coverage plots...')
-                coverage_tools.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
+                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
             print('Coverage plots generated.\n')
 
         if 'heatmap' in self.args.graphtypes:
             print('Generating heatmaps...')
             output = self.args.output + '/heatmap'
-            directory_tools.builder(output)
-            heatmap_tools.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
+            toolsDirectory.builder(output)
+            plotsHeatmap.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
             print('Heatmaps generated.\n')
 
         if 'pca' in self.args.graphtypes:
@@ -407,22 +408,22 @@ class anndataGrapher:
 
             print('Generating pca plots...')
             output = self.args.output + '/pca'
-            directory_tools.builder(output)
-            pca_tools.visualizer(self.adata.copy(), self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output)
+            toolsDirectory.builder(output)
+            plotsPca.visualizer(self.adata.copy(), self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output)
             print('PCA plots generated.\n')
 
         if 'correlation' in self.args.graphtypes:
             print('Generating correlation plots...')
             output = self.args.output + '/correlation'
-            directory_tools.builder(output)
-            correlation_tools.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
+            toolsDirectory.builder(output)
+            plotsCorrelation.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
             print('Correlation plots generated.\n')
 
         if 'volcano' in self.args.graphtypes:
             print('Generating volcano plots...')
             output = self.args.output + '/volcano'
-            directory_tools.builder(output)
-            volcano_tools.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
+            toolsDirectory.builder(output)
+            plotsVolcano.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
             print('Volcano plots generated.\n')
 
         if 'radar' in self.args.graphtypes:
@@ -433,8 +434,8 @@ class anndataGrapher:
 
             print('Generating radar plots...')
             output = self.args.output + '/radar'
-            directory_tools.builder(output)
-            radar_tools.visualizer(self.adata.copy(), self.args.radargrp, colormap, output)
+            toolsDirectory.builder(output)
+            plotsRadar.visualizer(self.adata.copy(), self.args.radargrp, colormap, output)
             print('Radar plots generated.\n')
 
         if 'bar' in self.args.graphtypes:
@@ -447,8 +448,8 @@ class anndataGrapher:
 
             print('Generating bar plots...')
             output = self.args.output + '/bar'
-            directory_tools.builder(output)
-            bar_tools.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
+            toolsDirectory.builder(output)
+            plotsBar.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
             print('Bar plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -459,9 +460,18 @@ class anndataGrapher:
 
             print('Generating comparison plots...')
             output = self.args.output + '/compare'
-            directory_tools.builder(output)
-            compare_tools.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
+            toolsDirectory.builder(output)
+            plotsCompare.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
             print('Comparison plots generated.\n')
+
+        if 'cluster' in self.args.graphtypes:
+            if not 'cluster_runinfo' in self.adata.uns:
+                raise ValueError('No cluster run information found in AnnData object. Please run the cluster command first.')
+            print('Generating cluster plots...')
+            output = self.args.output + '/umap'
+            toolsDirectory.builder(output)
+            plotsCluster.visualizer(self.adata.copy(), output)
+            print('Cluster plots generated.\n')
 
 class anndataMerger():
     '''
@@ -520,32 +530,55 @@ class anndataCluster():
     '''
     def __init__(self, args):
         self.adata = ad.read_h5ad(args.anndata)
+        self.adata_path = args.anndata
         self.randomstate = args.randomstate
-        self.neighbors_cluster = args.neighborsclu
-        self.neighbors_plot = args.neighborsstd
-        self.output = args.output + '/clustering'
-        directory_tools.builder(self.output)
+        self.readcutoff = args.readcutoff
+        self.group_n_components = args.ncomponentgrp
+        self.group_neighbors_cluster = args.neighborclusgrp
+        self.group_neighbors_plot = args.neighborstdgrp
+        self.group_hdbscan_min_samples = args.hdbscanminsampgrp
+        self.group_hdbscan_min_cluster_size = args.hdbscanminclugrp
+        self.sample_n_components = args.ncomponentsmp
+        self.sample_neighbors_cluster = args.neighborclusmp
+        self.sample_neighbors_plot = args.neighborstdsmp
+        self.sample_hdbscan_min_samples = args.hdbscanminsampsmp
+        self.sample_hdbscan_min_cluster_size = args.hdbscanminclusmp
+        self.overwrite = args.overwrite
+        self.output = args.output + '/umap'
+        toolsDirectory.builder(self.output)
 
     def main(self):
+        if 'cluster_runinfo' in self.adata.uns and not self.overwrite:
+            print('Cluster information already present in AnnData object. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
+            return
+        # Subset the AnnData object to only include samples with a minimum number of reads
         print('Performing UMAP clustering...')
         # Preprocess AnnData object
-        adata_sub = self.adataPreprocess(self.adata.copy())
-        # Apply a standardscaler to the data and reduce dimensions
-        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=self.neighbors_plot).fit_transform(adata_sub.X)
-        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=self.neighbors_cluster, min_dist=0.0, n_components=12).fit_transform(adata_sub.X)
-        # Perform clustering with HDBSCAN
-        cluster_labels = hdbscan.HDBSCAN(min_samples=5, min_cluster_size=40).fit_predict(cluster_embedding)
-        clustered = (cluster_labels >= 0)
-        # Save the clustered data to csv
-        adata_sub.obs['umap1'] = standard_embedding[:,0]
-        adata_sub.obs['umap2'] = standard_embedding[:,1]
-        adata_sub.obs['cluster'] = cluster_labels
-        adata_sub.obs['clustered'] = clustered
-        adata_sub.obs.to_csv(self.output + '/umap.csv')
+        print('Preprocessing AnnData object...')
+        adata_sub_sample = self.adataPreprocess(self.adata.copy())
+        adata_sub_group = self.adataPreprocess(self.adata.copy(), grpby='group')
+        # # Cluster the data
+        print('Clustering AnnData object...')
+        adata_sub_sample = self.adataCluster(adata_sub_sample, self.sample_neighbors_plot, self.sample_neighbors_cluster, self.sample_hdbscan_min_samples, self.sample_hdbscan_min_cluster_size, self.sample_n_components)
+        adata_sub_group = self.adataCluster(adata_sub_group, self.group_neighbors_plot, self.group_neighbors_cluster, self.group_hdbscan_min_samples, self.group_hdbscan_min_cluster_size, self.group_n_components)
+        # Add the cluster information to the original AnnData object
+        print('Adding cluster information to original AnnData object...')
+        self.adata = self.adataCombine(self.adata, adata_sub_sample, 'sample')
+        self.adata = self.adataCombine(self.adata, adata_sub_group, 'group')
+        # Save all the variables as a dictionary in adata.uns
+        cluster_runinfo = {'sample_neighbors_cluster':self.sample_neighbors_cluster,'sample_neighbors_plot':self.sample_neighbors_plot,'sample_hdbscan_min_samples':self.sample_hdbscan_min_samples,\
+                           'sample_hdbscan_min_cluster_size':self.sample_hdbscan_min_cluster_size,'sample_n_components':self.sample_n_components,\
+                           'group_neighbors_cluster':self.group_neighbors_cluster,'group_neighbors_plot':self.group_neighbors_plot,'group_hdbscan_min_samples':self.group_hdbscan_min_samples,\
+                           'group_hdbscan_min_cluster_size':self.group_hdbscan_min_cluster_size,'group_n_components':self.group_n_components,\
+                           'readcutoff':self.readcutoff,'randomstate':self.randomstate}
+        self.adata.uns['cluster_runinfo'] = cluster_runinfo
+        # Save the AnnData object
+        print(f'Writing h5ad database object to {self.adata_path}')
+        self.adata.write(f'{self.adata_path}')
         # Plot the UMAP projection
-        self.clusterPlot(standard_embedding, cluster_labels, clustered, adata_sub)
+        plotsCluster.visualizer().main(self.adata.copy(), self.output)
 
-    def adataPreprocess(self, adata):
+    def adataPreprocess(self, adata, grpby=None):
         '''
         Preprocess AnnData object for clustering
         '''
@@ -554,49 +587,55 @@ class anndataCluster():
         adata = adata[:, adata.var['coverage'].isin(['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])]
         # Filter out Und samples from that amino acid category
         adata = adata[~(adata.obs['amino'] == 'Und'), :]
-        # Filter out samples with low coverage
-        adata = adata[adata.obs['nreads_total_unique_raw'] > 20, :]
-        # Normalize the each read at each position by the total coverage
+        if grpby:
+            # Combine the mean of the samples in each group for the entire dataset
+            df = pd.DataFrame(adata.X, index=adata.obs.index, columns=adata.var.index)
+            df['trna'] = adata.obs['trna']
+            df[grpby] = adata.obs[grpby]
+            df = df.groupby(['trna', grpby], observed=True).mean()
+            df_obs = adata.obs.groupby(['trna', grpby], observed=True).first()
+            # Remove multiindex
+            df.index = df.index.map('_'.join)
+            df_obs.index = df_obs.index.map('_'.join)
+            df_obs.index.all() == df.index.all()
+            # Convert the dataframe to an AnnData object
+            adata = ad.AnnData(X=df, obs=df_obs, var=adata.var)
+         # Filter out samples with low coverage
+        adata = adata[adata.obs['nreads_total_unique_raw'] >= self.readcutoff, :]
+        # Normalize the each read at each position by the total coverage - This would collapse the variation between positons so should only be used in certain cases depending on the var slice used
         # adata.X = Normalizer().fit_transform(adata.X)
-        # Scale the data
+        # Scale the data - Seems to perform well with the robust scaler compared to the standard scaler
         adata.X = RobustScaler().fit_transform(adata.X)
 
         return adata
     
-    def clusterPlot(self, embedding, cluster_labels, clustered, adata):
-        # Create a 2 x 2 subplot with the umap projection and the cluster labels as the last subplot
-        fig, axs = plt.subplots(3, 3, figsize=(20,20))
-        # Plot first through eigth subplots
-        plot_list = [('Amino Acid','amino',0,0), ('Tissue Type','tissuetype',0,1), ('Treatment','treatment',0,2), \
-                     ('Timepoint','timepoint',1,0), ('Fragment Type','fragment',1,1), ('Group','group',1,2), \
-                     ('Sample','sample',2,0), ('Dataset','dataset',2,1)]
-        for i in plot_list:
-            pal = sns.color_palette("hls", len(pd.unique(adata.obs[i[1]][clustered])))
-            sns.scatterplot(x=embedding[~clustered, 0], y=embedding[~clustered, 1], s=1, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][~clustered], palette=pal)
-            axs[i[2],i[3]].set_title(i[0])
-            axs[i[2],i[3]].set_xlabel('UMAP 1')
-            axs[i[2],i[3]].set_ylabel('UMAP 2')
-            axs[i[2],i[3]].set_xticks([])
-            axs[i[2],i[3]].set_yticks([])
-            # Create legend from pal adding 
-            axs[i[2],i[3]].legend(pd.unique(adata.obs[i[1]]), loc='upper right')
-        # Plot ninth subplot colored by cluster
-        pal = sns.color_palette("hls", len(pd.unique(cluster_labels[clustered])))
-        sns.scatterplot(x=embedding[~clustered, 0], y=embedding[~clustered, 1], s=1, ax=axs[2,2], c=(0.5,0.5,0.5), alpha=0.5)
-        sns.scatterplot(x=embedding[clustered, 0], y=embedding[clustered, 1], s=1, ax=axs[2,2], hue=cluster_labels[clustered], palette=pal)
-        axs[2,2].set_title('HDBSCAN')
-        axs[2,2].set_xlabel('UMAP 1')
-        axs[2,2].set_ylabel('UMAP 2')
-        axs[2,2].set_xticks([])
-        axs[2,2].set_yticks([])
-        axs[2,2].legend(pd.unique(cluster_labels[clustered]), loc='upper right')
-        # Set aspect ratio to 'equal' so that umap projection is not distorted
-        plt.gca().set_aspect('equal', 'datalim')
-        # Add title
-        plt.title('UMAP projection of the tRNA dataset')
-        # Save figure
-        plt.tight_layout()
-        plt.savefig(self.output + '/umap.pdf')
+    def adataCluster(self, adata, neighbors_plot, neighbors_cluster, min_samples, min_cluster_size, n_components):
+        # Apply a standardscaler to the data and reduce dimensions
+        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot).fit_transform(adata.X)
+        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components).fit_transform(adata.X)
+        # Perform clustering with HDBSCAN
+        hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size).fit_predict(cluster_embedding)
+        # Reincorporate the cluster information into the AnnData object
+        adata.obs['umap1'] = standard_embedding[:, 0]
+        adata.obs['umap2'] = standard_embedding[:, 1]
+        adata.uns['cluster_umap'] = pd.DataFrame(cluster_embedding, index=adata.obs.index)
+        adata.obs['cluster'] = hdbscan_results
+
+        return adata
+    
+    def adataCombine(self, adata, adata_sub, group):
+        for i in ['cluster', 'umap1', 'umap2']:
+            # Create dictionaries to map the cluster information to the original AnnData object
+            temp_dict = dict(zip(adata_sub.obs.index, adata_sub.obs[i]))
+            if group == 'sample':
+                adata.obs['_'.join([group,i])] = adata.obs.index.map(temp_dict)
+            else:
+                adata.obs['_'.join([group,i])] = adata.obs['trna'].astype('str') + '_' + adata.obs[group].astype('str')
+                adata.obs['_'.join([group,i])] = adata.obs['_'.join([group,i])].map(temp_dict)
+        # Add the uns information to the original AnnData object for reference
+        adata.uns['_'.join([group,'cluster_umap'])] = adata_sub.uns['cluster_umap']
+        
+        return adata
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -614,7 +653,7 @@ if __name__ == '__main__':
         dest='mode',
         required=True
     )
-
+    # Build parser
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
     parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
     parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
@@ -622,7 +661,7 @@ if __name__ == '__main__':
     parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
     parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: trnagraph.h5ad) (optional)', default='trnagraph.h5ad')
     parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
-
+    # Merge parser
     parser_merge = subparsers.add_parser("merge", help="Merge data from two existing h5ad AnnData objects")
     parser_merge.add_argument('-i1', '--anndata1', help='Specify location of first h5ad object (required)', required=True)
     parser_merge.add_argument('-i2', '--anndata2', help='Specify location of second h5ad object (required)', required=True)
@@ -630,19 +669,29 @@ if __name__ == '__main__':
     parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
     parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: trnagraph_merge.h5ad) (optional)', default='trnagraph_merge.h5ad')
     parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
-
+    # Cluster parser
     parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
     parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_cluster.add_argument('-n1', '--neighborsstd', help='Specify number of neighbors to use for UMAP Plotting (default: 25) (optional)', default=25, type=int)
-    parser_cluster.add_argument('-n2', '--neighborsclu', help='Specify number of neighbors to use for UMAP Clustering (default: 200) (optional)', default=100, type=int)
-    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP (default: 19) (optional)', default=19, type=int)
+    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP if you want to have a static seed (default: None) (optional)', default=None, type=int)
+    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 15) (optional)', default=15, type=int)
+    parser_cluster.add_argument('-c1', '--ncomponentsmp', help='Specify number of components to use for UMAP clustering of samples (default: 2) (optional)', default=2, type=int)
+    parser_cluster.add_argument('-c2', '--ncomponentgrp', help='Specify number of components to use for UMAP clustering of groups (default: 2) (optional)', default=2, type=int)
+    parser_cluster.add_argument('-l1', '--neighborclusmp', help='Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional)', default=150, type=int)
+    parser_cluster.add_argument('-l2', '--neighborclusgrp', help='Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional)', default=40, type=int)
+    parser_cluster.add_argument('-n1', '--neighborstdsmp', help='Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional)', default=75, type=int)
+    parser_cluster.add_argument('-n2', '--neighborstdgrp', help='Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional)', default=20, type=int)
+    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 5) (optional)', default=5, type=int)
+    parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
+    parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
+    parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
+    parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
     parser_cluster.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
     parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
-
+    # Graph parser
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare'], \
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare','cluster'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
@@ -693,9 +742,9 @@ if __name__ == '__main__':
     sys.stdout = open(args.log, 'w') if args.log else sys.stdout
 
     if args.mode == 'build':
-        args.traxdir = directory_tools.path_cleaner(args.traxdir)
+        args.traxdir = toolsDirectory.path_cleaner(args.traxdir)
     if args.mode == 'graph':
-        args.anndata = directory_tools.path_cleaner(args.anndata)
+        args.anndata = toolsDirectory.path_cleaner(args.anndata)
 
     # Read database object or create one from trax run if none provided
     if args.mode == 'build':
@@ -741,7 +790,7 @@ if __name__ == '__main__':
         print('Done!\n')
     elif args.mode == 'graph':
         # Create output directory if it doesn't exist
-        directory_tools.builder(args.output)
+        toolsDirectory.builder(args.output)
         # Raise exception if h5ad file is empty or doesn't exist
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')

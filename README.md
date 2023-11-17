@@ -71,18 +71,33 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 * `-i` or `--anndata` is the path to the database object you want to generate visualizations from.
 * `-o` or `--output` is the path to the output directory. By default, the output directory will be named `trnagraph` if no path is provided.
 * `-g` or `--graph` is the type of graph to generate. The following graphs can be generated:
+  * `bar` - Generates bar plots of the tRNA coverage.
+  * `cluster` - Generates cluster plots of the tRNA coverage.
+  * `compare` - Generates compare plots of the tRNA coverage.
+  * `correlation` - Generates correlation plots of the tRNA coverage.
   * `coverage` - Generates coverage plots.
   * `heatmap` - Generates heatmaps of the differential tRNA expression.
   * `pca` - Generates PCA plots.
-  * `correlation` - Generates correlation plots of the tRNA coverage.
-  * `volcano` - Generates volcano plots of differential tRNA expression.
   * `radar` - Generates radar plots of the tRNA coverage.
-  * `all` - Generates all of the above plots.
+  * `volcano` - Generates volcano plots of differential tRNA expression.
+  * `all` - Generates all of the above plots. Exclude `compare` and `cluster` as they require additional parameters.
 * `--config` is an optional flag to the path to a JSON file containing additonal graph parameters. [See configuration section below for more details.](#configuration)
 * `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots as they can take a long time to generate.
 * `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
 The following parameters are optional and can be used to customize the graphs:
+
+#### Compare
+
+* `--comparegrp1` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
+* `--comparegrp2` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
+
+#### Correlation
+
+* `--corrmethod` is the method to use for calculating the correlation. The following methods can be used:
+* `pearson` - Pearson correlation coefficient.
+* `spearman` - Spearman rank correlation.
+* `kendall` - Kendall Tau correlation coefficient.
 
 #### Coverage
 
@@ -104,27 +119,15 @@ The following parameters are optional and can be used to customize the graphs:
 * `--pcamarkers` is the observation to use for choosing which markers to populate the pca plot. By default, the samples will be used as markers.
 * `--pcacolors` is the observation to use for coloring the PCA plot. If no observation is provided, the PCA plot will be colored by samples.
 
-#### Correlation
+#### Radar
 
-* `--corrmethod` is the method to use for calculating the correlation. The following methods can be used:
-  * `pearson` - Pearson correlation coefficient.
-  * `spearman` - Spearman rank correlation.
-  * `kendall` - Kendall Tau correlation coefficient.
+* `--radargrp` is the observation to use for grouping the radar plots. If no observation is provided, the radar plots will be grouped by sample group.
 
 #### Volcano
 
 * `--volgrp` is the observation to use for grouping the volcano plots. If no observation is provided, the volcano plots will be grouped by sample group.
 * `--volrt` is the read type to use for the volcano plots. By default, the volcano plots will be generated using the total unique normalized reads.
 * `--volcutoff` is the cutoff for reads to include in the volcano plots. By default, the volcano plots will discard anything with less than 80 reads.
-
-#### Radar
-
-* `--radargrp` is the observation to use for grouping the radar plots. If no observation is provided, the radar plots will be grouped by sample group.
-
-#### Compare
-
-* `--comparegrp1` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
-* `--comparegrp2` is the observation to use for grouping the compare plots. If no observation is provided, the compare plots will be grouped by sample group.
 
 ## Database Variables
 
@@ -215,7 +218,7 @@ python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output
 
 * `-i1` or `--anndata1` - The first input database object.
 * `-i2` or `--anndata2` - The second input database object.
-* `-o` - The output database object.
+* `-o` or `--output` The output database object.
 * `--dropno` - Whether to drop samples that are not found in both nontRNA_counts files. By default, samples that are not found in both nontRNA_counts files are kept and filled with zeros.
   * Different sequencing methods as well as the input GTF for tRAX can yeild vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
 * `--droprna` - Whether to drop samples that are not found in both type_counts files. By default, samples that are not found in both type_counts files are kept and filled with zeros.
@@ -224,9 +227,30 @@ python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output
 
 ### Cluster
 
-The database object can be clustered using the `cluster` function. The following code will cluster the database object and save the result to the same database object:
+The database object can be clustered using the `cluster` function. The following code will cluster the database object using [UMAP](https://umap-learn.readthedocs.io/en/latest/index.html) and cluster using [HDBSCAN](https://hdbscan.readthedocs.io/en/latest/index.html). The default parameters used in tRNAgraph are found to work well on ARMseq, DM-tRNAseq, and OTTRseq data, however each dataset is different and may require fine tunnig of the parameters to yield the best results. The following code will cluster the database object and save the result to a new database object:
 
-!!WORK IN PROGRESS!!
+```bash
+python trnagraph.py cluster -i <input_database> -o <output_database>
+```
+
+Clustering is perfomed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the annData object. When performing clustering, it is important to verify that the clustering is reproducible and the results are reflective of the data. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples every set of reads for everysingle tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2` respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
+
+* `-i` or `--anndata` - The input database object.
+* `-o` or `--output` - The output database object, if clustering was already performed on the input database object, the output database object will need to also be run with the `--overwrite` flag.
+* `-w` or `--overwrite` - Whether to overwrite the output database object if it already contains clustering information.
+* `-r` or `--randomstate` - Specify random state for UMAP if you want to have a static seed (default: None) (optional). UMAP clustering should give reproducible results regardless of random state, however you may want to use a static seed if you want to be able to reproduce the exact same results for a particular dataset. It is important to verify that the clustering is reproducible before using a static seed.
+* `-t` or `--readcutoff` - Specify readcount cutoff to use for clustering (default: 15) (optional). This is the minimum number of reads required for a tRNA to be included in the clustering. This is useful for removing tRNAs that are not expressed in the dataset as they can skew the clustering.
+* `-c1` or `--ncomponentsmp` - Specify number of components to use for UMAP clustering of samples (default: 2) (optional). This is the number of components to use for the UMAP clustering of the samples. Since this is independent of the number of components used for the UMAP plotting you can use a higher number of components for clustering to get better results. This will need to be tuned for each dataset and depends on the variability of the dataset.
+* `-c2` or `--ncomponentgrp` - Specify number of components to use for UMAP clustering of groups (default: 2) (optional). See above.
+* `-l1` or `--neighborclusmp` - Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional). This is the number of neighbors to use for the UMAP clustering of the samples. This will need to be tuned for each dataset and depends on the variability of the dataset. In general, a higher number of neighbors will yeild a wider dispersion of the clusters across the projection.
+* `-l2` or `--neighborclusgrp` - Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional). See above.
+* `-n1` or `--neighborstdsmp` - Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional). See above.
+* `-n2` or `--neighborstdgrp` - Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional). See above.
+* `-d1` or `--hdbscanminsampsmp` - Specify minsamples size to use for HDBSCAN clustering of samples (default: 5) (optional). This is the minimum number of samples required for a cluster to be considered a cluster.
+* `-d2` or `--hdbscanminsampgrp` - Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional). See above.
+* `-b1` or `--hdbscanminclusmp` - Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional). This is the minimum number of samples required for a cluster to be considered a cluster.
+* `-b2` or `--hdbscanminclugrp` - Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional). See above.
+* `--log` is wether to output a log of the shell commands used to generate the clustered AnnData object. By default, the log will not be output.
 
 ### Configuration
 

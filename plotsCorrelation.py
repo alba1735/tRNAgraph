@@ -4,7 +4,7 @@ import pandas as pd
 import anndata as ad
 import argparse
 
-import directory_tools
+import toolsDirectory
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
+    toolsDirectory.builder(args.output)
 
     adata = ad.read_h5ad(args.anndata)
 

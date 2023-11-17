@@ -6,8 +6,8 @@ import pandas as pd
 import anndata as ad
 import argparse
 
-import directory_tools
-import analysis_tools
+import toolsDirectory
+import toolsAnalysis
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -32,7 +32,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
-        df = analysis_tools.log2fc_df(adata, grp, readtype, cutoff)
+        df = toolsAnalysis.log2fc_df(adata, grp, readtype, cutoff)
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
+    toolsDirectory.builder(args.output)
 
     adata = ad.read_h5ad(args.anndata)
 

@@ -14,3 +14,4 @@ dependencies:
   - 'statannot'
   - 'umap-learn'
   - 'hdbscan'
+  - 'jupyterlab'

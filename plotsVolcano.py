@@ -5,8 +5,8 @@ import numpy as np
 import anndata as ad
 import argparse
 
-import directory_tools
-import analysis_tools
+import toolsDirectory
+import toolsAnalysis
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -19,7 +19,7 @@ def visualizer(adata, grp, readtype, cutoff, output):
     Generate volcano visualizations for each group in an AnnData object.
     '''
     # Create a correlation matrix from reads stored in adata observations
-    df = analysis_tools.log2fc_df(adata, grp, readtype, cutoff)
+    df = toolsAnalysis.log2fc_df(adata, grp, readtype, cutoff)
 
     pairs = ['_'.join(i.split('_')[1:]) for i in df.columns]
     for pair in pairs:
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
+    toolsDirectory.builder(args.output)
 
     adata = ad.read_h5ad(args.anndata)
 

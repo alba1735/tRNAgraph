@@ -5,8 +5,8 @@ import pandas as pd
 import anndata as ad
 import argparse
 
-import directory_tools
-import analysis_tools
+import toolsDirectory
+import toolsAnalysis
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -30,7 +30,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
 
     for countgrp in ['amino','iso']:
         # Get log2 fold change dataframe from analysis_tools
-        df = analysis_tools.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
+        df = toolsAnalysis.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
         # Sort the df by the mean of the log2 fold change
         df = df.loc[df.loc[:, ('log2')].abs().mean(axis=1).sort_values(ascending=True).index, :]
         # create a stacked horizontal bar plot for each group 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Create output directory if it doesn't exist
-    directory_tools.builder(args.output)
+    toolsDirectory.builder(args.output)
 
     adata = ad.read_h5ad(args.anndata)
 
