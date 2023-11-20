@@ -6,6 +6,20 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
 
 [tRAX](https://github.com/UCSC-LoweLab/tRAX) is a tool often used for analyzing tRNA-seq data. While it generates a comprehensive set of results, it does not provide a way to visualize specific meta-data associated with a particular experiment. tRNAgraph is a tool that can be used to create a database object from a tRAX coverage file containing various experimental conditions not captured by tRAX. The database object can then be used to generate a variety of visualizations, including heatmaps, coverage plots, PCA plots, and more that are more specific to the experimental conditions of interest.
 
+```mermaid
+    flowchart LR
+        I1([tRAX Output]) --> B{tRNAgraph} -->|build| I2([annData])
+        M([metadata]) -->|optional| B
+        I2([annData]) --> T{tRNAgraph} -->|merge| C[Combine] --> IM([annData])
+        I3([Alt annData]) --> C
+        T -->|cluster| C1[Preprocessing] --> C2[Dimensionality Reduction - UMAP] --> C3[Clustering - HDBScan] --> C4([annData])
+        T -->|graph| G{Plot Options}
+        G -->|default| G1([bar, cluster, correlation, coverage, heatmaps, pca, radar, volcano plots])
+        G -->|requires config.json| G2([comparison plots])
+        G -->|requires clustering| G3([Cluster plots])
+        J([config]) --> G 
+```
+
 ## Installation
 
 Dependencies can be installed using conda:

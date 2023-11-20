@@ -8,16 +8,12 @@
 
 ## trnagraph.py
 
-* Add a class to concatenate multiple adata objects together
-  * This will be useful for cross analysis of multiple experiments, different species, etc.
-  * Allow for new DeSeq2 analysis to be run on the combined object
+* Allow for new DeSeq2 analysis to be run on the combined object
 * Add validation that sample names match samples so it can actually write the adatafile
 
 ## pca_tools.py
 
 * Add a function to plot the PCA with smallRNAs included
-* `tsne` - Generates a tSNE plot of the tRNA coverage for each sample. -->
-* `umap` - Generates a UMAP plot of the tRNA coverage for each sample. -->
 
 ## correlation_tools.py
 
