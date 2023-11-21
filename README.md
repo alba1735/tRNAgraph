@@ -2,7 +2,7 @@
 
 ![tRNAgraph Logo](docs/images/logo.png)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
 
 tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from a tRAX coverage file or to analyze an existing database object and generate expanded visualizations. The database object can also be used to perform further analysis beyond the scope of what tRAX can do.
 
@@ -11,17 +11,30 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
 [tRAX](https://github.com/UCSC-LoweLab/tRAX) is a tool often used for analyzing tRNA-seq data. While it generates a comprehensive set of results, it does not provide a way to visualize specific meta-data associated with a particular experiment. tRNAgraph is a tool that can be used to create a database object from a tRAX coverage file containing various experimental conditions not captured by tRAX. The database object can then be used to generate a variety of visualizations, including heatmaps, coverage plots, PCA plots, and more that are more specific to the experimental conditions of interest.
 
 ```mermaid
-    flowchart LR
-        I1([tRAX Output]) --> B{tRNAgraph} -->|build| I2([annData])
-        M([metadata]) -->|optional| B
-        I2([annData]) --> T{tRNAgraph} -->|merge| C[Combine] --> IM([annData])
-        I3([Alt annData]) --> C
-        T -->|cluster| C1[Preprocessing] --> C2[Dimensionality Reduction - UMAP] --> C3[Clustering - HDBScan] --> C4([annData])
-        T -->|graph| G{Plot Options}
+    flowchart TD
+      subgraph sg1 [trnagraph.py build]
+        I1([tRAX Output]) --> B[Build annData]
+        M([metadata.tsv]) -->|optional| B
+      end
+      sg1 --> I2([annData])
+      I2 <-->|Optional Downstream Analysis| R(Python, R, PyTorch, etc.)
+      I2 <--> sg3
+      subgraph sg3 [trnagraph.py cluster]
+        C1[Preprocessing] -->|UMAP| C2[Dimensionality Reduction] -->|HDBSCAN| C3[Clustering] 
+      end
+      I2 <--> sg4
+      subgraph sg4 [trnagraph.py merge]
+        I3([annData]) --> C[Combine]
+        I4([annData]) --> C
+      end
+      I2 --> G{Plot Options}
+      subgraph sg2 [trnagraph.py graph]
         G -->|default| G1([bar, cluster, correlation, coverage, heatmaps, pca, radar, volcano plots])
         G -->|requires config.json| G2([comparison plots])
         G -->|requires clustering| G3([Cluster plots])
-        J([config]) --> G 
+        J([config.json]) --> G 
+      end
+      style I2 fill:#51BD38,stroke:#333,stroke-width:2px
 ```
 
 ## Installation
