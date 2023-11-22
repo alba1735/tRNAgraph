@@ -6,8 +6,6 @@ import anndata as ad
 import argparse
 
 from functools import partial
-from itertools import repeat
-
 from multiprocessing import Pool
 
 import toolsDirectory

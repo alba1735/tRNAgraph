@@ -4,7 +4,7 @@
 
 <!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
 
-tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from a tRAX coverage file or to analyze an existing database object and generate expanded visualizations. The database object can also be used to perform further analysis beyond the scope of what tRAX can do.
+tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an [AnnData](https://anndata.readthedocs.io/en/latest/index.html) object from a tRAX coverage file or to analyze an existing database object and generate expanded visualizations. The database object can also be used to perform further analysis beyond the scope of what tRAX can do.
 
 ## About
 
@@ -17,7 +17,7 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
         M([metadata.tsv]) -->|optional| B
       end
       sg1 --> I2([annData])
-      I2 <-->|Optional Downstream Analysis| R(Python, R, PyTorch, etc.)
+      I2 <-->|Optional Downstream Analysis| R(Python, R, PyTorch, Julia, etc.)
       I2 <--> sg3
       subgraph sg3 [trnagraph.py cluster]
         C1[Preprocessing] -->|UMAP| C2[Dimensionality Reduction] -->|HDBSCAN| C3[Clustering] 
@@ -34,7 +34,7 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
         G -->|requires clustering| G3([Cluster plots])
         J([config.json]) --> G 
       end
-      style I2 fill:#51BD38,stroke:#333,stroke-width:2px
+      style I2 fill:#51BD38,stroke:#333
 ```
 
 ## Installation
@@ -173,6 +173,10 @@ The observations are the metadata categories that are used to group and color th
 * `amino` - The tRNA amino acid group.
 * `sample` - The sample name from tRAX.
 * `group` - The sample group tRAX.
+* `deseq2_sizefactor` - The size factor used for normalization in DESeq2 for the sample.
+* `refseq` - The reference sequence aligned with sprinzl positions. This is subset will drop any gap, extension, or alternate positions. (1-76) <!-- Need to check if this is static in all cases -->
+* `refseq_full` - The reference sequence aligned with sprinzl positions.
+* `dataset` - The name of the output file (Useful for combining multiple datasets if the merge function is used)
 * Any metadata categories provided in the observations list/file.
 * The uniquely mapped reads are the reads that map to a single tRNA via alignment and filtering in tRAX and can be broken down into the following categories:
   * `nreads_whole_unique_raw` - The raw number of uniquely mapped whole-counts in the sample.
@@ -212,11 +216,16 @@ The variables are the metadata categories that are used to filter the read cover
 
 * `gap` - Whether a position is a gap in canonical Sprinzl positions. These gaps are skipped in the coverage plots so that they can be easier to interpret when comparing different tRNAs.
 * `positions` - The canonical Sprinzl positions.
+  * `adenines`, `cytosines`, `guanines`, `thymines` and `deletions` are raw values in tRAX while the rest are normalized values. To simplify these are converted to normalized values by dividing by the Desq2 size factor. You can access the raw values by using `adata.layers["raw"]` instead of `adata.X`.
 * `coverage` - The coverage type matching coverage types found in the [tRAX coverage file](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
 * `half` - Wether the position is a 3' or 5' half position or in the center of a read.
 * `location` - The portion of the tRNA relative to the sprinzl positions. This includes `fiveprime_acceptorstem`, `threeprime_acceptorstem`, `a_to_d_internal`, `dstem`, `dloop`, `d_to_anticodon_internal`, `fiveprime_anticodonstem`, `threeprime_anticodonstem`, `anticodonloop`, `anticodon_to_t_internal`, `extensionloop`, `tstem`, and `tloop`.
 
 Since all coverage types are stored in the database object it is useful to specify which coverage type you want to use if you plan on using the database object for further analysis.
+
+### Layers
+
+By default all values in the database object (`adata.X`) are normalized using the DESeq2 size factor. The layers feature of AnnData is used to store the raw data from the coverage file for convenience. To access the raw data you can use `adata.layers["raw"]` instead of `adata.X`.
 
 ### Downstream Analysis and Filtering
 

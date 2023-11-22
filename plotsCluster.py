@@ -55,8 +55,7 @@ class visualizer():
         # Add title
         fig.suptitle(f'UMAP Projection of tRNAs sorted by tRAX {umapgroup}', y=1.01)
         # Save figure
-        plt.tight_layout()
-        plt.savefig(output + f'/umap_overview_{umapgroup}.pdf')
+        plt.savefig(output + f'/umap_overview_{umapgroup}.pdf', bbox_inches='tight')
         plt.close()
 
 if __name__ == '__main__':

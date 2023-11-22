@@ -9,23 +9,21 @@ import sys
 import json
 # Custom functions
 import toolsDirectory
+import plotsBar
+import plotsCluster
+import plotsCompare
+import plotsCorrelation
 import plotsCoverage
 import plotsHeatmap
+import plotsSeqlogo
 import plotsPca
-import plotsCorrelation
-import plotsVolcano
 import plotsRadar
-import plotsBar
-import plotsCompare
-import plotsCluster
+import plotsVolcano
 # Cluster functions
 import umap
 from sklearn.preprocessing import RobustScaler
-from sklearn.preprocessing import Normalizer
+# from sklearn.preprocessing import Normalizer
 import hdbscan
-# Plotting functions
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 class trax2anndata():
     '''
@@ -43,6 +41,7 @@ class trax2anndata():
         # Add size factors to coverage file
         sizefactors = traxdir + '/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
+        self.size_factors_list = None
         # For adding unique counts to coverage file
         trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
@@ -67,8 +66,10 @@ class trax2anndata():
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
         self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
+        # Create list of reference sequences from actualbase column of coverage file - skips gap positions
+        self.seqs = self._seq_build_()
+        self.seqs_full = self._seq_build_(gap=True)
         # For adding categories to adata object
-
         self.observations = observations
         if self.observations:
             # Make sure that observations are not going to be generated automatically
@@ -108,15 +109,21 @@ class trax2anndata():
         '''
         Create h5ad database object
         '''
-        # Build reference sequence dataframe
-        self._ref_seq_build_()
         # Build obs and x dataframes
         x_dfs = []
         for cov_type in self.cov_types:
             x_df = self._x_build_(cov_type)
+            # Build size factors list if it does not exist
+            if not self.size_factors_list:
+                self.size_factors_list = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
+            # 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions' are already raw counts so they need to be normalized by size factor first
+            if cov_type in ['adenines', 'thymines', 'cytosines', 'guanines', 'deletions']:
+                x_df = x_df.div(self.size_factors_list, axis=0)
             x_dfs.append(x_df)
+        # Build obs dataframe
         obs_df = self._obs_build_(x_df)
-        x_df = pd.concat(x_dfs,axis=1,sort=False)
+        x_df = pd.concat(x_dfs, axis=1, sort=False)
+        x_df = x_df.astype('float64')  # Not sure if this is the dtype I want to use defaults to float64
         # Rename columns of x_df to include position and coverage type
         clist = [[p + '_' + cov for p in self.positions] for cov in self.cov_types]
         clist = [a for l in clist for a in l]
@@ -126,9 +133,9 @@ class trax2anndata():
         if not obs_df.index.equals(x_df.index):
             raise ValueError('The index of the obs and x dataframes are not the same. This means somthing went wrong in the sorting process.')
         # Build adata object
-        adata = self._adata_build_(obs_df,x_df)
+        adata = self._adata_build_(obs_df, x_df)
         # Add size factors to adata object as raw layer
-        adata.layers['raw'] = adata.X*adata.obs['deseq2_sizefactor'].values[:,None]
+        adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
         # Quality check adata by dropping NaN values and printing summary
         if adata.obs.isna().any(axis=0).any():
             print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or have a different number of observations per sample. ' \
@@ -139,14 +146,19 @@ class trax2anndata():
         # Save adata object
         adata.write(f'{self.output}')
         print(f'Writing h5ad database object to {self.output}')
-        
-    def _ref_seq_build_(self):
-        '''
-        Build reference sequence from trax coverage file
-        '''
-        x_df = self._x_build_('actualbase')
-        seqs = x_df.values.tolist()
-        self.seqs = [''.join(x) for x in seqs]
+
+    def _seq_build_(self, gap=False):
+        # Build reference sequence dataframe
+        seq_df = self._x_build_('actualbase')
+        if not gap:
+            # Drop gap positions from reference sequence dataframe
+            seq_df = seq_df.loc[:,~seq_df.columns.str.contains('a')]
+            seq_df = seq_df.loc[:,~seq_df.columns.str.contains('b')]
+            seq_df = seq_df.loc[:,~seq_df.columns.str.contains('e')]
+            seq_df = seq_df.loc[:,~seq_df.columns.str.contains('-1')]
+        seqs = [''.join(x) for x in seq_df.values.tolist()]
+
+        return seqs
 
     def _x_build_(self, cov_type):
         '''
@@ -175,7 +187,8 @@ class trax2anndata():
         obs_df['amino'] = trna_obs[1]
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
-        obs_df['sizefactor'] = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
+        obs_df['refseq_full'] = self.seqs_full
+        obs_df['sizefactor'] = self.size_factors_list # [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
         # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         # Create unique counts for each tRNA split by type
         for rt in ['fiveprime','threeprime','whole','other']:
@@ -202,12 +215,11 @@ class trax2anndata():
         positions = [i.split('_')[0] for i in x_df.columns.values]
         coverage = [i.split('_')[-1] for i in x_df.columns.values]
         # Generate gap list
-        gap_list = [True if len(i.split('.')) > 1 else False for i in positions]
-        gap_list = [True if positions[i][-1] == 'a' else gap_list[i] for i in range(len(gap_list))]
-        gap_list = [True if positions[i][-1] == 'b' else gap_list[i] for i in range(len(gap_list))]
-        gap_list = [True if positions[i][0] == 'e' else gap_list[i] for i in range(len(gap_list))]
+        gap_list = pd.Series(positions)
+        gap_list = gap_list[gap_list.str.contains('a') | gap_list.str.contains('b') | gap_list.str.contains('e') | gap_list.str.contains('-1')]
+        gap_list = pd.Series(positions).isin(gap_list).tolist()
         # Build AnnData object
-        adata = ad.AnnData(x_df, dtype=x_df.dtypes[0]) # Not sure if this is the dtype I want to use defaults to float64
+        adata = ad.AnnData(x_df)
         adata.var['gap'] = gap_list
         adata.var['positions'] = positions
         adata.var['coverage'] = coverage
@@ -321,6 +333,7 @@ class trax2anndata():
         adata.obs['deseq2_sizefactor'] = obs_df['sizefactor'].values
         # Add aligned reference sequence based on values in coverage file
         adata.obs['refseq'] = obs_df['refseq'].values
+        adata.obs['refseq_full'] = obs_df['refseq_full'].values
         # Add anticodon counts as uns
         adata.uns['anticodon_counts'] = self.anticodon_counts
         # Add amino acid counts as uns
@@ -342,7 +355,7 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['coverage', 'heatmap', 'pca', 'correlation', 'volcano', 'radar', 'bar']
+            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
 
         if self.args.config:
             with open(self.args.config, 'r') as f:
@@ -466,12 +479,20 @@ class anndataGrapher:
 
         if 'cluster' in self.args.graphtypes:
             if not 'cluster_runinfo' in self.adata.uns:
-                raise ValueError('No cluster run information found in AnnData object. Please run the cluster command first.')
-            print('Generating cluster plots...')
-            output = self.args.output + '/umap'
+                print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
+            else:
+                print('Generating cluster plots...')
+                output = self.args.output + '/umap'
+                toolsDirectory.builder(output)
+                plotsCluster.visualizer(self.adata.copy(), output)
+                print('Cluster plots generated.\n')
+
+        if 'logo' in self.args.graphtypes:
+            print('Generating logo plots...')
+            output = self.args.output + '/seqlogo'
             toolsDirectory.builder(output)
-            plotsCluster.visualizer(self.adata.copy(), output)
-            print('Cluster plots generated.\n')
+            plotsSeqlogo.visualizer(self.adata.copy(), output).generate_plots()
+            print('Logo plots generated.\n')
 
 class anndataMerger():
     '''
@@ -533,6 +554,7 @@ class anndataCluster():
         self.adata_path = args.anndata
         self.randomstate = args.randomstate
         self.readcutoff = args.readcutoff
+        self.coveragetype = args.coveragetype
         self.group_n_components = args.ncomponentgrp
         self.group_neighbors_cluster = args.neighborclusgrp
         self.group_neighbors_plot = args.neighborstdgrp
@@ -584,7 +606,7 @@ class anndataCluster():
         '''
         # Clean up the data by removing gaps from var and subsetting the var to uniquecoverage, readstarts, readends, mismatchedbases, and deletions
         adata = adata[:, ~adata.var['gap']]
-        adata = adata[:, adata.var['coverage'].isin(['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])]
+        adata = adata[:, adata.var['coverage'].isin(self.coveragetype)]
         # Filter out Und samples from that amino acid category
         adata = adata[~(adata.obs['amino'] == 'Und'), :]
         if grpby:
@@ -640,16 +662,15 @@ class anndataCluster():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog='tRNAgraph',
-        description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create a AnnData database object from \
-            a trax coverage file, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
-            perform further analysis beyond the scope of what tRAX can do.',
+        description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
+            a trax output folder, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
+            perform further multivariate analysis such as clustering and classification of readcoverages.',
         allow_abbrev=False
     )
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='trnagraph')
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
-        description='Choose between building a database object, mergeing two database objects together, or graphing data from an existing database object',
+        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, and/or graphing data from an existing database object',
         dest='mode',
         required=True
     )
@@ -673,14 +694,17 @@ if __name__ == '__main__':
     parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
     parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP if you want to have a static seed (default: None) (optional)', default=None, type=int)
-    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 15) (optional)', default=15, type=int)
+    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 20) (optional)', default=20, type=int)
+    parser_cluster.add_argument('-v', '--coveragetype', help='Specify coverage types for umap clustering treated as features (default: uniquecoverage, readstarts, readends, mismatchedbases, deletions) (optional)', \
+                                choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+                                         'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], nargs='+', default=['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])
     parser_cluster.add_argument('-c1', '--ncomponentsmp', help='Specify number of components to use for UMAP clustering of samples (default: 2) (optional)', default=2, type=int)
     parser_cluster.add_argument('-c2', '--ncomponentgrp', help='Specify number of components to use for UMAP clustering of groups (default: 2) (optional)', default=2, type=int)
     parser_cluster.add_argument('-l1', '--neighborclusmp', help='Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional)', default=150, type=int)
     parser_cluster.add_argument('-l2', '--neighborclusgrp', help='Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional)', default=40, type=int)
     parser_cluster.add_argument('-n1', '--neighborstdsmp', help='Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional)', default=75, type=int)
     parser_cluster.add_argument('-n2', '--neighborstdgrp', help='Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional)', default=20, type=int)
-    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 5) (optional)', default=5, type=int)
+    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 6) (optional)', default=6, type=int)
     parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
     parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
     parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
@@ -691,7 +715,7 @@ if __name__ == '__main__':
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='trnagraph')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare','cluster'], \
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare','cluster','logo'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
