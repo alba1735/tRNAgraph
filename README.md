@@ -113,7 +113,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `volcano` - Generates volcano plots of differential tRNA expression.
   * `all` - Generates all of the above plots. Exclude `compare` and `cluster` as they require additional parameters.
 * `--config` is an optional flag to the path to a JSON file containing additonal graph parameters. [See configuration section below for more details.](#configuration)
-* `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots as they can take a long time to generate.
+* `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots and seqlogos as they can take a long time to generate.
 * `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
 The following parameters are optional and can be used to customize the graphs:

@@ -2,13 +2,14 @@
 
 import numpy as np
 import pandas as pd
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
+# import os
 
 from functools import partial
 from multiprocessing import Pool
 
-import toolsDirectory
+# import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -73,13 +74,13 @@ class visualizer():
         trna_lists = [trna_lists[i*16:(i+1)*16] for i in range((len(trna_lists)+15)//16)]  # Split list into n sublists for pdfPages
         # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
         # Generate plots with confidence intervals
-        with PdfPages('{}/{}_by_{}_with_ci.pdf'.format(self.output, self.coverage_type, self.coverage_grp, self.coverage_obs)) as pdf:
+        with PdfPages(f'{self.output}/{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_ci.pdf') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='ci'), trna_lists)
             for page in pages:
                 pdf.savefig(page, bbox_inches='tight')
         # Generate plots with fill
-        with PdfPages('{}/{}_by_{}_with_fill.pdf'.format(self.output, self.coverage_type, self.coverage_grp, self.coverage_obs)) as pdf:
+        with PdfPages(f'{self.output}/{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_fill.pdf') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='fill'), trna_lists)
             for page in pages:
@@ -115,10 +116,10 @@ class visualizer():
         self.generate_plot(df, ax, trna, coverage_fill='ci')
         # Get max y value for plot
         if ax.get_ylim()[1] >= 20:
-            plt.savefig('{}/single/{}_{}_by_{}_with_ci.pdf'.format(self.output, trna, self.coverage_type, self.coverage_grp, self.coverage_obs), bbox_inches='tight')
+            plt.savefig(f'{self.output}/single/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_ci.pdf', bbox_inches='tight')
             low_coverage = False
         else:
-            plt.savefig('{}/single/low_coverage/{}_{}_by_{}_with_ci.pdf'.format(self.output, trna, self.coverage_type, self.coverage_grp, self.coverage_obs), bbox_inches='tight')
+            plt.savefig(f'{self.output}/single/low_coverage/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_ci.pdf', bbox_inches='tight')
             low_coverage = True
         plt.close()
         # Generate plot with fill
@@ -126,9 +127,9 @@ class visualizer():
         self.generate_plot(df, ax, trna, coverage_fill='fill')
         # Get max y value for plot
         if not low_coverage:
-            plt.savefig('{}/single/{}_{}_by_{}_with_fill.pdf'.format(self.output, trna, self.coverage_type, self.coverage_grp, self.coverage_obs), bbox_inches='tight')
+            plt.savefig(f'{self.output}/single/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_fill.pdf', bbox_inches='tight')
         else:
-            plt.savefig('{}/single/low_coverage/{}_{}_by_{}_with_fill.pdf'.format(self.output, trna, self.coverage_type, self.coverage_grp, self.coverage_obs), bbox_inches='tight')
+            plt.savefig(f'{self.output}/single/low_coverage/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_fill.pdf', bbox_inches='tight')
         plt.close()
 
     def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True):
@@ -142,7 +143,9 @@ class visualizer():
 
         # Fill the area under the curve with the mean by going in order of the column with the highest mean to the lowest if fill/both is specified
         if coverage_fill == 'fill':
-            df_mean = df.groupby(df.columns, axis=1).mean() # This is the mean of the columns with the same name
+            # df_mean = df.groupby(df.columns, axis=1).mean() 
+            # The above is deprecated because it doesn't work with the new version of pandas use DataFrame.groupby with axis=1 is deprecated. Do `frame.T.groupby(...)` without axis instead.
+            df_mean = df.T.groupby(level=0, observed=False).mean().T # This is the mean of the columns with the same name
             for i in df_mean.mean().sort_values(ascending=False).index:
                 ax.fill_between(df_mean.index, df_mean[i], color=self.coverage_pal.get(i), alpha=0.35, zorder=1)
 
@@ -158,7 +161,7 @@ class visualizer():
         ax.set_xticklabels(['\nD-Arm','\nA-Arm','37','\nT-Arm','58'])
 
         plt.tick_params(axis='both', which='both', bottom=False, top=False, left=False, right=False, labelbottom=True, labelleft=True)
-        ax.set_title('{} {}'.format(trna, self.coverage_type))
+        ax.set_title(f'{trna} {self.coverage_type}')
 
         # Add dashed lines to plot for common tRNA modifications
         for i in [37, 58]:
@@ -181,35 +184,36 @@ class visualizer():
         plt.gca().set_box_aspect(1)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='coverage_tools.py',
-        description='Generate tRNA coverage plots'
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='coverage_tools.py',
+    #     description='Generate tRNA coverage plots'
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='coverage', required=False)
-    parser.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
-    parser.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group')
-    parser.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
-    parser.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
-        choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-            'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
-    parser.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
-    parser.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_false', required=False)
-    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='coverage', required=False)
+    # parser.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
+    # parser.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group')
+    # parser.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
+    # parser.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
+    #     choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+    #         'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
+    # parser.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
+    # parser.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_false', required=False)
+    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
-    if args.splitpdfs:
-        toolsDirectory.builder(args.output+'/single')
-        toolsDirectory.builder(args.output+'/single/low_coverage')
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
+    # if args.splitpdfs:
+    #     toolsTG.builder(args.output+'/single/')
+    #     toolsTG.builder(args.output+'/single/low_coverage/')
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    if args.combineonly:
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()
-    else:
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_split()
-        visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()
+    # if args.combineonly:
+    #     visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()
+    # else:
+    #     visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_split()
+    #     visualizer(adata, args.threads, args.coveragegrp, args.coverageobs, args.coveragetype, args.coveragegap, args.colormap, args.output).generate_combined()

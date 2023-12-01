@@ -4,6 +4,17 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import itertools
+import os
+
+def builder(directory):
+    '''
+    Function to create output directory if it does not already exist
+    '''
+    if not os.path.exists(directory):
+        print(f'Creating output directory: {os.path.dirname(directory)}')
+        os.makedirs(os.path.dirname(directory), exist_ok=True)
+    else:
+        print(f'Output directory already exists: {os.path.dirname(directory)}')
 
 def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
     '''

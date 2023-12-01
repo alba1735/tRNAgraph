@@ -3,11 +3,10 @@
 import seaborn as sns
 import numpy as np
 import pandas as pd
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
-import toolsAnalysis
+import toolsTG
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -32,32 +31,32 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
-        df = toolsAnalysis.log2fc_df(adata, grp, readtype, cutoff)
+        df = toolsTG.log2fc_df(adata, grp, readtype, cutoff)
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
             df_combine = pd.concat([df_combine, df], axis=0)
         # save df to csv
-        df.to_csv(f'{output}/{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.csv')
+        df.to_csv(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.csv')
         # Create a pdf with a heatmap for sorted by each group on each page
-        with PdfPages(f'{output}/{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
+        with PdfPages(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
             for col in [i for i in df.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df, col, cmap, heatbound)
                 # Save figure
                 print(f'Saving heatmap for {readtype} {col}...')
                 if heatsubplots:
-                    plt.savefig(f'{output}/{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
+                    plt.savefig(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
                 plt.close()
     # Create a heatmap for the combined groups
     if not df_combine.empty:
-        with PdfPages(f'{output}/{grp}_combine_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
+        with PdfPages(f'{output}{grp}_combine_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
             for col in [i for i in df_combine.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df_combine, col, cmap, heatbound)
                 # Save figure
                 print(f'Saving heatmap for combine {col}...')
                 if heatsubplots:
-                    plt.savefig(f'{output}/{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
+                    plt.savefig(f'{output}{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
                 plt.close()
 
@@ -113,27 +112,28 @@ def heatmap_plot(df, col, cmap, heatbound):
     return plt
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='pca_tools.py',
-        description='Generate heatmap visualizations for each group in an AnnData object.'
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='pca_tools.py',
+    #     description='Generate heatmap visualizations for each group in an AnnData object.'
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='heatmap', required=False)
-    parser.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-            help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    parser.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
-    parser.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, type=int, required=False)
-    parser.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', required=False)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='heatmap', required=False)
+    # parser.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
+    # parser.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+    #      'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+    #         help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+    #             nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+    # parser.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
+    # parser.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, type=int, required=False)
+    # parser.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', required=False)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.heatgrp, args.heatrts, args.heatcutoff, args.heatbound, args.heatsubplots, args.output)
+    # visualizer(adata, args.heatgrp, args.heatrts, args.heatcutoff, args.heatbound, args.heatsubplots, args.output)

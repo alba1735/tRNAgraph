@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import pandas as pd
-import anndata as ad
-import argparse
+# import pandas as pd
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
-import toolsAnalysis
+import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -30,7 +29,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
 
     for countgrp in ['amino','iso']:
         # Get log2 fold change dataframe from analysis_tools
-        df = toolsAnalysis.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
+        df = toolsTG.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
         # Sort the df by the mean of the log2 fold change
         df = df.loc[df.loc[:, ('log2')].abs().mean(axis=1).sort_values(ascending=True).index, :]
         # create a stacked horizontal bar plot for each group 
@@ -79,26 +78,27 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
             # Add a title
             ax.set_title(f'{cgrp2} by {comparegrp1} {countgrp.capitalize()} Log2 Fold-Change')
             # Save the figure
-            print('Saving figure to {}...'.format(output))
-            plt.savefig(f'{output}/{comparegrp2}_{cgrp2}_by_{comparegrp1}_{countgrp}_log2fc.pdf', bbox_inches='tight')
+            print(f'Saving figure to {output}...')
+            plt.savefig(f'{output}{comparegrp2}_{cgrp2}_by_{comparegrp1}_{countgrp}_log2fc.pdf', bbox_inches='tight')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='compare_tools.py',
-        description='Generate comparison condition plots from combined objects in an AnnData object.',
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='compare_tools.py',
+    #     description='Generate comparison condition plots from combined objects in an AnnData object.',
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
-    parser.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='compare', required=False)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
+    # parser.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='compare', required=False)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.comparegrp1, args.comparegrp2, args.colormap, args.output)
+    # visualizer(adata, args.comparegrp1, args.comparegrp2, args.colormap, args.output)

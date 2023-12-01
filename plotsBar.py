@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import pandas as pd
+# import pandas as pd
 import seaborn as sns
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
+# import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -38,8 +38,11 @@ def visualizer(adata, grp, colormap_tc, colormap_bg, output):
         if count_type == 'amino_counts':
             df_combine = df.copy()
             # merge columns using the timepoint_dict
-            df_combine_mean = df_combine.groupby(grp_dict, axis=1).mean()
-            df_combine_sum = df_combine.groupby(grp_dict, axis=1).sum()
+            # df_combine_mean = df_combine.groupby(grp_dict, axis=1).mean()
+            # df_combine_sum = df_combine.groupby(grp_dict, axis=1).sum()
+            # The above is deprecated because it doesn't work with the new version of pandas use DataFrame.groupby with axis=1 is deprecated. Do `frame.T.groupby(...)` without axis instead.
+            df_combine_mean = df_combine.T.groupby(level=0, observed=False).mean().T
+            df_combine_sum = df_combine.T.groupby(level=0, observed=False).sum().T
 
         if count_type == 'type_counts':
             colormap = colormap_tc
@@ -115,18 +118,18 @@ def split_barplots(df, count_type, output, title=None, colormap=None, percent=Fa
     # Save
     if percent:
         if title:
-            plt.savefig(f'{output}/percent_{count_type}_split_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/percent_{count_type}_split_{title}.pdf')
+            plt.savefig(f'{output}percent_{count_type}_split_{title}.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}percent_{count_type}_split_{title}.pdf')
         else:
-            plt.savefig(f'{output}/percent_{count_type}_split.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/percent_{count_type}_split.pdf')
+            plt.savefig(f'{output}percent_{count_type}_split.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}percent_{count_type}_split.pdf')
     else:
         if title:
-            plt.savefig(f'{output}/total_{count_type}_split_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/total_{count_type}_split_{title}.pdf')
+            plt.savefig(f'{output}total_{count_type}_split_{title}.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}total_{count_type}_split_{title}.pdf')
         else:
-            plt.savefig(f'{output}/total_{count_type}_split.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/total_{count_type}_split.pdf')
+            plt.savefig(f'{output}total_{count_type}_split.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}total_{count_type}_split.pdf')
     plt.close()
 
 def stacked_barplots(df, count_type, output, title=None, percent=False):
@@ -171,40 +174,41 @@ def stacked_barplots(df, count_type, output, title=None, percent=False):
     # Save
     if percent:
         if title:
-            plt.savefig(f'{output}/percent_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/percent_{count_type}_stacked_{title}.pdf')
+            plt.savefig(f'{output}percent_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}percent_{count_type}_stacked_{title}.pdf')
         else:
-            plt.savefig(f'{output}/percent_{count_type}_stacked.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/percent_{count_type}_stacked.pdf')
+            plt.savefig(f'{output}percent_{count_type}_stacked.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}percent_{count_type}_stacked.pdf')
     else:
         if title:
-            plt.savefig(f'{output}/total_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/total_{count_type}_stacked_{title}.pdf')
+            plt.savefig(f'{output}total_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}total_{count_type}_stacked_{title}.pdf')
         else:
-            plt.savefig(f'{output}/total_{count_type}_stacked.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/total_{count_type}_stacked.pdf')
+            plt.savefig(f'{output}total_{count_type}_stacked.pdf', bbox_inches='tight')
+            print(f'Plot saved to {output}total_{count_type}_stacked.pdf')
     plt.close()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='bar_tools.py',
-        description='Generate barplots for readtypes and isoforms.',
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='bar_tools.py',
+    #     description='Generate barplots for readtypes and isoforms.',
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='barplot', required=False)
-    parser.add_argument('--bargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser.add_argument('--colormap_tc', help='Specify a colormap for coverage plots for type counts (optional)', default=None)
-    parser.add_argument('--colormap_bg', help='Specify a colormap for coverage plots for bargrp (optional)', default=None)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='barplot', required=False)
+    # parser.add_argument('--bargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # parser.add_argument('--colormap_tc', help='Specify a colormap for coverage plots for type counts (optional)', default=None)
+    # parser.add_argument('--colormap_bg', help='Specify a colormap for coverage plots for bargrp (optional)', default=None)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.bargrp, args.colormap_tc, args.colormap_bg, args.output)
+    # visualizer(adata, args.bargrp, args.colormap_tc, args.colormap_bg, args.output)
 
 # Incoporate the following
 

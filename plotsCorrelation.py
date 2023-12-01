@@ -2,9 +2,9 @@
 
 import pandas as pd
 import anndata as ad
-import argparse
+# import argparse
 
-import toolsDirectory
+# import toolsTG
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -41,27 +41,28 @@ def visualizer(adata, output, corr_method, corr_group):
             # Set the box aspect ratio to 1 so the plot is square
             plt.gca().set_box_aspect(1)
             # Save the plot
-            plt.savefig(f'{output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf', bbox_inches='tight')
-            print(f'Correlation matrix for {i} saved to {output}/{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf')
+            plt.savefig(f'{output}{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf', bbox_inches='tight')
+            print(f'Correlation matrix for {i} saved to {output}{corr_method}_{corr_group}_{i.split("_")[1]}_correlation_matrix.pdf')
             plt.close()
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='correlation_tools.py',
-        description='This tool will generate correlation graphs for a given AnnData file'
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='correlation_tools.py',
+    #     description='This tool will generate correlation graphs for a given AnnData file'
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='correlation', required=False)
-    parser.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='correlation', required=False)
+    # parser.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
+    # parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.output, args.corrmethod, args.corrgroup)
+    # visualizer(adata, args.output, args.corrmethod, args.corrgroup)

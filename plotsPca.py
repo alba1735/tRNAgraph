@@ -2,10 +2,10 @@
 
 import seaborn as sns
 import pandas as pd
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
+# import toolsTG
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -25,7 +25,6 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
         raise ValueError('Specified pcamarkers not found in AnnData object.')
     if pcacolors not in adata.obs.columns:
         raise ValueError('Specified pcacolor not found in AnnData object.')
-
     # Create a list of readtypes to iterate over if 'all' is specified
     if 'all' in pcareadtypes:
         pcareadtypes = ['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 'wholecounts',
@@ -67,7 +66,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
 
         # Plot the explained variance ratio
         plt.figure(figsize=(6, 6))
-        ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=sns.husl_palette(len(evr)))
+        ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=sns.husl_palette(len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
         # Set the x and y labels and title
         ax.set_xlabel('Principal Component')
         ax.set_ylabel('Explained Variance Ratio')
@@ -75,8 +74,8 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
         # Set the box aspect ratio to 1 so the plot is square
         plt.gca().set_box_aspect(1)
         # Save the plot
-        plt.savefig('{}/{}_by_{}_{}_evr.pdf'.format(output, pcamarkers, pcacolors, readtype), bbox_inches='tight')
-        print('Explained variance ratio graph saved to {}/{}_by_{}_{}_evr.pdf'.format(output, pcamarkers, pcacolors, readtype))
+        plt.savefig(f'{output}{pcamarkers}_by_{pcacolors}_{readtype}_evr.pdf', bbox_inches='tight')
+        print(f'Explained variance ratio graph saved to {output}{pcamarkers}_by_{pcacolors}_{readtype}_evr.pdf')
         plt.close()
 
         # Plot the data with seaborn
@@ -93,15 +92,15 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
         ax.legend(loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
         ax.legend_.set_title(pcacolors.capitalize())
         # Give the plot a title
-        ax.set_title('PCA of {} colored by {}'.format(pcamarkers, pcacolors))
+        ax.set_title(f'PCA of {pcamarkers} colored by {pcacolors}')
         # Remove the ticks and tick labels
         ax.tick_params(axis='both', which='both', bottom=False, top=False,
                        left=False, right=False, labelbottom=False, labelleft=False)
         # Set the box aspect ratio to 1 so the plot is square
         plt.gca().set_box_aspect(1)
         # Save the plot
-        plt.savefig('{}/{}_by_{}_{}_pca.pdf'.format(output, pcamarkers, pcacolors, readtype), bbox_inches='tight')
-        print('PCA graph saved to {}/{}_by_{}_{}_pca.pdf'.format(output, pcamarkers, pcacolors, readtype))
+        plt.savefig(f'{output}{pcamarkers}_by_{pcacolors}_{readtype}_pca.pdf', bbox_inches='tight')
+        print(f'PCA graph saved to {output}{pcamarkers}_by_{pcacolors}_{readtype}_pca.pdf')
         plt.close()
 
         # Plot pairplot of the data with seaborn
@@ -118,40 +117,40 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
         ax.tick_params(axis='both', which='both', bottom=False, top=False,
                        left=False, right=False, labelbottom=False, labelleft=False)
         # Give the plot a title
-        ax.fig.suptitle('PCA Pairplot of {} colored by {}'.format(
-            pcamarkers, pcacolors), y=1.02)
+        ax.fig.suptitle(f'PCA Pairplot of {pcamarkers} colored by {pcacolors}', y=1.02)
         # Set the box aspect ratio to 1 so the plot is square
         plt.gca().set_box_aspect(1)
-        plt.savefig('{}/{}_by_{}_{}_pairplot.pdf'.format(output, pcamarkers, pcacolors, readtype), bbox_inches='tight')
-        print('Pairplot graph saved to {}/{}_by_{}_{}_pairplot.pdf'.format(output, pcamarkers, pcacolors, readtype))
+        plt.savefig(f'{output}{pcamarkers}_by_{pcacolors}_{readtype}_pairplot.pdf', bbox_inches='tight')
+        print(f'Pairplot graph saved to {output}{pcamarkers}_by_{pcacolors}_{readtype}_pairplot.pdf')
         plt.close()
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='pca_tools.py',
-        description='Generate PCA visualizations for each sample in an AnnData object.'
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='pca_tools.py',
+    #     description='Generate PCA visualizations for each sample in an AnnData object.'
+    # )
 
-    parser.add_argument('-i', '--anndata',
-                        help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', 
-                        help='Specify output directory', default='pca', required=False)
-    parser.add_argument('--pcamarkers', 
-                        help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
-    parser.add_argument('--pcacolor', 
-                        help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
-    parser.add_argument('--pcareadtypes', 
-                        choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 
-                        'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'],
-                        help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
-    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
+    # parser.add_argument('-i', '--anndata',
+    #                     help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', 
+    #                     help='Specify output directory', default='pca', required=False)
+    # parser.add_argument('--pcamarkers', 
+    #                     help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
+    # parser.add_argument('--pcacolor', 
+    #                     help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
+    # parser.add_argument('--pcareadtypes', 
+    #                     choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 
+    #                     'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'],
+    #                     help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
+    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.pcamarkers, args.pcacolor, args.pcareadtypes, args.colormap, args.output)
+    # visualizer(adata, args.pcamarkers, args.pcacolor, args.pcareadtypes, args.colormap, args.output)

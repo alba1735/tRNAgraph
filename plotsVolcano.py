@@ -2,11 +2,10 @@
 
 import seaborn as sns
 import numpy as np
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
-import toolsAnalysis
+import toolsTG
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -19,7 +18,7 @@ def visualizer(adata, grp, readtype, cutoff, output):
     Generate volcano visualizations for each group in an AnnData object.
     '''
     # Create a correlation matrix from reads stored in adata observations
-    df = toolsAnalysis.log2fc_df(adata, grp, readtype, cutoff)
+    df = toolsTG.log2fc_df(adata, grp, readtype, cutoff)
 
     pairs = ['_'.join(i.split('_')[1:]) for i in df.columns]
     for pair in pairs:
@@ -44,26 +43,28 @@ def visualizer(adata, grp, readtype, cutoff, output):
         ax.set_ylabel('-log10(p-value)')
         ax.set_title(f'Volcano plot of {pair} tRNA read counts')
         # Save figure
-        plt.savefig(f'{output}/{pair}_{readtype}_{cutoff}_volcano.pdf', bbox_inches='tight')
+        print(f'Saving figure: {output}{pair}_{readtype}_{cutoff}_volcano.pdf')
+        plt.savefig(f'{output}{pair}_{readtype}_{cutoff}_volcano.pdf', bbox_inches='tight')
         plt.close()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='pca_tools.py',
-        description='Generate volcano visualizations for each group in an AnnData object.'
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='pca_tools.py',
+    #     description='Generate volcano visualizations for each group in an AnnData object.'
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='volcano', required=False)
-    parser.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_norm', required=False)
-    parser.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='volcano', required=False)
+    # parser.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
+    # parser.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_norm', required=False)
+    # parser.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.volgrp, args.volrt, args.volcutoff, args.output)
+    # visualizer(adata, args.volgrp, args.volrt, args.volcutoff, args.output)

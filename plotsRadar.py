@@ -2,10 +2,10 @@
 
 import numpy as np
 import pandas as pd
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
+# import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -29,7 +29,8 @@ def visualizer(adata, radargrp, colormap, output):
         amino_dict = {}
         for amino in df['amino'].unique():
             amino_dict[amino] = df[df['amino']==amino]['iso'].unique().tolist()
-        df = pd.pivot_table(df, values=rt, index=['iso'], columns=[radargrp], aggfunc=np.sum)
+        # df_alt1 = pd.pivot_table(df, values=rt, index=['iso'], columns=[radargrp], aggfunc=np.sum)
+        df = pd.pivot_table(df, values=rt, index=['iso'], columns=[radargrp], aggfunc='sum')
         # Only create radar plots for amino acids with at least 3 isoforms
         for aa, codons, in amino_dict.items():
             if len(codons) >= 3:
@@ -83,11 +84,11 @@ def visualizer(adata, radargrp, colormap, output):
                 plt.title(f'{aa} Codon Pool Percent Expression Change')
                 # Save plot
                 if rt == 'nreads_total_unique_norm':
-                    plt.savefig(f'{output}/{aa}_radar_by_{radargrp}_unique.pdf', bbox_inches='tight')
-                    print(f'Plot saved to {output}/{aa}_radar_by_{radargrp}_unique.pdf')
+                    plt.savefig(f'{output}{aa}_radar_by_{radargrp}_unique.pdf', bbox_inches='tight')
+                    print(f'Plot saved to {output}{aa}_radar_by_{radargrp}_unique.pdf')
                 else:
-                    plt.savefig(f'{output}/{aa}_radar_by_{radargrp}.pdf', bbox_inches='tight')
-                    print(f'Plot saved to {output}/{aa}_radar_by_{radargrp}.pdf')
+                    plt.savefig(f'{output}{aa}_radar_by_{radargrp}.pdf', bbox_inches='tight')
+                    print(f'Plot saved to {output}{aa}_radar_by_{radargrp}.pdf')
                 plt.close()
 
         # Create radar plot for all amino acids
@@ -151,21 +152,22 @@ def visualizer(adata, radargrp, colormap, output):
         plt.close()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='radar_tools.py',
-        description='Generate radial plots for each sample in an AnnData object.',
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='radar_tools.py',
+    #     description='Generate radial plots for each sample in an AnnData object.',
+    # )
 
-    parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    parser.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser.add_argument('-o', '--output', help='Specify output directory', default='radial', required=False)
-    parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
+    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
+    # parser.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # parser.add_argument('-o', '--output', help='Specify output directory', default='radial', required=False)
+    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.radargrp, args.colormap, args.output)
+    # visualizer(adata, args.radargrp, args.colormap, args.output)

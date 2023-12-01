@@ -2,10 +2,10 @@
 
 import seaborn as sns
 import pandas as pd
-import anndata as ad
-import argparse
+# import anndata as ad
+# import argparse
 
-import toolsDirectory
+# import toolsTG
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -19,10 +19,10 @@ class visualizer():
 
     def main(self):
         # Generate overview plot
-        self.overviewPlot(self.adata, 'whole', self.output)
+        self.overviewPlot(self.adata, 'sample', self.output)
+        self.overviewPlot(self.adata, 'group', self.output)
 
-
-    def overviewPlot(adata, umapgroup, output):
+    def overviewPlot(self, adata, umapgroup, output):
         # Define varibles
         umap1 = '_'.join([umapgroup,'umap1'])
         umap2 = '_'.join([umapgroup,'umap2'])
@@ -32,16 +32,22 @@ class visualizer():
         # Create a list of clusters greater than or equal to 0 in size to filter out non-clustered reads
         hdbscan_annotated = adata.obs[cluster] >= 0
         # Create a 3 x 3 subplot with the umap projection and the cluster labels as the last subplot
-        fig, axs = plt.subplots(1, 3, figsize=(20,20))
+        fig, axs = plt.subplots(2, 2, figsize=(12,12))
         # Plot first through ninth subplots
-        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), ('HDBScan',cluster,2,2)]
+        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), ('Total Number of Unique Reads','nreads_total_unique_norm',1,0), ('HDBScan',cluster,1,1)]
         for i in plot_list:
-            if i[2] == 1 and i[3] == 2:
-                pal = sns.color_palette("mako")
-            else:
-                pal = sns.color_palette("hls", len(pd.unique(adata.obs[i[1]])))
             # Sort the adata object by the categorical variable for legend purposes
             adata = adata[adata.obs[i[1]].sort_values().index, :]
+            # Create a color palette for the categorical variable
+            if i[2] == 1 and i[3] == 0:
+                pal = sns.color_palette("mako")
+            else:
+                pal_size = len(pd.unique(adata.obs[i[1]]))
+                if i[0] == 'HDBScan': # Remove from length if HDBScan because -1 will be plotted independently in grey
+                    pal_size -= 1
+                pal = sns.color_palette("hls", pal_size)
+
+            # Plot the data
             if i[1] == cluster:
                 sns.scatterplot(x=adata.obs[umap1][~hdbscan_annotated], y=adata.obs[umap2][~hdbscan_annotated], s=8, ax=axs[i[2],i[3]], c=(0.5,0.5,0.5), alpha=0.5, legend=False)
                 sns.scatterplot(x=adata.obs[umap1][hdbscan_annotated], y=adata.obs[umap2][hdbscan_annotated], s=8, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][hdbscan_annotated], palette=pal, legend=False)
@@ -53,27 +59,29 @@ class visualizer():
             axs[i[2],i[3]].set_xticks([])
             axs[i[2],i[3]].set_yticks([])
         # Add title
-        fig.suptitle(f'UMAP Projection of tRNAs sorted by tRAX {umapgroup}', y=1.01)
+        fig.suptitle(f'UMAP Projection of tRNAs sorted by tRAX {umapgroup}')
         # Save figure
-        plt.savefig(output + f'/umap_overview_{umapgroup}.pdf', bbox_inches='tight')
+        print(f'Saving figure: {output}umap_{umapgroup}_overview.pdf')
+        plt.savefig(f'{output}umap_{umapgroup}_overview.pdf', bbox_inches='tight')
         plt.close()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='plotsCluster.py',
-        description='Generate plots from UMAP projection of tRNA dataset',
-    )
+    pass
+    # parser = argparse.ArgumentParser(
+    #     prog='plotsCluster.py',
+    #     description='Generate plots from UMAP projection of tRNA dataset',
+    # )
 
-    parser.add_argument('-i', '--anndata',
-                        help='Specify AnnData input', required=True)
-    parser.add_argument('-o', '--output', 
-                        help='Specify output directory', default='umap', required=False)
+    # parser.add_argument('-i', '--anndata',
+    #                     help='Specify AnnData input', required=True)
+    # parser.add_argument('-o', '--output', 
+    #                     help='Specify output directory', default='umap', required=False)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
-    toolsDirectory.builder(args.output)
+    # # Create output directory if it doesn't exist
+    # toolsTG.builder(args.output)
 
-    adata = ad.read_h5ad(args.anndata)
+    # adata = ad.read_h5ad(args.anndata)
 
-    visualizer(adata, args.output)
+    # visualizer(adata, args.output)

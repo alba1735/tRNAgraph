@@ -136,12 +136,14 @@ dmypy.json
 *.h5ad
 
 # Program specific files
-/trnagraph
 *.tsv
-test*.bash
 config.yaml
-Snakefile
-.snakemake
 .log
 screenlog.0
 config.json
+/archive
+/config
+/figures
+/h5ad
+**.ipynb
+Snakefile
