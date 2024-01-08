@@ -29,7 +29,7 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
       end
       I2 --> G{Plot Options}
       subgraph sg2 [trnagraph.py graph]
-        G -->|default| G1([bar, cluster, correlation, coverage, heatmaps, pca, radar, volcano plots])
+        G -->|default| G1([bar, cluster, correlation, coverage, heatmaps, logo, pca, radar, volcano plots])
         G -->|requires config.json| G2([comparison plots])
         G -->|requires clustering| G3([Cluster plots])
         J([config.json]) --> G 
@@ -87,7 +87,7 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 
 * `-i` or `--traxdir` is the path to the tRAX directory you want to build an AnnData database object from.
 * `-m` or `--metadata` is the path to the tRAX generation file containing sample names, sample groups, and fastq paths.
-* `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `trnagraph.h5ad` if no path is provided.
+* `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `h5ad/trnagraph.h5ad` if no path is provided.
 * Observations are the metadata categories to include in the database object. This can be a list `-l/--observationslist` or a tab separated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
 * `--log` is wether to output a log of the shell commands used to generate the AnnData object. By default, the log will not be output.
 
@@ -100,7 +100,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 ```
 
 * `-i` or `--anndata` is the path to the database object you want to generate visualizations from.
-* `-o` or `--output` is the path to the output directory. By default, the output directory will be named `trnagraph` if no path is provided.
+* `-o` or `--output` is the path to the output directory. By default, the output directory will be named `figures` if no path is provided.
 * `-g` or `--graph` is the type of graph to generate. The following graphs can be generated:
   * `bar` - Generates bar plots of the tRNA coverage.
   * `cluster` - Generates cluster plots of the tRNA coverage.

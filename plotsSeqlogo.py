@@ -5,13 +5,7 @@ import pandas as pd
 # import anndata as ad
 # import argparse
 
-# import toolsTG
-
 import logomaker
-# from sklearn.preprocessing import RobustScaler
-# from sklearn.preprocessing import MinMaxScaler
-# from sklearn.preprocessing import StandardScaler
-# from sklearn.preprocessing import Normalizer
 
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -23,7 +17,7 @@ class visualizer():
     def __init__(self, adata, output):
         self.adata = adata
         self.output = output
-        self.psuedocount = 0
+        self.psuedocount = 20
         self.coverage_grp = 'amino'
         self.pal_dict = {'T':'#ea4335','A':'#34a853','C':'#4285f4', 'G':'#fbbc05'}
 
@@ -34,193 +28,79 @@ class visualizer():
     def generate_plots(self):
         for i in sorted(self.adata.obs[self.coverage_grp].values.unique()):
             seq_list = [i for i in self.adata.obs[self.adata.obs[self.coverage_grp] == i].refseq.values]
-            df_seqinfo = self.build_seqdata(seq_list)
-            self.consensus_plot(df_seqinfo, seq_list, i)
+            seq_adata = self.adata[self.adata.obs[self.coverage_grp] == i]
+            # Remove gaps from the adata
+            seq_adata = seq_adata[:,seq_adata.var['gap'] == False]
+            seq_size = seq_adata[:,seq_adata.var['coverage'] == 'adenines'].shape[1]
+            # Create an information matrix from the sequence reads
+            df_seqinfo, df_consensus = self.build_seqdata(seq_list, seq_adata, seq_size)
+            self.consensus_plot(df_seqinfo, df_consensus, seq_list, i)
 
-            # Create a matrix of base counts at each position
-            # self.logo_counts(seq_list, 'deseq', self.coverage_grp, i)
 
-            # self.logo_counts(seq_list, 'robust', self.coverage_grp, i)
-            # self.logo_counts(seq_list, 'normalizer', self.coverage_grp, i)
-            # self.logo_counts(seq_list, 'minmax', self.coverage_grp, i)
-            # self.logo_counts(seq_list, 'standard', self.coverage_grp, i)
-
-            # self.logo_counts(seq_list, 'raw', self.coverage_grp, i)
-
-    def build_seqdata(self, seq_list):
+    def build_seqdata(self, seq_list, seq_adata, seq_size):
         # Create a matrix of 0s for the sequence reads
-        df_seqreads = pd.DataFrame(np.full((len(seq_list[0]),4), 0), columns=['A','C','G','T'])
-        # Iterate through the sequence list and add the counts to the matrix to generate a count matrix
-        for seq in seq_list:
-            for i in range(len(seq)):
-                if seq[i] != '-':
-                    df_seqreads.at[i,seq[i]] += 1
-        # Remove the last 3 positions from the matrix to remove the CCA tail
-        df_seqreads = df_seqreads.iloc[:-3,:]
+        df_seqreads = pd.DataFrame(np.full((seq_size,4),0), columns=['A','C','G','T'])
+        # Iterate through the reads in A,G,C,T order and add the counts to the matrix from the adata
+        for k,base in {'A':'adenines', 'C':'cytosines', 'G':'guanines', 'T':'thymines'}.items():
+            base_list = seq_adata[:,seq_adata.var['coverage'] == base]
+            # multiple the base_list by the deseq2_sizefactor to unnormalize the counts
+            # base_list.X = base_list.X * base_list.obs['deseq2_sizefactor'].values.reshape(-1,1)
+            df_seqreads[k] = base_list.X.mean(axis=0)
+            # df_seqreads[k] = base_list.X.sum(axis=0)
+
+
+        # Add a psuedocount to the matrix
+        df_seqreads += self.psuedocount
+
+        # Create a consensus sequence from the df where the base with the highest information is selected
+        consensus = df_seqreads.apply(lambda x: x.idxmax(), axis=1)
+        # Create a list for the consensus scores
+        consensus_score = []
+        for row in df_seqreads.iterrows():
+            # For each row in the df, calculate the consensus score by dividing the highest value by the sum of all values
+            consensus_score.append(row[1][row[1].idxmax()]/row[1].sum())
+        # Combine the consensus scores with the consensus sequence into a single df
+        df_consensus = pd.concat([pd.DataFrame(consensus_score), consensus], axis=1)
+        df_consensus.columns = ['score', 'base']
+        df_consensus['position'] = df_seqreads.index + 1
+        # For each position in df_combine equal to 0, set the consensus base to a dash
+        for i in range(len(df_consensus['score'])):
+            if df_consensus['score'][i] == 0:
+                df_consensus.at[i,'base'] = '-'
+
+        # # Iterate through the sequence list and add the counts to the matrix to generate a count matrix
+        # for seq in seq_list:
+        #     for i in range(len(seq)):
+        #         if seq[i] != '-':
+        #             df_seqreads.at[i,seq[i]] += 1
+        # # Remove the last 3 positions from the matrix to remove the CCA tail
+        # # df_seqreads = df_seqreads.iloc[:-3,:]
+
+        # # Create a consensus sequence from the df where the base with the highest information is selected
+        # consensus = df_seqinfo.apply(lambda x: x.idxmax(), axis=1)
+        # # Create a matrix from the sequence list where each row is a sequence and each column is a position
+        # # The matrix is a factor of 1 if the base at that position matches the consensus and 0 if it does not
+        # df_seq = pd.DataFrame(np.full((len(seqs),len(seqs[0])), 0), columns=[i for i in range(len(seqs[0]))])
+        # for seq in range(len(seqs)):
+        #     for pos in range(len(seqs[seq])-3): # Remove the last 3 positions from the matrix to remove the CCA tail
+        #         if seqs[seq][pos] == consensus[pos]:
+        #             df_seq.at[seq,pos] = 1
+        # # Collapse the matrix into a single row by summing the columns then divide by the number of sequences
+        # df_seq = df_seq.sum(axis=0)/len(seqs)
+        # # combine the df_seq and consensus into a single df
+        # df_combine = pd.concat([df_seq, consensus], axis=1)
+        # df_combine.columns = ['score', 'base']
+        # # For each position in df_combine equal to 0, set the consensus base to a dash
+        # for i in range(len(df_combine['score'])):
+        #     if df_combine['score'][i] == 0:
+        #         df_combine.at[i,'base'] = '-'
+    
         # Convert the counts to information
         df_seqinfo = logomaker.transform_matrix(df_seqreads, from_type='counts', to_type='information')
 
-        return df_seqinfo
-    
-    def logo_counts(self, seq_list, norm_type, category, unit):
-        # Create a matrix of 0s and add the pseudocount
-        df_background = pd.DataFrame(np.full((len(seq_list[0]),4), self.psuedocount), columns=['A','C','G','T'])
-        df_sumcounts = pd.DataFrame(np.full((len(seq_list[0]),4), self.psuedocount), columns=['A','C','G','T'])
-        df_meancounts = pd.DataFrame(np.full((len(seq_list[0]),4), self.psuedocount), columns=['A','C','G','T'])
-        # df_mediancounts = pd.DataFrame(np.full((len(seq_list[0]),4), self.psuedocount), columns=['A','C','G','T'])
-        df_actualreads = pd.DataFrame(np.full((len(seq_list[0]),4), self.psuedocount), columns=['A','C','G','T'])
-        df_seqreads = pd.DataFrame(np.full((len(seq_list[0]),4), 0), columns=['A','C','G','T'])
-        # Subset the adata matrix to match the sequence list
-        ad = self.adata[:,np.isin(self.adata.var.gap.values, [False])]
-        mx = ad[np.isin(ad.obs[category], [unit]),:]
+        return df_seqinfo, df_consensus
 
-        # Apply the scikit-learn robust scaler to normalize the counts of mx
-        mx.layers['deseq'] = mx.X
-        # elif norm_type == 'robust':
-        #     mx.layers['robust'] = RobustScaler().fit_transform(mx.X)
-        # elif norm_type == 'minmax':
-        #     mx.layers['minmax'] = MinMaxScaler().fit_transform(mx.X)
-        # elif norm_type == 'standard':
-        #     mx.layers['standard'] = StandardScaler().fit_transform(mx.X)
-        # elif norm_type == 'normalizer':
-        #     mx.layers['normalizer'] = Normalizer().fit_transform(mx.X)
-
-        print(unit, norm_type, mx.layers[norm_type].min(), mx.layers[norm_type].max(), mx.layers[norm_type].mean(), '\n')
-        
-        # Generate a matrix of base counts at each position as a factor of the total counts
-        base_list = ['adenines','cytosines','guanines','thymines']
-        for i in range(len(base_list)):
-            adx = ad[:,np.isin(ad.var.coverage.values, [base_list[i]])]
-            mxx = mx[:,np.isin(mx.var.coverage.values, [base_list[i]])]
-
-
-
-            # df_background.iloc[:,i] += adx.layers[norm_type].sum(axis=0)
-            df_sumcounts.iloc[:,i] += mxx.layers[norm_type].sum(axis=0)
-            df_meancounts.iloc[:,i] += mxx.layers[norm_type].mean(axis=0)
-            # df_mediancounts.iloc[:,i] += np.median(mxx.layers[norm_type], axis=0)
-            # replace all values over 0 with 1
-            mxx.layers[norm_type][mxx.layers[norm_type] > 0] = 1
-            df_actualreads.iloc[:,i] += mxx.layers[norm_type].sum(axis=0)
-
-        # Iterate through the sequence list and add the counts to the matrix to generate a count matrix
-        for seq in seq_list:
-            for i in range(len(seq)):
-                if seq[i] != '-':
-                    df_seqreads.at[i,seq[i]] += 1
-
-        # Remove the last 3 positions from the matrix to remove the CCA tail
-        # df_background = df_background.iloc[:-3,:]
-        df_sumcounts = df_sumcounts.iloc[:-3,:]
-        df_meancounts = df_meancounts.iloc[:-3,:]
-        # df_mediancounts = df_mediancounts.iloc[:-3,:]
-        df_actualreads = df_actualreads.iloc[:-3,:]
-        df_seqreads = df_seqreads.iloc[:-3,:]
-
-        # print(df_background)
-        # print(df_readcounts)
-        # print(df_seqreads)
-        # print(df_seqreads_alt)
-        # exit()
-
-        # Create a mask for the coverage
-        # if self.cov_mask:
-        #     cov_df = pd.DataFrame(mx.X).mean(axis=0)
-        #     self.cov_mask = [True if i >= self.cov_mask else False for i in cov_df/cov_df.max()]
-
-        title_base = f'{self.coverage_grp}_{unit}'
-
-        # if self.cov_mask:
-        #     for x in range(len(df_readcounts)):
-        #         if self.cov_mask[x] == False: 
-        #             df_readcounts.iloc[x] = [0,0,0,0]
-        #     title = title_base + f'_frequency_cutoff_{self.cutoff}_cov_testcovmask'
-
-        # Convert the counts to information
-        df_info_actualreads = logomaker.transform_matrix(df_actualreads, from_type='counts', to_type='information')
-        df_info_seqreads = logomaker.transform_matrix(df_seqreads, from_type='counts', to_type='information')
-        df_info_sumcounts = logomaker.transform_matrix(df_sumcounts, from_type='counts', to_type='information')
-        df_info_meancounts = logomaker.transform_matrix(df_meancounts, from_type='counts', to_type='information')
-        # df_info_mediancounts = logomaker.transform_matrix(df_mediancounts, from_type='counts', to_type='information')
-        # df_counts = self.freq_matrix(df)
-
-        self.logo_plot(df_info_actualreads, 'information', title=title_base+f'_information_actualreads_{norm_type}_pseudo{self.psuedocount}')
-        self.logo_plot(df_info_seqreads, 'information', title=title_base+'_information_seqreads')
-        self.logo_plot(df_info_sumcounts, 'information', title=title_base+f'_information_sumcounts_{norm_type}_pseudo{self.psuedocount}')
-        self.logo_plot(df_info_meancounts, 'information', title=title_base+f'_information_meancounts_{norm_type}_pseudo{self.psuedocount}')
-        # self.logo_plot(df_info_mediancounts, 'information', title=title_base+f'_information_mediancounts_pseudo{self.psuedocount}')
-        self.logo_plot(df_actualreads, 'counts', title=title_base+f'_counts_actualreads_{norm_type}_pseudo{self.psuedocount}')
-        self.logo_plot(df_seqreads, 'counts', title=title_base+f'_counts_seqreads')
-        self.logo_plot(df_sumcounts, 'counts', title=title_base+f'_counts_sumcounts_{norm_type}_pseudo{self.psuedocount}')
-        self.logo_plot(df_meancounts, 'counts', title=title_base+f'_counts_meancounts_{norm_type}_pseudo{self.psuedocount}')
-        # self.logo_plot(df_mediancounts, 'counts', title=title_base+f'_counts_mediancounts_pseudo{self.psuedocount}')
-
-    def logo_plot(self, df, seq_type, title):
-        fig, ax = plt.subplots(figsize=(9,3))
-        logomaker.Logo(df, color_scheme=self.pal_dict, ax=ax)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.set_xlim([-1, 73])
-        ax.set_xticks([])
-        ax.set_title(title, fontsize='x-large')
-        
-        # if self.divergence_plot == True:
-        #     ax.spines['left'].set_bounds(-2, 2)
-        #     y = -2.25
-        #     yys = 0.935
-        #     ax.set_ylim([-2.5, 2])
-        #     ax.set_yticks([-2, -1, 0, 1, 2])
-        #     ax.set_yticklabels(['-2','-1','0','1','2'])
-        #     ax.set_ylabel("       Bits", fontsize=12, verticalalignment='center')
-        # else:
-
-        ax.spines['left'].set_bounds(0, 2)
-        y = -.16
-        yys = 0.6
-        # ax.set_ylim([-0.25, 2])
-        if seq_type == 'information':
-            ax.set_ylim([-0.25, 2])
-            ax.set_yticks([0, 1, 2])
-            ax.set_yticklabels(['0','1','2'])
-            ax.set_ylabel("       Bits", fontsize=12, verticalalignment='center')
-        elif seq_type == 'counts':
-            pass
-            # ax.set_yticks([0,2])
-            # ax.set_yticklabels(['0%','100%'])
-            # ax.set_ylabel("       Frequency", fontsize=12, verticalalignment='center')    
-            # if self.cutoff > 0:
-            #     ax.plot([-1,73],[self.cutoff*2,self.cutoff*2],linewidth=1,ls='--',color='black')
-        
-        # Highlight the tRNA loops and arms
-        ax.text(16.5, yys*y, 'D-Arm/Loop', fontsize=10, verticalalignment='top', horizontalalignment='center', color='white')
-        ax.text(34, yys*y, 'A-Arm/Loop', fontsize=10, verticalalignment='top', horizontalalignment='center', color='white')
-        ax.text(56, yys*y, 'T-Arm/Loop', fontsize=10, verticalalignment='top', horizontalalignment='center', color='white')
-        ax.axvspan(8.5, 24.5, color='#f0f0f0', zorder=-2)
-        ax.axvspan(25.5, 42.5, color='#f0f0f0', zorder=-2)
-        ax.axvspan(47.5, 64.5, color='#f0f0f0', zorder=-2)
-        ax.axvspan(12.5, 20.5, color='#cacaca', zorder=-1)
-        ax.axvspan(30.5, 37.5, color='#cacaca', zorder=-1)
-        ax.axvspan(52.5, 59.5, color='#cacaca', zorder=-1)
-        # Plot dashed lines
-        ax.plot([8.5, 8.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        ax.plot([24.5, 24.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        ax.plot([25.5, 25.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        ax.plot([42.5, 42.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        ax.plot([47.5, 47.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        ax.plot([64.5, 64.5], [0, 2], color='k', linewidth=1, linestyle='--', zorder=0)
-        # Draw tRNA scheme at the bottom
-        ax.axhline(y, color='k', linewidth=1)
-        xs = np.arange(-3, len(df), 10)
-        ys = y*np.ones(len(xs))
-        ax.plot(xs, ys, marker='4', linewidth=0, markersize=7, color='k')
-        ax.plot([8.5, 24.5], [y, y], color='k', linewidth=12, solid_capstyle='butt')
-        ax.plot([25.5, 42.5], [y, y], color='k', linewidth=12, solid_capstyle='butt')
-        ax.plot([47.5, 64.5], [y, y], color='k', linewidth=12, solid_capstyle='butt')
-
-        plt.savefig(f'{self.output}/{title}.pdf', bbox_inches='tight')
-
-    def consensus_plot(self, df, seqs, unit):
+    def consensus_plot(self, df_seqinfo, df_consensus, seqs, unit):
         # Create a figure with 4 subplots
         fig = plt.figure(figsize=(10, 2))
         # Create 4 subplots with the first 3 stacked on top of each other and the last one spanning all 3 on the right
@@ -230,43 +110,24 @@ class visualizer():
         ax2 = plt.subplot(gs[1, 0])
         ax3 = plt.subplot(gs[2, 0])
         ax4 = plt.subplot(gs[:, 1])
-        # Create a seqlogo in the top subplot
-        logomaker.Logo(df, color_scheme=self.pal_dict, ax=ax1)
+        # Create a seqlogo in the top subplot - Account for CCA tail
+        logomaker.Logo(df_seqinfo.iloc[:-3,:], color_scheme=self.pal_dict, ax=ax1)
         ax1.set_ylim([0, 2])
         ax1.set_yticks([0, 1, 2])
         ax1.set_yticklabels(['0','1','2'])
         ax1.set_ylabel("Bits", rotation=0, verticalalignment='center')
         ax1.get_yaxis().set_label_coords(-0.1,0.5)
         ax1.set_xticks([])
-        # Create a consensus sequence from the df where the base with the highest information is selected
-        consensus = df.apply(lambda x: x.idxmax(), axis=1)
-        # Create a matrix from the sequence list where each row is a sequence and each column is a position
-        # The matrix is a factor of 1 if the base at that position matches the consensus and 0 if it does not
-        df_seq = pd.DataFrame(np.full((len(seqs),len(seqs[0])), 0), columns=[i for i in range(len(seqs[0]))])
-        for seq in range(len(seqs)):
-            for pos in range(len(seqs[seq])-3): # Remove the last 3 positions from the matrix to remove the CCA tail
-                if seqs[seq][pos] == consensus[pos]:
-                    df_seq.at[seq,pos] = 1
-        # Collapse the matrix into a single row by summing the columns then divide by the number of sequences
-        df_seq = df_seq.sum(axis=0)/len(seqs)
-
-        print(consensus)
-
-        # For each position in df_seq equal to 0, set the consensus base to a dash
-        for i in range(len(df_seq)):
-            if df_seq[i] == 0:
-                consensus = consensus[:i] + '-' + consensus[i+1:]
-
-                
-        print(consensus)
+        # Subset the df_consensus to remove the last 3 positions from the matrix to remove the CCA tail
+        df_consensus = df_consensus.iloc[:-3,:]
         # Create a heatmap in the lower subplot
-        ax2.imshow([df_seq], cmap='Blues', aspect='auto', interpolation='nearest')
+        ax2.imshow([df_consensus['score']], cmap='Blues', aspect='auto', interpolation='nearest')
         # Print the consensus horizontally aligned with the heatmap below it
-        for i in range(len(consensus)):
-            if df_seq[i] > 0.5:
-                ax2.text(i, 0, consensus[i], fontsize=10, verticalalignment='center', horizontalalignment='center', color='white')
+        for i in df_consensus.iterrows():
+            if i[1]['score'] > 0.7:
+                ax2.text(i[0], 0, i[1]['base'], fontsize=10, verticalalignment='center', horizontalalignment='center', color='white')
             else:
-                ax2.text(i, 0, consensus[i], fontsize=10, verticalalignment='center', horizontalalignment='center', color='black')
+                ax2.text(i[0], 0, i[1]['base'], fontsize=10, verticalalignment='center', horizontalalignment='center', color='black')
         ax2.set_yticks([])
         ax2.set_ylabel("Consensus", rotation=0, verticalalignment='center')
         ax2.get_yaxis().set_label_coords(-0.1,0.5)
@@ -317,6 +178,7 @@ class visualizer():
         fig.suptitle(f'Consensus Logo {self.coverage_grp}_{unit}', fontsize='x-large')
         # save the figure
         plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
+        plt.close()
 
 if __name__ == '__main__':
     pass

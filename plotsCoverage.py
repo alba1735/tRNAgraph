@@ -14,6 +14,7 @@ from multiprocessing import Pool
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.patches as mpatches
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
@@ -40,7 +41,7 @@ class visualizer():
                 raise ValueError('Coverage obs contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
                                 'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.')
         # Clean AnnData object for plotting
-        self.adata = self.clean_adata(adata)
+        self.adata, self.readstarts, self.readends = self.clean_adata(adata)
         if colormap != None:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
@@ -56,12 +57,14 @@ class visualizer():
         if self.coverage_obs:
             for k,v in self.coverage_obs.items():
                 adata = adata[np.isin(adata.obs[k].values, v),:]
-        # Subset by coverage type from AnnData variables
-        adata = adata[:,np.isin(adata.var.coverage, [self.coverage_type])]
         # Subset gaps from AnnData variables
         adata = adata[:,np.isin(adata.var.gap, self.coverage_gap)]
-        
-        return adata
+        # Subset just the readstarts and readends from AnnData variables
+        readstarts = adata[:,np.isin(adata.var.coverage, ['readstarts'])].copy()
+        readends = adata[:,np.isin(adata.var.coverage, ['readends'])].copy()
+        # Subset by coverage type from AnnData variables
+        adata = adata[:,np.isin(adata.var.coverage, [self.coverage_type])]
+        return adata, readstarts, readends
 
     def generate_combine(self):
         '''
@@ -107,10 +110,14 @@ class visualizer():
         # Use multiprocessing to generate plots
         with Pool(self.threads) as p:
             p.map(self.generate_split_single, self.adata.obs.trna.unique())
+        # for trna in self.adata.obs.trna.unique():
+        #     print(trna)
+        #     self.generate_split_single(trna)
     
     def generate_split_single(self, trna):
         # Creat df for single tRNA
         df = pd.DataFrame(self.adata[self.adata.obs.trna == trna].X.T, columns=self.adata[self.adata.obs.trna == trna].obs[self.coverage_grp].values)
+
         # Generate plot with confidence intervals
         fig, ax = plt.subplots(figsize=(6,5.5))
         self.generate_plot(df, ax, trna, coverage_fill='ci')
@@ -122,6 +129,7 @@ class visualizer():
             plt.savefig(f'{self.output}/single/low_coverage/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_ci.pdf', bbox_inches='tight')
             low_coverage = True
         plt.close()
+
         # Generate plot with fill
         fig, ax = plt.subplots(figsize=(6,5.5))
         self.generate_plot(df, ax, trna, coverage_fill='fill')
@@ -131,15 +139,48 @@ class visualizer():
         else:
             plt.savefig(f'{self.output}/single/low_coverage/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{self.coverage_obs}_with_fill.pdf', bbox_inches='tight')
         plt.close()
+        
+        for i in self.adata.obs[self.coverage_grp].unique():
+            if not low_coverage:
+                # Generate plot with readstarts and readends
+                fig, ax = plt.subplots(figsize=(6,5.5))
+                # Subset the df to the current group
+                df_grp = df[i]
+                if df_grp.sum().sum() != 0:
+                    # Get the readstarts/ends for the current group and get the mean of each position
+                    df_readstarts = pd.DataFrame(self.readstarts[self.readstarts.obs.trna == trna].X.T, columns=self.readstarts[self.readstarts.obs.trna == trna].obs[self.coverage_grp].values)[i]
+                    df_readstarts = df_readstarts.mean(axis=1)
+                    df_readends = pd.DataFrame(self.readends[self.readends.obs.trna == trna].X.T, columns=self.readends[self.readends.obs.trna == trna].obs[self.coverage_grp].values)[i]
+                    df_readends = df_readends.mean(axis=1)
+                    # Combine the readstarts and readends into a single df
+                    df_readstartends = pd.concat([df_readstarts, df_readends], axis=1)
+                    df_readstartends.columns = ['readstarts', 'readends']
+                    # Scale the df so that sum of each column is 1
+                    df_readstartends = df_readstartends/df_readstartends.sum()
+                    # Add position column to df
+                    df_readstartends['position'] = df_readstartends.index
+                    # Melt the df so that readstarts and readends are in the same column for plotting
+                    df_readstartends = df_readstartends.melt(id_vars='position', value_vars=['readstarts', 'readends'])
+                    self.generate_plot(df_grp, ax, trna, coverage_fill='endstarts', rse=df_readstartends)
+                    plt.savefig(f'{self.output}/single/{trna}_{self.coverage_type}_by_{self.coverage_grp}_{i}_{self.coverage_obs}_with_endstarts.pdf', bbox_inches='tight')
+            plt.close()
 
-    def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True):
+    def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True, rse=None):
         '''
         Generate coverage plots for a single tRNA.
         '''
         if coverage_fill == 'ci': 
             sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('ci'), zorder=2, ax=ax)
-        else:
+        elif coverage_fill == 'fill':
             sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('ci', False), zorder=2, ax=ax)
+        elif coverage_fill == 'endstarts':
+            # Get the mean of all the columns
+            df = df.mean(axis=1)
+            # Scale the df so that sum of all values is 1
+            df = df/df.sum()
+            sns.lineplot(data=df, linewidth=1.5, dashes=False, color='dimgrey', zorder=3, ax=ax)
+            sns.histplot(data=rse, x='position', weights='value', hue='variable', palette=['magenta','cyan'], alpha=0.5, discrete=True, zorder=2, \
+                         stat='probability', common_norm=False, linewidth=0, legend=True, ax=ax)
 
         # Fill the area under the curve with the mean by going in order of the column with the highest mean to the lowest if fill/both is specified
         if coverage_fill == 'fill':
@@ -150,22 +191,72 @@ class visualizer():
                 ax.fill_between(df_mean.index, df_mean[i], color=self.coverage_pal.get(i), alpha=0.35, zorder=1)
 
         # Set plot parameters
-        ax.set_ylabel("Normalized Readcounts")
-        ylim = ax.get_ylim()
-        ax.set_ylim(0, ylim[1])
-
-        if xaxis:
-            ax.set_xlabel("Positions on tRNA")
-        ax.set_xlim(0, 73)
-        ax.set_xticks([18.01,35.01,37,57.01,58])
-        ax.set_xticklabels(['\nD-Arm','\nA-Arm','37','\nT-Arm','58'])
-
         plt.tick_params(axis='both', which='both', bottom=False, top=False, left=False, right=False, labelbottom=True, labelleft=True)
         ax.set_title(f'{trna} {self.coverage_type}')
 
+        ax.set_ylabel("Normalized Readcounts")
+        if coverage_fill == 'endstarts':
+            ylim = [0,1]
+            # Set as 0 to 100%
+            ax.set_yticks([0,0.25,0.5,0.75,1])
+            ax.set_yticklabels(['0%','25%','50%','75%','100%'])
+        else:
+            ylim = ax.get_ylim()
+        ax.set_ylim(0, ylim[1])
+
         # Add dashed lines to plot for common tRNA modifications
-        for i in [37, 58]:
-            plt.plot([i,i],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+        if coverage_fill == 'endstarts':
+            # Create a df with the same columns as the rse df but empty
+            names_df = pd.DataFrame({'position_start':[18.01,35.01,57.01], 'position_end':[18.01,35.01,57.01], 'name':['\nD-Arm','\nA-Arm','\nT-Arm']},\
+                                     columns=['position_start','position_end','name'])
+            # Add vertical dashed lines to plot for histobars that are above 10%
+            for rt in rse['variable'].unique():
+                current_start, current_bound = 0, 0
+                endstart_switch = False
+                for i, row in rse[rse['variable']==rt].iterrows():
+                    if row['value'] >= 0.1:
+                        if row['position'] - current_start > 1:
+                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+                            current_bound = row['position']
+                        current_start = row['position']
+                        endstart_switch = True
+                    else:
+                        if endstart_switch:
+                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+                            # Set name as the avg of the start and end positions
+                            if current_bound+1 == row['position']:
+                                names_df = pd.concat([names_df, pd.DataFrame({'position_start':[current_bound-1], 'position_end':[row['position']], 'name':[str(current_bound)]},\
+                                                                              columns=['position_start','position_end','name'])])
+                            else:
+                                names_df = pd.concat([names_df, pd.DataFrame({'position_start':[current_bound-1], 'position_end':row['position'], 'name':[str(current_bound+1)+'-'+str(row['position'])]},\
+                                                                            columns=['position_start','position_end','name'])])
+                            endstart_switch = False
+                if endstart_switch:
+                    if current_bound == 75:
+                        names_df = pd.concat([names_df, pd.DataFrame({'position_start':[current_bound], 'position_end':[75], 'name':[str(current_bound)]},\
+                                                                      columns=['position_start','position_end','name'])])
+                    else:
+                        names_df = pd.concat([names_df, pd.DataFrame({'position_start':[current_bound], 'position_end':[75], 'name':[str(current_bound+1)+'-'+str(75)]},\
+                                                                      columns=['position_start','position_end','name'])])
+        else:
+            for i in [37, 58]:
+                plt.plot([i,i],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+
+        if xaxis:
+            ax.set_xlabel("Positions on tRNA")
+        if coverage_fill == 'endstarts':
+            ax.set_xlim(-0.5, 75.5)
+            # Add horizontal dashed line to plot for histo above 10%
+            plt.plot([-0.5,75.5],[0.1,0.1],linewidth=1,ls='--',color='black', zorder=3)
+            # Add the xticks and xticklabels
+            names_df['avg'] = (names_df['position_end'] + names_df['position_start'])/2
+            names_df = names_df.sort_values(by=['avg'])
+            ax.set_xticks(names_df['avg'])
+            ax.set_xticklabels(names_df['name'])
+        else:
+            ax.set_xlim(0, 75) # ax.set_xlim(0, 73)
+            ax.set_xticks([18.01,35.01,37,57.01,58])
+            ax.set_xticklabels(['\nD-Arm','\nA-Arm','37','\nT-Arm','58'])
 
         # Add coverage regions to background
         for i in [[14,21],[32,38],[54,60],[10,25],[27,43],[49,65]]:
@@ -173,10 +264,20 @@ class visualizer():
 
         # Capatilize the legend and move the legend outside the plot and remove the border around it
         if lgnd:
-            handles, labels = ax.get_legend_handles_labels()
-            ax.legend(handles=handles, labels=[x.capitalize() for x in labels])
-            ax.legend(loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
-            ax.legend_.set_title(self.coverage_grp.capitalize())
+            
+            if coverage_fill == 'endstarts':
+                classes = ['Readstarts', 'Readends']
+                class_colours = ['magenta', 'cyan']
+                recs = []
+                for i in range(0, len(class_colours)):
+                    recs.append(mpatches.Rectangle((0, 0), 1, 1, fc=class_colours[i]))
+                ax.legend(recs, classes, loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
+                ax.legend_.set_title('Coverage')
+            else:
+                handles, labels = ax.get_legend_handles_labels()
+                ax.legend(handles=handles, labels=[x.capitalize() for x in labels])
+                ax.legend(loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
+                ax.legend_.set_title(self.coverage_grp.capitalize())
         else:
             ax.legend_.remove()
 

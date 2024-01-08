@@ -143,7 +143,7 @@ class trax2anndata():
                   'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct:\n ' \
                   + str(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist()))
         # Add output name to adata object index
-        adata.obs.index = [self.output.split('.')[0] + '_' + str(x) for x in adata.obs.index] 
+        adata.obs.index = [os.path.basename(self.output).split('.')[0] + '_' + str(x) for x in adata.obs.index]
         # Save adata object
         adata.write(self.output)
         print(f'Writing h5ad database object to {self.output}')

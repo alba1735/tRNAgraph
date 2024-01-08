@@ -10,6 +10,8 @@ def builder(directory):
     '''
     Function to create output directory if it does not already exist
     '''
+    if '/' not in directory: # fix for dumb pathing
+        directory = './' + directory
     if not os.path.exists(directory):
         print(f'Creating output directory: {os.path.dirname(directory)}')
         os.makedirs(os.path.dirname(directory), exist_ok=True)
