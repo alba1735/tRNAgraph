@@ -73,7 +73,7 @@ class trax2anndata():
         self.observations = observations
         if self.observations:
             # Make sure that observations are not going to be generated automatically
-            auto_obs = ['trna', 'iso', 'amino', 'sample', 'group', 'deseq2_sizefactor', 'refseq', 'dataset']
+            auto_obs = ['trna', 'iso', 'amino', 'sample', 'group', 'deseq2_sizefactor', 'refseq', 'dataset', 'pseudogene']
             if any(x in self.observations for x in auto_obs):
                 raise ValueError(f'The following observation categories will automatically be generated please remove these if you included them: {auto_obs}')
             # Make sure that observations are unique
@@ -184,7 +184,7 @@ class trax2anndata():
             obs_df[i] = [self.metadata.get(i).get(x) for x in obs_df['sample'].values]
         # Add tRNA type, amino acid, iso, refseq, sizefactor, and nreads to obs dataframe
         trna_obs = obs_df['trna'].str.split('-',n=4,expand=True)
-        obs_df['trna_type'] = trna_obs[0]
+        obs_df['pseudogene'] = trna_obs[0]
         obs_df['amino'] = trna_obs[1]
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
@@ -280,6 +280,7 @@ class trax2anndata():
         # Add sample and group metadata
         adata.obs['sample'] = obs_df['sample'].values
         adata.obs['group'] = obs_df['group'].values
+        adata.obs['pseudogene'] = obs_df['pseudogene'].values
         # Add custom dataframe obs
         for ob in self.observations:
             adata.obs[ob] = obs_df[ob].values
@@ -356,8 +357,7 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'coverage', 'heatmap', 'pca', 'radar', 'volcano']
-            # self.args.graphtypes = ['logo']
+            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
 
         if self.args.config:
             print('Loading config file: ' + self.args.config)
@@ -389,6 +389,47 @@ class anndataGrapher:
         else:
             d_config = {}
 
+        if 'bar' in self.args.graphtypes:
+            colormap_tc, colormap_bg = None, None
+            if 'colormap' in d_config:
+                if self.args.bargrp in d_config['colormap']:
+                    colormap_bg = d_config['colormap'][self.args.bargrp]
+                if 'group' in d_config['colormap']:
+                    colormap_tc = d_config['colormap']['group']
+            print('Generating bar plots...')
+            output = self.args.output + '/bar/'
+            toolsTG.builder(output)
+            plotsBar.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
+            print('Bar plots generated.\n')
+
+        if 'cluster' in self.args.graphtypes:
+            if not 'cluster_runinfo' in self.adata.uns:
+                print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
+            else:
+                print('Generating cluster plots...')
+                output = self.args.output + '/umap/'
+                toolsTG.builder(output)
+                plotsCluster.visualizer(self.adata.copy(), output).main()
+                print('Cluster plots generated.\n')
+
+        if 'compare' in self.args.graphtypes:
+            colormap = None
+            if 'colormap' in d_config:
+                if self.args.comparegrp1 in d_config['colormap']:
+                    colormap = d_config['colormap'][self.args.comparegrp1]
+            print('Generating comparison plots...')
+            output = self.args.output + '/compare/'
+            toolsTG.builder(output)
+            plotsCompare.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
+            print('Comparison plots generated.\n')
+
+        if 'correlation' in self.args.graphtypes:
+            print('Generating correlation plots...')
+            output = self.args.output + '/correlation/'
+            toolsTG.builder(output)
+            plotsCorrelation.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
+            print('Correlation plots generated.\n')
+
         if 'coverage' in self.args.graphtypes:
             output = self.args.output + '/coverage/'
             toolsTG.builder(output)
@@ -396,7 +437,6 @@ class anndataGrapher:
             if 'colormap' in d_config:
                 if self.args.coveragegrp in d_config['colormap']:
                     colormap = d_config['colormap'][self.args.coveragegrp]
-
             if self.args.combineonly:
                 print('Generating combined coverage plots...')
                 plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
@@ -416,86 +456,41 @@ class anndataGrapher:
             plotsHeatmap.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
             print('Heatmaps generated.\n')
 
+        if 'logo' in self.args.graphtypes:
+            print('Generating logo plots...')
+            output = self.args.output + '/seqlogo/'
+            toolsTG.builder(output)
+            plotsSeqlogo.visualizer(self.adata.copy(), self.args.logogrp, self.args.logomanualgrp, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
+            print('Logo plots generated.\n')
+
         if 'pca' in self.args.graphtypes:
             colormap = None
             if 'colormap' in d_config:
                 if self.args.pcacolors in d_config['colormap']:
                     colormap = d_config['colormap'][self.args.pcacolors]
-
             print('Generating pca plots...')
             output = self.args.output + '/pca/'
             toolsTG.builder(output)
             plotsPca.visualizer(self.adata.copy(), self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output)
             print('PCA plots generated.\n')
 
-        if 'correlation' in self.args.graphtypes:
-            print('Generating correlation plots...')
-            output = self.args.output + '/correlation/'
-            toolsTG.builder(output)
-            plotsCorrelation.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
-            print('Correlation plots generated.\n')
-
-        if 'volcano' in self.args.graphtypes:
-            print('Generating volcano plots...')
-            output = self.args.output + '/volcano/'
-            toolsTG.builder(output)
-            plotsVolcano.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
-            print('Volcano plots generated.\n')
-
         if 'radar' in self.args.graphtypes:
             colormap = None
             if 'colormap' in d_config:
                 if self.args.radargrp in d_config['colormap']:
                     colormap = d_config['colormap'][self.args.radargrp]
-
             print('Generating radar plots...')
             output = self.args.output + '/radar/'
             toolsTG.builder(output)
             plotsRadar.visualizer(self.adata.copy(), self.args.radargrp, colormap, output)
             print('Radar plots generated.\n')
 
-        if 'bar' in self.args.graphtypes:
-            colormap_tc, colormap_bg = None, None
-            if 'colormap' in d_config:
-                if self.args.bargrp in d_config['colormap']:
-                    colormap_bg = d_config['colormap'][self.args.bargrp]
-                if 'group' in d_config['colormap']:
-                    colormap_tc = d_config['colormap']['group']
-
-            print('Generating bar plots...')
-            output = self.args.output + '/bar/'
+        if 'volcano' in self.args.graphtypes:
+            print('Generating volcano plots...')
+            output = self.args.output + '/volcano/'
             toolsTG.builder(output)
-            plotsBar.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
-            print('Bar plots generated.\n')
-
-        if 'compare' in self.args.graphtypes:
-            colormap = None
-            if 'colormap' in d_config:
-                if self.args.comparegrp1 in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.comparegrp1]
-
-            print('Generating comparison plots...')
-            output = self.args.output + '/compare/'
-            toolsTG.builder(output)
-            plotsCompare.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
-            print('Comparison plots generated.\n')
-
-        if 'cluster' in self.args.graphtypes:
-            if not 'cluster_runinfo' in self.adata.uns:
-                print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
-            else:
-                print('Generating cluster plots...')
-                output = self.args.output + '/umap/'
-                toolsTG.builder(output)
-                plotsCluster.visualizer(self.adata.copy(), output).main()
-                print('Cluster plots generated.\n')
-
-        if 'logo' in self.args.graphtypes:
-            print('Generating logo plots...')
-            output = self.args.output + '/seqlogo/'
-            toolsTG.builder(output)
-            plotsSeqlogo.visualizer(self.adata.copy(), output).generate_plots()
-            print('Logo plots generated.\n')
+            plotsVolcano.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
+            print('Volcano plots generated.\n')       
 
 class anndataMerger():
     '''
@@ -770,9 +765,12 @@ if __name__ == '__main__':
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
     # Seqlogo options
-    parser_graph.add_argument('--logopool', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--logopsuedocount', help='Specify the number of psuedocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
-    parser_graph.add_argument('--logogrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
+    parser_graph.add_argument('--logopseudocount', help='Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
+    parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
+    parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)
+    parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
     parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)

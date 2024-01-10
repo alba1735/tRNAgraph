@@ -108,6 +108,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `correlation` - Generates correlation plots of the tRNA coverage.
   * `coverage` - Generates coverage plots.
   * `heatmap` - Generates heatmaps of the differential tRNA expression.
+  * `logo` - Generates seqlogos of the tRNA coverage.
   * `pca` - Generates PCA plots.
   * `radar` - Generates radar plots of the tRNA coverage.
   * `volcano` - Generates volcano plots of differential tRNA expression.
@@ -145,6 +146,15 @@ The following parameters are optional and can be used to customize the graphs:
 * `--heatcutoff` is the cutoff for reads to include in the heatmap plots. By default, the heatmap plots will discard anything with less than 80 reads.
 * `--heatbound` is the range to bound the heatmap plots. By default, the heatmap plots will be bounded by the top 25 and the bottom 25 values in the data for each comparative column.
 
+#### Logo
+
+* `--logogrp` is the observation to use for grouping the logo plots. If no observation is provided, the logo plots will be grouped by amino group.
+* `--logomanualgrp` instead of using an observation to group the logo plots, you can provide a list of tRNAs to group the logo plots. This is useful if you want to look at a specific set of tRNAs.
+* `--logopseudocount` is the pseudocount to use for the logo plots. By default, the logo plots will use a pseudocount of 20.
+* `--logosize` is the size of the sequences (sprinzl, noloop, or full) to use for the logo plots. By default, the logo plots will use the non-extension loop sequences. But you can also use the full sequences or the numerical sprinzl positions without gaps.
+* `--ccatail` is wether or not to include the CCA tail in the logo plots. By default, the logo plots will discard the CCA tail.
+* `--pseudogenes` is weather or not to include pseudogenes in the logo plots. By default, the logo plots will discard pseudogenes (tRX).
+
 #### PCA
 
 * `--pcamarkers` is the observation to use for choosing which markers to populate the pca plot. By default, the samples will be used as markers.
@@ -173,6 +183,7 @@ The observations are the metadata categories that are used to group and color th
 * `amino` - The tRNA amino acid group.
 * `sample` - The sample name from tRAX.
 * `group` - The sample group tRAX.
+* `pseudogene` - Whether the tRNA is a pseudogene (tRNA/tRX).
 * `deseq2_sizefactor` - The size factor used for normalization in DESeq2 for the sample.
 * `refseq` - The reference sequence aligned with sprinzl positions. This is subset will drop any gap, extension, or alternate positions. (1-76) <!-- Need to check if this is static in all cases -->
 * `refseq_full` - The reference sequence aligned with sprinzl positions.
