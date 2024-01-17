@@ -454,16 +454,21 @@ class anndataGrapher:
             if 'colormap' in d_config:
                 if self.args.coveragegrp in d_config['colormap']:
                     colormap = d_config['colormap'][self.args.coveragegrp]
+            pcV = plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coveragecombine, self.args.coveragetype, self.args.coveragegap, colormap, output)
             if self.args.combineonly:
                 print('Generating combined coverage plots...')
-                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
+                pcV.generate_combine()
             else:
                 print('Generating individual coverage plots...')
-                toolsTG.builder(output+'single/')
-                toolsTG.builder(output+'single/low_coverage/')
-                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_split()
+                if self.args.coveragecombine:
+                    toolsTG.builder(output+'single/combined/')
+                    toolsTG.builder(output+'single/combined/low_coverage/')
+                else:
+                    toolsTG.builder(output+'single/')
+                    toolsTG.builder(output+'single/low_coverage/')
+                pcV.generate_split()
                 print('Generating combined coverage plots...')
-                plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coverageobs, self.args.coveragetype, self.args.coveragegap, colormap, output).generate_combine()
+                pcV.generate_combine()
             print('Coverage plots generated.\n')
 
         if 'heatmap' in self.args.graphtypes:
@@ -763,7 +768,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
     # Coverage options
     parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group')
-    parser_graph.add_argument('--coverageobs', help='Specify a observation subsetting for coverage plots (optional)', nargs='+', default=None)
+    parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
     parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
         choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
             'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')

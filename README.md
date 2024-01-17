@@ -146,7 +146,7 @@ The following parameters are optional and can be used to customize the graphs:
 #### Coverage
 
 * `--coveragegrp` is the observation to use for grouping the coverage plots. If no observation is provided, the coverage plots will be grouped by sample group.
-* `--coverageobs` is the observation to use for coloring the coverage plots. If no observation is provided, the coverage plots will be colored by sample group. Multiple observations can be provided.
+* `--coveragecombine` is whether to combine the coverage plots into a single plot of the mean for each observation within the group. Enabling this will disable the `--coveragegrp` flag and the combined output will be given instead to the `combined` folder.
 * `--coveragetype` is the type of tRNA coverage to plot, by default it will plot unique coverage. All posible coverage types match the [tRAX coverage types](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
 * `--coveragegap` is whether to include tRNA gaps in the coverage plots. By default, tRNA gaps will be skipped in the coverage plots.
 * `--combineonly` is whether to only plot the combined coverage plots. By default, the coverage plots will be plotted for each individual tRNA as well as the combined coverage plots.

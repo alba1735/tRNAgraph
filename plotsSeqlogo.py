@@ -243,7 +243,7 @@ class visualizer():
     def map_plot(self, seq_df, unit):
         trna_list = seq_df.columns[1:-1].tolist()
         # Make a all white heatmap in the shape of the sequence
-        fig = plt.figure(figsize=(20,len(trna_list)))
+        fig = plt.figure(figsize=(18,len(trna_list)))
 
         seq_hm = np.zeros((len(trna_list), len(seq_df)))
         sns.heatmap(seq_hm, cmap='Greys', cbar=False, square=True, linewidths=0, linecolor='black')
