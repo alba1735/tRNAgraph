@@ -15,12 +15,13 @@ plt.rcParams['ps.fonttype'] = 42
 import time
 
 class visualizer():
-    def __init__(self, adata, grp, manual_grp, pseudocount, logosize, ccatail, pseudogenes, output):
+    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, output):
         self.adata = adata
         self.adata = self.adata[:,self.adata.var['positions'] != '-1']
         self.output = output
         self.coverage_grp = grp
         self.manual_grp = manual_grp
+        self.manual_name = manual_name
         self.pseudocount = pseudocount
         self.logosize = logosize
         self.ccatail = ccatail
@@ -47,11 +48,13 @@ class visualizer():
             # Create a df of the tRNA sequences for the map plot
             df_seqinfo, df_consensus, seq_df = self.build_seqdata(seq_adata)
             # Create the plots
-            timestr = time.strftime("%Y%m%d-%H%M%S")
-            self.consensus_plot(df_seqinfo, df_consensus, f'manual_{timestr}')
-            self.map_plot(seq_df, f'manual_{timestr}')
+            outputgrp = 'manual_{}'.format(time.strftime("%Y%m%d-%H%M%S"))
+            if self.manual_name:
+                outputgrp = 'manual_{}'.format(self.manual_name)
+            self.consensus_plot(df_seqinfo, df_consensus, outputgrp)
+            self.map_plot(seq_df, outputgrp)
         else:
-            for i in sorted(self.adata.obs[self.coverage_grp].values.unique()):
+            for i in sorted(self.adata.obs[self.adata.obs[self.coverage_grp].notna()][self.coverage_grp].unique()):
                 # Subset the adata to the current coverage group
                 seq_adata = self.adata[self.adata.obs[self.coverage_grp] == i]
                 # Create a df of the tRNA sequences for the map plot
@@ -228,16 +231,19 @@ class visualizer():
         ax2.spines['left'].set_visible(False)
         # Remove the axis spines for ax3
         ax3.axis('off')
-        # Add a title to the figure
-        fig.suptitle(f'Consensus Logo {self.coverage_grp}_{unit}', fontsize='x-large')
-        # save the figure
-        plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
+        # Add a title to the figure and save the figure
+        if self.manual_grp:
+            fig.suptitle(f'Consensus Logo {unit}', fontsize='x-large')
+            plt.savefig(f'{self.output}/consensus_{unit}.pdf', bbox_inches='tight')
+        else:
+            fig.suptitle(f'Consensus Logo {self.coverage_grp}_{unit}', fontsize='x-large')
+            plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
         plt.close()
 
     def map_plot(self, seq_df, unit):
         trna_list = seq_df.columns[1:-1].tolist()
         # Make a all white heatmap in the shape of the sequence
-        plt.figure(figsize=(20,len(trna_list)))
+        fig = plt.figure(figsize=(20,len(trna_list)))
 
         seq_hm = np.zeros((len(trna_list), len(seq_df)))
         sns.heatmap(seq_hm, cmap='Greys', cbar=False, square=True, linewidths=0, linecolor='black')
@@ -260,8 +266,13 @@ class visualizer():
         plt.tick_params(axis='y', which='both', left=False, right=False, labelleft=True)
         plt.xlabel('Position')
         plt.title('Sequence Logo')
-
-        plt.savefig(f'{self.output}/map_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
+        # Add a title to the figure and save the figure
+        if self.manual_grp:
+            # fig.suptitle(f'Map {unit}', fontsize='x-large')
+            plt.savefig(f'{self.output}/map_{unit}.pdf', bbox_inches='tight')
+        else:
+            # fig.suptitle(f'Map {self.coverage_grp}_{unit}', fontsize='x-large')
+            plt.savefig(f'{self.output}/map_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
         plt.close()
 
     def position_swap(self, df, pos):

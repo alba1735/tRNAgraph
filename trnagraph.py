@@ -10,6 +10,7 @@ import json
 # Custom functions
 import toolsTG
 import plotsBar
+import plotsCount
 import plotsCluster
 import plotsCompare
 import plotsCorrelation
@@ -357,7 +358,8 @@ class anndataGrapher:
 
     def graph(self):
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
+            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
+            self.args.clusteroverview = True
 
         if self.args.config:
             print('Loading config file: ' + self.args.config)
@@ -390,16 +392,14 @@ class anndataGrapher:
             d_config = {}
 
         if 'bar' in self.args.graphtypes:
-            colormap_tc, colormap_bg = None, None
+            colormap = None
             if 'colormap' in d_config:
                 if self.args.bargrp in d_config['colormap']:
-                    colormap_bg = d_config['colormap'][self.args.bargrp]
-                if 'group' in d_config['colormap']:
-                    colormap_tc = d_config['colormap']['group']
+                    colormap = d_config['colormap'][self.args.bargrp]
             print('Generating bar plots...')
             output = self.args.output + '/bar/'
             toolsTG.builder(output)
-            plotsBar.visualizer(self.adata.copy(), self.args.bargrp, colormap_tc, colormap_bg, output)
+            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, colormap, output)
             print('Bar plots generated.\n')
 
         if 'cluster' in self.args.graphtypes:
@@ -407,9 +407,13 @@ class anndataGrapher:
                 print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
             else:
                 print('Generating cluster plots...')
-                output = self.args.output + '/umap/'
+                output = self.args.output + '/clustering/'
                 toolsTG.builder(output)
-                plotsCluster.visualizer(self.adata.copy(), output).main()
+                colormap = None
+                if 'colormap' in d_config:
+                    if self.args.clustergrp in d_config['colormap']:
+                        colormap = d_config['colormap'][self.args.clustergrp]
+                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, colormap, output).main()
                 print('Cluster plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -429,6 +433,19 @@ class anndataGrapher:
             toolsTG.builder(output)
             plotsCorrelation.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
             print('Correlation plots generated.\n')
+
+        if 'count' in self.args.graphtypes:
+            colormap_tc, colormap_bg = None, None
+            if 'colormap' in d_config:
+                if 'sample' in d_config['colormap']:
+                    colormap_bg = d_config['colormap']['sample']
+                if 'group' in d_config['colormap']:
+                    colormap_tc = d_config['colormap']['group']
+            print('Generating count plots...')
+            output = self.args.output + '/count/'
+            toolsTG.builder(output)
+            plotsCount.visualizer(self.adata.copy(), colormap_tc, colormap_bg, output)
+            print('Count plots generated.\n')
 
         if 'coverage' in self.args.graphtypes:
             output = self.args.output + '/coverage/'
@@ -460,7 +477,7 @@ class anndataGrapher:
             print('Generating logo plots...')
             output = self.args.output + '/seqlogo/'
             toolsTG.builder(output)
-            plotsSeqlogo.visualizer(self.adata.copy(), self.args.logogrp, self.args.logomanualgrp, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
+            plotsSeqlogo.visualizer(self.adata.copy(), self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
             print('Logo plots generated.\n')
 
         if 'pca' in self.args.graphtypes:
@@ -724,7 +741,7 @@ if __name__ == '__main__':
     parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='figures')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','coverage','heatmap','pca','correlation','volcano','radar','bar','compare','cluster','logo'], \
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','bar','cluster','compare','correlation','count','coverage','heatmap','logo','pca','radar','volcano'], \
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
@@ -732,7 +749,12 @@ if __name__ == '__main__':
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     # Bar options
-    parser_graph.add_argument('--bargrp', help='Specify AnnData column to group by (default: sample) (optional)', default='sample', required=False)
+    parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
+    # Cluster options
+    parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
+    parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
     # Compare options
     parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
@@ -767,6 +789,7 @@ if __name__ == '__main__':
     # Seqlogo options
     parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
     parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
+    parser_graph.add_argument('--logomanualname', help='Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified (optional)', default=None)
     parser_graph.add_argument('--logopseudocount', help='Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
     parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
     parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)

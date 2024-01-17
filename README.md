@@ -2,7 +2,7 @@
 
 ![tRNAgraph Logo](docs/images/logo.png)
 
-<!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an [AnnData](https://anndata.readthedocs.io/en/latest/index.html) object from a tRAX coverage file or to analyze an existing database object and generate expanded visualizations. The database object can also be used to perform further analysis beyond the scope of what tRAX can do.
 
@@ -29,9 +29,9 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
       end
       I2 --> G{Plot Options}
       subgraph sg2 [trnagraph.py graph]
-        G -->|default| G1([bar, cluster, correlation, coverage, heatmaps, logo, pca, radar, volcano plots])
-        G -->|requires config.json| G2([comparison plots])
-        G -->|requires clustering| G3([Cluster plots])
+        G -->|default| G1([bar, correlation, count, coverage, heatmap, logo, pca, radar, volcano])
+        G -->|requires config.json| G2([comparison])
+        G -->|requires clustering| G3([cluster])
         J([config.json]) --> G 
       end
       style I2 fill:#51BD38,stroke:#333
@@ -106,6 +106,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   * `cluster` - Generates cluster plots of the tRNA coverage.
   * `compare` - Generates compare plots of the tRNA coverage.
   * `correlation` - Generates correlation plots of the tRNA coverage.
+  * `count` - Generates count-bar plots of the tRNA amino and isotype distributions.
   * `coverage` - Generates coverage plots.
   * `heatmap` - Generates heatmaps of the differential tRNA expression.
   * `logo` - Generates seqlogos of the tRNA coverage.
@@ -118,6 +119,17 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 * `--log` is wether to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 
 The following parameters are optional and can be used to customize the graphs:
+
+#### Bar
+
+* `--barcol` is the observation to use for grouping the bar plots into columns. If no observation is provided, the bar plots will be grouped by group.
+* `--bargrp` is the observation to use for grouping the bar plot stacks. If no observation is provided, the bar plots will be stacked by amino group.
+
+#### Cluster
+
+* `--clustergrp` is the observation to use for coloring the cluster plots. If no observation is provided, the cluster plots will be colored by amino group.
+* `--clusteroverview` is whether to generate an 2x2 overview of the cluster plots for amino, iso, readcount and HDBscan cluster. By default, this is disabled. If enabled, the `--clustergrp` flag will be ignored.
+* `--clusternumeric` is whether to use numeric values for the cluster plots. By default, this is disabled. Enabling this will plot a colorbar with the numeric values in the legend.
 
 #### Compare
 
@@ -150,6 +162,7 @@ The following parameters are optional and can be used to customize the graphs:
 
 * `--logogrp` is the observation to use for grouping the logo plots. If no observation is provided, the logo plots will be grouped by amino group.
 * `--logomanualgrp` instead of using an observation to group the logo plots, you can provide a list of tRNAs to group the logo plots. This is useful if you want to look at a specific set of tRNAs.
+* `--logomanualname` if you are using `--logomanualgrp` you can provide a name for the group of tRNAs for the output file. If no name is provided, the name will be `manual` with a timestamp.
 * `--logopseudocount` is the pseudocount to use for the logo plots. By default, the logo plots will use a pseudocount of 20.
 * `--logosize` is the size of the sequences (sprinzl, noloop, or full) to use for the logo plots. By default, the logo plots will use the non-extension loop sequences. But you can also use the full sequences or the numerical sprinzl positions without gaps.
 * `--ccatail` is wether or not to include the CCA tail in the logo plots. By default, the logo plots will discard the CCA tail.
@@ -303,6 +316,8 @@ Clustering is perfomed across the `uniquecoverage`, `readstarts`, `readends`, `m
 * `-b2` or `--hdbscanminclugrp` - Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional). See above.
 * `--log` is wether to output a log of the shell commands used to generate the clustered AnnData object. By default, the log will not be output.
 
+When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however they are still present in the annData object. This means that your object can contain NaN values in the clustering columns. You may want to filter these out before performing any analysis depending on your use case.
+
 ### Configuration
 
 A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank and they will be skipped.
@@ -330,3 +345,7 @@ A JSON file can be used for complicated filtering and grouping of the data as we
     }
 }
 ```
+
+## License
+
+tRNAgraph is licensed under the [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
