@@ -399,7 +399,7 @@ class anndataGrapher:
             print('Generating bar plots...')
             output = self.args.output + '/bar/'
             toolsTG.builder(output)
-            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, colormap, output)
+            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, self.args.barsort, colormap, output)
             print('Bar plots generated.\n')
 
         if 'cluster' in self.args.graphtypes:
@@ -756,6 +756,7 @@ if __name__ == '__main__':
     # Bar options
     parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--barsort', help='Specify AnnData column to sort the bars by (default: None) (optional)', default=None, required=False)
     # Cluster options
     parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
     parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)

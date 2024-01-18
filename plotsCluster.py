@@ -47,7 +47,7 @@ class visualizer():
         umap1 = '_'.join([umapgroup,'umap1'])
         umap2 = '_'.join([umapgroup,'umap2'])
         cluster = '_'.join([umapgroup,'cluster'])
-        point_size = 12
+        point_size = 16
         # Subset the AnnData object to the umapgroup where not NaN (i.e. clustered data that wasn't filtered out)
         adata = adata[~adata.obs[cluster].isna(), :]
         # Create a list of clusters greater than or equal to 0 in size to filter out non-clustered reads
@@ -68,8 +68,8 @@ class visualizer():
             adata = adata[adata.obs[i[1]].sort_values().index, :]
             # Plot the data
             if i[1] == cluster:
-                sns.scatterplot(x=adata.obs[umap1][~hdbscan_annotated], y=adata.obs[umap2][~hdbscan_annotated], s=point_size, linewidth=0, ax=axs[i[2],i[3]], color=np.array([(0.5,0.5,0.5)]), alpha=0.5, legend=False)
-                sns.scatterplot(x=adata.obs[umap1][hdbscan_annotated], y=adata.obs[umap2][hdbscan_annotated], s=point_size, linewidth=0, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][hdbscan_annotated], palette=pal, legend=False)
+                sns.scatterplot(x=adata.obs[umap1][~hdbscan_annotated], y=adata.obs[umap2][~hdbscan_annotated], s=point_size, linewidth=0.5, ax=axs[i[2],i[3]], color=np.array([(0.5,0.5,0.5)]), alpha=0.5, legend=False)
+                sns.scatterplot(x=adata.obs[umap1][hdbscan_annotated], y=adata.obs[umap2][hdbscan_annotated], s=point_size, linewidth=0.5, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][hdbscan_annotated], palette=pal, legend=False)
             else:
                 sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=point_size, ax=axs[i[2],i[3]], hue=adata.obs[i[1]], palette=pal, legend=False)
             axs[i[2],i[3]].set_title(i[0])
@@ -89,7 +89,7 @@ class visualizer():
         umap1 = '_'.join([umapgroup,'umap1'])
         umap2 = '_'.join([umapgroup,'umap2'])
         cluster = '_'.join([umapgroup,'cluster'])
-        point_size = 12
+        point_size = 16
         # Subset the AnnData object to the umapgroup where not NaN (i.e. clustered data that wasn't filtered out)
         adata = adata[~adata.obs[cluster].isna(), :]
         # Determine wether to mask NaN values
@@ -119,8 +119,8 @@ class visualizer():
         # Sort the adata object by the categorical variable for legend purposes
         adata = adata[adata.obs[clustgrp].sort_values().index, :]
         if masking:
-            sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=point_size, linewidth=0, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
-            sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=point_size, linewidth=0, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
+            sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=point_size, linewidth=0.5, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
+            sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=point_size, linewidth=0.5, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
         else:
             sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=point_size, ax=axs, hue=adata.obs[clustgrp], palette=pal)
         axs.set_title(clustgrp)

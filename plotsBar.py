@@ -3,10 +3,6 @@
 import numpy as np
 import pandas as pd
 import seaborn as sns
-# import anndata as ad
-# import argparse
-
-# import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -16,9 +12,10 @@ plt.rcParams['ps.fonttype'] = 42
 
 
 class visualizer():
-    def __init__(self, adata, barcol, bargrp, colormap, output):
+    def __init__(self, adata, barcol, bargrp, barsort, colormap, output):
         self.barcol = barcol
         self.bargrp = bargrp
+        self.barsort = barsort
         df = self.gen_df(adata)
         # Create a dictionary of colors for the bargrp
         if colormap:
@@ -46,13 +43,23 @@ class visualizer():
             for j in df[self.bargrp].unique():
                 if len(df[(df[self.barcol] == i) & (df[self.bargrp] == j)]) == 0:
                     df = pd.concat([df, pd.DataFrame([[i,j,0,0,0]], columns=[self.barcol,self.bargrp,'mean','sum','count'])], ignore_index=True)
-        # Sort the df by the colgrp and bargrp
-        df = df.sort_values(by=[self.barcol,self.bargrp])
         # Reset the index
         df = df.reset_index(drop=True)
         # Enumerate the colgrp into a new column for positioning of the bars
-        col_dict = dict(zip(sorted(df[self.barcol].unique()), range(len(df[self.barcol].unique()))))
+        if self.barsort:
+            # Get sort order start by dropping the NaN values
+            sort_df = adata.obs[[self.barsort,self.barcol]].dropna().groupby(self.barcol).mean()
+            # Create a dictionary of the sort order
+            sort_df = sort_df.sort_values(by=self.barsort)
+            # Create a dictionary of the sort order
+            col_dict = dict(zip(sort_df.index, range(len(sort_df.index))))
+        else:
+            # Create a dictionary of the sort order
+            col_dict = dict(zip(sorted(df[self.barcol].unique()), range(len(df[self.barcol].unique()))))
+        # Map the col_dict to the df
         df['x_pos'] = df[self.barcol].map(col_dict)
+        # Sort the df by the x_pos and bargrp
+        df = df.sort_values(by=['x_pos',self.bargrp])
 
         return df
 
