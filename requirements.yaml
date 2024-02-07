@@ -3,15 +3,17 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - 'pandas'
   - 'numpy'
+  - 'pandas'
+  - 'pyarrow'
   - 'scipy'
   - 'scikit-learn'
   - 'matplotlib'
   - 'seaborn'
   - 'anndata'
-  - 'logomaker'
-  - 'statannot'
   - 'umap-learn'
   - 'hdbscan'
-  - 'jupyterlab'
+  - 'logomaker'
+  - 'statannot'
+  - 'jupyter'
+  - 'jupyterlab>=4.0.12'

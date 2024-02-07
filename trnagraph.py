@@ -399,7 +399,7 @@ class anndataGrapher:
             print('Generating bar plots...')
             output = self.args.output + '/bar/'
             toolsTG.builder(output)
-            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, self.args.barsort, colormap, output)
+            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output)
             print('Bar plots generated.\n')
 
         if 'cluster' in self.args.graphtypes:
@@ -413,7 +413,7 @@ class anndataGrapher:
                 if 'colormap' in d_config:
                     if self.args.clustergrp in d_config['colormap']:
                         colormap = d_config['colormap'][self.args.clustergrp]
-                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, colormap, output).main()
+                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, colormap, output).isotype_plots()
                 print('Cluster plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -452,8 +452,11 @@ class anndataGrapher:
             toolsTG.builder(output)
             colormap = None
             if 'colormap' in d_config:
-                if self.args.coveragegrp in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.coveragegrp]
+                coveragegrp = 'group' 
+                if self.args.coveragegrp:
+                    coveragegrp = self.args.coveragegrp
+                if coveragegrp in d_config['colormap']:
+                    colormap = d_config['colormap'][coveragegrp]
             pcV = plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coveragecombine, self.args.coveragetype, self.args.coveragegap, colormap, output)
             if self.args.combineonly:
                 print('Generating combined coverage plots...')
@@ -504,7 +507,10 @@ class anndataGrapher:
             print('Generating radar plots...')
             output = self.args.output + '/radar/'
             toolsTG.builder(output)
-            plotsRadar.visualizer(self.adata.copy(), self.args.radargrp, colormap, output)
+            if self.args.radarmethod == 'all' or 'all' in self.args.radarmethod:
+                self.args.radarmethod = ['mean', 'median', 'max', 'sum']
+            for radarmethod in self.args.radarmethod:
+                plotsRadar.visualizer(self.adata.copy(), self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output)
             print('Radar plots generated.\n')
 
         if 'volcano' in self.args.graphtypes:
@@ -586,6 +592,7 @@ class anndataCluster():
         self.sample_neighbors_plot = args.neighborstdsmp
         self.sample_hdbscan_min_samples = args.hdbscanminsampsmp
         self.sample_hdbscan_min_cluster_size = args.hdbscanminclusmp
+        self.cluster_obs = args.clusterobsexperimental
 
     def main(self):
         # Check if the output file already exists
@@ -632,6 +639,24 @@ class anndataCluster():
         # Clean up the data by removing gaps from var and subsetting the var to uniquecoverage, readstarts, readends, mismatchedbases, and deletions
         adata = adata[:, ~adata.var['gap']]
         adata = adata[:, adata.var['coverage'].isin(self.coveragetype)]
+        # Take the columns from adata.obs[self.cluster_obs] and add them to the adata.X and adata.var
+        if self.cluster_obs:
+            # Create a dataframe from the cluster_obs column
+            df_X = pd.DataFrame(adata.obs[self.cluster_obs])
+            # replace NaN with 0
+            df_X = df_X.fillna(0)
+            df_X = np.concatenate((adata.X, df_X.values), axis=1)
+            # Add the cluster_obs column to the adata.var by copying a row from the adata.var then filling with NaN
+            df_var = pd.DataFrame(adata.var.iloc[0:len(self.cluster_obs),:])
+            # Replace various var data with arbitrary values
+            df_var['positions'] = [1000]*len(self.cluster_obs)
+            df_var['coverage'] = ['custom']*len(self.cluster_obs)
+            df_var['location'] = ['custom']*len(self.cluster_obs)
+            df_var['half'] = ['custom']*len(self.cluster_obs)
+            df_var.index = [self.cluster_obs]
+            df_var = pd.concat([adata.var, df_var])
+            # Convert the dataframes to an AnnData object
+            adata = ad.AnnData(X=df_X, obs=adata.obs, var=df_var)
         # Filter out Und samples from that amino acid category
         adata = adata[~(adata.obs['amino'] == 'Und'), :]
         if grpby:
@@ -738,6 +763,7 @@ if __name__ == '__main__':
     parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
     parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
     parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
+    parser_cluster.add_argument('--clusterobsexperimental', help='This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering (optional)', nargs='+', default=[])
     parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
     parser_cluster.add_argument('-o', '--output', help='Specify output directory (default: h5ad/trnagraph.cluster.h5ad) (optional)', default='h5ad/trnagraph.cluster.h5ad')
     parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
@@ -756,9 +782,12 @@ if __name__ == '__main__':
     # Bar options
     parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--barsubgrp', help='Specify AnnData column for secondary spliting of bars into subplots (default: None) (optional)', default=None, required=False)
     parser_graph.add_argument('--barsort', help='Specify AnnData column to sort the bars by (default: None) (optional)', default=None, required=False)
+    parser_graph.add_argument('--barlabel', help='Specify wether to label the bars using a different AnnData column (default: None) (optional)', default=None, required=False)
     # Cluster options
     parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--clusterlabels', help='Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot (optional)', default=None, required=False)
     parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
     parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
     # Compare options
@@ -768,7 +797,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
     # Coverage options
-    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group')
+    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default=None)
     parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
     parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
         choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
@@ -792,6 +821,9 @@ if __name__ == '__main__':
             help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', 
+                              choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
+    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100% (optional)', action='store_true', default=False, required=False)
     # Seqlogo options
     parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
     parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)

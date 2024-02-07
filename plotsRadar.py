@@ -2,10 +2,6 @@
 
 import numpy as np
 import pandas as pd
-# import anndata as ad
-# import argparse
-
-# import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -14,98 +10,54 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
-def visualizer(adata, radargrp, colormap, output):
-    '''
-    Generate radar plots for each sample in an AnnData object.
-    '''
-    # Amino acid dictionary for testing in hg38
-    #amino_dict = {'Ala':['AGC','CGC','TGC'], 'Arg':['ACG','CCG','CCT','TCG','TCT'], 'Gly':['CCC','GCC','TCC'], 'Ile':['AAT','GAT','TAT'], 'Leu':['AAG','CAG','TAG','CAA','TAA'], 'Pro':['AGG','CGG','TGG'], 'Ser':['AGA','CGA','GCT','TGA'], 'Thr':['AGT','CGT','TGT'], 'Val':['AAC','CAC','TAC']}
-    for rt in ['nreads_total_unique_norm', 'nreads_total_norm']:
-        df = adata.uns['anticodon_counts'].copy()
-        df = pd.DataFrame(adata.obs, columns=['iso', 'amino', radargrp, rt])
-        # Drop rows where iso is NNN
-        df = df[df['iso']!='NNN']
-        # Create dict from all iso and amino where each amino is a key and each value is a list of iso that have that amino
-        amino_dict = {}
-        for amino in df['amino'].unique():
-            amino_dict[amino] = df[df['amino']==amino]['iso'].unique().tolist()
-        # df_alt1 = pd.pivot_table(df, values=rt, index=['iso'], columns=[radargrp], aggfunc=np.sum)
-        df = pd.pivot_table(df, values=rt, index=['iso'], columns=[radargrp], aggfunc='sum')
-        # Only create radar plots for amino acids with at least 3 isoforms
-        for aa, codons, in amino_dict.items():
-            if len(codons) >= 3:
-                # Subset dataframe to only include codons for the current amino acid
-                tdf = df[df.index.isin(codons)]
-                # Normalize counts to 100
-                tdf = 100*tdf/tdf.sum(axis=0)
-                tdf = tdf.sort_index()
-                # Replace negative values with 0
-                tdf[tdf<0] = 0
-                # Set angles for each category
-                angles = np.linspace(0, 2*np.pi, num=len(list(tdf.T))+1)[:-1]
-                angles = angles.tolist()
-                # Create figure
-                fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
-                # Set theta zero location so that anticodons are in the correct position
-                ax.set_theta_zero_location('N')
-                ax.set_theta_direction(-1)
-                # Set plot parameters
-                plt.xticks(angles, list(tdf.T), color='black', size=12)
-                plt.yticks(color='dimgrey', size=8)
-                ax.set_rlabel_position(0)
-                ax.xaxis.grid(False)
-                # Set colormap if specified
-                if colormap != None:
-                    colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
-                    for v in tdf.columns:
-                        if v not in colormap:
-                            print(f'Color {v} not found in colormap. Using default colors instead.')
-                            colormap = None
-                            break
-                # Plot data
-                for i in tdf.columns.values:
-                    v = tdf[i].values.tolist()
-                    v = np.concatenate((v, v[:1]))
-                    a = angles + angles[:1]
-                    # Plot data for each anticodon group
-                    if colormap != None:
-                        ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=colormap[i])
-                        ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=colormap[i])
-                    else:
-                        pal = dict(zip(tdf.columns, sns.color_palette('husl', len(tdf.columns))))
-                        ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=pal[i])
-                        ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=pal[i])
-                # Capatilize the legend and move the legend outside the plot and remove the border around it
-                handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles=handles, labels=[x.capitalize() for x in labels])
-                ax.legend(loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
-                ax.legend_.set_title(radargrp.capitalize())
-                # Give plot a title
-                plt.title(f'{aa} Codon Pool Percent Expression Change')
-                # Save plot
-                if rt == 'nreads_total_unique_norm':
-                    plt.savefig(f'{output}{aa}_radar_by_{radargrp}_unique.pdf', bbox_inches='tight')
-                    print(f'Plot saved to {output}{aa}_radar_by_{radargrp}_unique.pdf')
-                else:
-                    plt.savefig(f'{output}{aa}_radar_by_{radargrp}.pdf', bbox_inches='tight')
-                    print(f'Plot saved to {output}{aa}_radar_by_{radargrp}.pdf')
-                plt.close()
+class visualizer:
+    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output):
+        self.adata = adata
+        self.radargrp = radargrp
+        self.radarmethod = radarmethod
+        self.radarscaled = radarscaled
+        self.colormap = colormap
+        self.output = output
 
-        # Create radar plot for all amino acids
+    def isotype_plots(self):
+        for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
+            df = self.adata.uns['anticodon_counts'].copy()
+            df = pd.DataFrame(self.adata.obs, columns=['iso', 'amino', self.radargrp, readtype])
+            # Drop rows where iso is NNN
+            df = df[df['iso']!='NNN']
+            # Convert the df to a pivot table and use the specified stats method to aggregate the data
+            df = pd.pivot_table(df, values=readtype, index=['iso'], columns=[self.radargrp], aggfunc=self.radarmethod, observed=True)
+            # Create dict from all iso and amino where each amino is a key and each value is a list of iso that have that amino
+            amino_dict = {}
+            for amino in df['amino'].unique():
+                amino_dict[amino] = df[df['amino']==amino]['iso'].unique().tolist()
+            # Only create radar plots for amino acids with at least 3 isoforms
+            for aa, codons, in amino_dict.items():
+                if len(codons) >= 3:
+                    # Subset dataframe to only include codons for the current amino acid
+                     self.generate_plot(df[df.index.isin(codons)], readtype, aminoacid=aa)
+            # Create radar plot for all isoforms
+            self.generate_plot(df, readtype)
+
+    def generate_plot(self, df, readtype, aminoacid=False):
+        '''
+        Generate radar plots for each sample in an AnnData object.
+        '''
         # Normalize counts to 100
         tdf = 100*df/df.sum(axis=0)
-        # Drop rows where the mean of the row comprises less than 1% of the total reads
-        tdf = tdf[tdf.min(axis=1)>1]
+        if not aminoacid:
+            # Drop rows where the mean of the row comprises less than 1% of the total reads
+            tdf = tdf[tdf.min(axis=1)>1]
+        # Sort the dataframe by index
         tdf = tdf.sort_index()
-        # Take the log2 value of the dataframe
-        # tdf = np.log2(tdf)
         # Replace negative values with 0
-        tdf[tdf<0] = 0
+        # tdf[tdf<0] = 0
         # Set angles for each category
         angles = np.linspace(0, 2*np.pi, num=len(list(tdf.T))+1)[:-1]
         angles = angles.tolist()
         # Create figure
-        fig, ax = plt.subplots(figsize=(12,12), subplot_kw=dict(polar=True))
+        fsize = (12,12) if not aminoacid else (6,6)
+        fig, ax = plt.subplots(figsize=fsize, subplot_kw=dict(polar=True))
         # Set theta zero location so that anticodons are in the correct position
         ax.set_theta_zero_location('N')
         ax.set_theta_direction(-1)
@@ -114,6 +66,9 @@ def visualizer(adata, radargrp, colormap, output):
         plt.yticks(color='dimgrey', size=8)
         ax.set_rlabel_position(0)
         ax.xaxis.grid(False)
+        # Set the maximum value for the y-axis to 100
+        if self.radarscaled:
+            ax.set_ylim(0,100)
         # Set colormap if specified
         if colormap != None:
             colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
@@ -139,35 +94,25 @@ def visualizer(adata, radargrp, colormap, output):
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles=handles, labels=[x.capitalize() for x in labels])
         ax.legend(loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
-        ax.legend_.set_title(radargrp.capitalize())
+        ax.legend_.set_title(self.radargrp.capitalize())
         # Give plot a title
-        plt.title(f'Codon Pool Percent Expression Change')
-        # Save plot
-        if rt == 'nreads_total_unique_norm':
-            plt.savefig(f'{output}/all_gt1percent_radar_by_{radargrp}_unique.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/all_radar_by_{radargrp}_unique.pdf')
+        if aminoacid:
+            plt.title(f'{aminoacid} Codon Pool Percent Expression Change')
         else:
-            plt.savefig(f'{output}/all_gt1percent_radar_by_{radargrp}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}/all_radar_by_{radargrp}.pdf')
+            plt.title('Codon Pool Percent Expression Change')
+        # Save plot
+        if aminoacid:
+            outname += f'{self.output}{aminoacid}_radar_by_{self.radargrp}'
+        else:
+            outname += f'{self.output}all_gt1percent_radar_by_{self.radargrp}'
+        if self.radarscaled:
+            outname += '_scaled'
+        if readtype == 'nreads_total_unique_norm':
+            outname += '_unique'
+        outname += f'_{self.radarmethod}.pdf'
+        print(f'Plot saved to {outname}')
+        plt.savefig(outname, bbox_inches='tight')
         plt.close()
 
 if __name__ == '__main__':
     pass
-    # parser = argparse.ArgumentParser(
-    #     prog='radar_tools.py',
-    #     description='Generate radial plots for each sample in an AnnData object.',
-    # )
-
-    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    # parser.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='radial', required=False)
-    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
-
-    # args = parser.parse_args()
-
-    # # Create output directory if it doesn't exist
-    # toolsTG.builder(args.output)
-
-    # adata = ad.read_h5ad(args.anndata)
-
-    # visualizer(adata, args.radargrp, args.colormap, args.output)

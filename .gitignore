@@ -144,7 +144,3 @@ config.json
 /archive
 /config
 /figures
-/h5ad
-/organoid_analysis
-**.ipynb
-Snakefile

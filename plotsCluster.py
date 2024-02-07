@@ -10,13 +10,15 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
-    def __init__(self, adata, clustgrp, clustover, clusternumeric, colormap, output):
+    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, colormap, output):
         self.adata = adata
         self.output = output
         self.clustgrp = clustgrp
         self.overview = clustover
         self.numeric = clusternumeric
+        self.clusterlabels = clusterlabels
         self.colormap = colormap
+        self.point_size = 20
 
     def main(self):
         # Generate overview plot
@@ -47,7 +49,6 @@ class visualizer():
         umap1 = '_'.join([umapgroup,'umap1'])
         umap2 = '_'.join([umapgroup,'umap2'])
         cluster = '_'.join([umapgroup,'cluster'])
-        point_size = 16
         # Subset the AnnData object to the umapgroup where not NaN (i.e. clustered data that wasn't filtered out)
         adata = adata[~adata.obs[cluster].isna(), :]
         # Create a list of clusters greater than or equal to 0 in size to filter out non-clustered reads
@@ -61,17 +62,18 @@ class visualizer():
                 pal = dict(zip(sorted(pd.unique(adata.obs[i[1]])), sns.color_palette("mako", len(pd.unique(adata.obs[i[1]])))))
             else:
                 if i[1] == cluster:
-                    pal = dict(zip(sorted(pd.unique(adata.obs[i[1]])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]])-1))))
+                    # pal = dict(zip(sorted(pd.unique(adata.obs[i[1]])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]])-1))))
+                    pal = dict(zip(sorted(pd.unique(adata.obs[i[1]][hdbscan_annotated])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]]))-1)))
                 else:
                     pal = dict(zip(sorted(pd.unique(adata.obs[i[1]])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]])))))
             # Sort the adata object by the categorical variable for legend purposes
             adata = adata[adata.obs[i[1]].sort_values().index, :]
             # Plot the data
             if i[1] == cluster:
-                sns.scatterplot(x=adata.obs[umap1][~hdbscan_annotated], y=adata.obs[umap2][~hdbscan_annotated], s=point_size, linewidth=0.5, ax=axs[i[2],i[3]], color=np.array([(0.5,0.5,0.5)]), alpha=0.5, legend=False)
-                sns.scatterplot(x=adata.obs[umap1][hdbscan_annotated], y=adata.obs[umap2][hdbscan_annotated], s=point_size, linewidth=0.5, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][hdbscan_annotated], palette=pal, legend=False)
+                sns.scatterplot(x=adata.obs[umap1][~hdbscan_annotated], y=adata.obs[umap2][~hdbscan_annotated], s=self.point_size, linewidth=0.25, ax=axs[i[2],i[3]], color=np.array([(0.5,0.5,0.5)]), alpha=0.5, legend=False)
+                sns.scatterplot(x=adata.obs[umap1][hdbscan_annotated], y=adata.obs[umap2][hdbscan_annotated], s=self.point_size, linewidth=0.25, ax=axs[i[2],i[3]], hue=adata.obs[i[1]][hdbscan_annotated], palette=pal, legend=False)
             else:
-                sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=point_size, ax=axs[i[2],i[3]], hue=adata.obs[i[1]], palette=pal, legend=False)
+                sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=self.point_size, ax=axs[i[2],i[3]], hue=adata.obs[i[1]], palette=pal, legend=False)
             axs[i[2],i[3]].set_title(i[0])
             axs[i[2],i[3]].set_xlabel('UMAP 1')
             axs[i[2],i[3]].set_ylabel('UMAP 2')
@@ -89,7 +91,6 @@ class visualizer():
         umap1 = '_'.join([umapgroup,'umap1'])
         umap2 = '_'.join([umapgroup,'umap2'])
         cluster = '_'.join([umapgroup,'cluster'])
-        point_size = 16
         # Subset the AnnData object to the umapgroup where not NaN (i.e. clustered data that wasn't filtered out)
         adata = adata[~adata.obs[cluster].isna(), :]
         # Determine wether to mask NaN values
@@ -101,12 +102,15 @@ class visualizer():
                 mask = adata.obs[cluster] >= 0
             else:
                 mask = ~adata.obs[clustgrp].isnull()
+        else:
+            mask = ~adata.obs[clustgrp].isnull()
         # Create the figure
         fig, axs = plt.subplots(figsize=(8,8))
         # Create a palette for the categorical variable
-        if clustgrp == cluster:
-            pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp])-1))))
-        elif numeric:
+        # if clustgrp == cluster:
+            # pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp]))-1)))
+            # pal = dict(zip(sorted(pd.unique(adata.obs[i[1]][hdbscan_annotated])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]]))-1)))
+        if numeric:
             pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette("mako_r", len(pd.unique(adata.obs[clustgrp])))))
         else:
             if masking:
@@ -119,10 +123,21 @@ class visualizer():
         # Sort the adata object by the categorical variable for legend purposes
         adata = adata[adata.obs[clustgrp].sort_values().index, :]
         if masking:
-            sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=point_size, linewidth=0.5, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
-            sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=point_size, linewidth=0.5, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
+            sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=self.point_size, linewidth=0.25, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
+            sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=self.point_size, linewidth=0.25, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
         else:
-            sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=point_size, ax=axs, hue=adata.obs[clustgrp], palette=pal)
+            sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=self.point_size, ax=axs, hue=adata.obs[clustgrp], palette=pal)
+        # Add cluster labels
+        if self.clusterlabels:
+            for j in adata.obs[cluster][mask].unique():
+                x = adata.obs[umap1][adata.obs[cluster] == j].mean()
+                y = adata.obs[umap2][adata.obs[cluster] == j].mean()
+                if umapgroup == 'group':
+                    name = adata.obs[self.clusterlabels][adata.obs[cluster] == j].unique()[0]
+                else:
+                    name = adata.obs[cluster][adata.obs[cluster] == j].unique()[0]
+                axs.text(x, y, name, fontsize=10, color='black', fontweight='bold')
+        # Set title, x and y labels, and remove ticks
         axs.set_title(clustgrp)
         axs.set_xlabel('UMAP 1')
         axs.set_ylabel('UMAP 2')
