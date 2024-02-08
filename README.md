@@ -90,6 +90,7 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 - `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `h5ad/trnagraph.h5ad` if no path is provided.
 - Observations are the metadata categories to include in the database object. This can be a list `-l/--observationslist` or a tab-separated file containing a list of observations `-f/--observationsfile`. If no list is provided any metadata will be annotated `obs_#` where `#` is the ordered observation.
 - `--log` is used to output a log of the shell commands used to generate the AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
 ### Generating visualizations
 
@@ -117,6 +118,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 - `--config` is an optional flag to the path to a JSON file containing additional graph parameters. [See the configuration section below for more details.](#configuration)
 - `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots and seqlogos as they can take a long time to generate.
 - `--log` is used to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
 The following parameters are optional and can be used to customize the graphs:
 
@@ -181,6 +183,7 @@ The following parameters are optional and can be used to customize the graphs:
 #### Radar Plots
 
 - `--radargrp` is the observation to use for grouping the radar plots. If no observation is provided, the radar plots will be grouped by sample group.
+- `--radarscaled` is whether to scale the radar plots to 100% or allow for automatic scaling. By default, the radar plots will not be scaled.
 - `--radarmethod` is the statistical method to use for calculating the radar plots. The following methods can be used:
   - `mean`, `median`, `max`, `sum`, or `all`. By default, the radar plots will use the mean.
 
@@ -295,6 +298,7 @@ python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output
 - `--droprna` - Whether to drop samples not found in both type_counts files. By default, samples not found in both type_counts files are kept and filled with zeros.
   - Different sequencing methods and the input GTF for tRAX can yield vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
 - `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
 ### Clustering
 
@@ -324,6 +328,7 @@ Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `
 - `--clusterobsexperimental` - Whether to use observations for clustering by incorporating them into the adata.X and adata.var.
   - NOTE!: This is an experimental test feature and should be used with caution. It is not recommended to use this feature unless you are familiar with the AnnData object and the clustering process and you are certain that this is the desired behavior.
 - `--log` is used to output a log of the shell commands used to generate the clustered AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
 When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. You may want to filter these out before performing any analysis, depending on your use case.
 

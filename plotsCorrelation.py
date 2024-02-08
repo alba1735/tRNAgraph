@@ -2,9 +2,6 @@
 
 import pandas as pd
 import anndata as ad
-# import argparse
-
-# import toolsTG
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -24,7 +21,7 @@ def visualizer(adata, output, corr_method, corr_group):
     df = pd.DataFrame(adata.obs, columns=['trna', corr_group] + [i for i in adata.obs.columns if '_norm' in i])
 
     for i in df.columns[2:]:
-        df_corr = df.pivot_table(index='trna', columns=corr_group, values=i)
+        df_corr = df.pivot_table(index='trna', columns=corr_group, values=i, observed=True)
         # Only plot correlation matrices with more than 20 samples will be generated
         if df_corr.max().max() < 20:
             print(f'Not enough samples to generate correlation matrix for {i}')
@@ -48,21 +45,3 @@ def visualizer(adata, output, corr_method, corr_group):
 
 if __name__ == '__main__':
     pass
-    # parser = argparse.ArgumentParser(
-    #     prog='correlation_tools.py',
-    #     description='This tool will generate correlation graphs for a given AnnData file'
-    # )
-
-    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='correlation', required=False)
-    # parser.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    # parser.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
-
-    # args = parser.parse_args()
-
-    # # Create output directory if it doesn't exist
-    # toolsTG.builder(args.output)
-
-    # adata = ad.read_h5ad(args.anndata)
-
-    # visualizer(adata, args.output, args.corrmethod, args.corrgroup)

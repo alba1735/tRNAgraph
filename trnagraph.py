@@ -7,6 +7,7 @@ import argparse
 import os
 import sys
 import json
+import contextlib
 # Custom functions
 import toolsTG
 import plotsBar
@@ -399,7 +400,10 @@ class anndataGrapher:
             print('Generating bar plots...')
             output = self.args.output + '/bar/'
             toolsTG.builder(output)
-            plotsBar.visualizer(self.adata.copy(), self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output)
+            if self.args.barsubgrp:
+                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).subplots()
+            else:
+                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).plots()
             print('Bar plots generated.\n')
 
         if 'cluster' in self.args.graphtypes:
@@ -711,138 +715,11 @@ class anndataCluster():
         
         return adata
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='tRNAgraph',
-        description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
-            a trax output folder, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
-            perform further multivariate analysis such as clustering and classification of readcoverages.',
-        allow_abbrev=False
-    )
-
-    subparsers = parser.add_subparsers(
-        title='Operating modes',
-        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, and/or graphing data from an existing database object',
-        dest='mode',
-        required=True
-    )
-
-    # Build parser
-    parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
-    parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
-    parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
-    parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
-    parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
-    parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.h5ad) (optional)', default='h5ad/trnagraph.h5ad')
-    parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
-
-    # Merge parser
-    parser_merge = subparsers.add_parser("merge", help="Merge data from two existing h5ad AnnData objects")
-    parser_merge.add_argument('-i1', '--anndata1', help='Specify location of first h5ad object (required)', required=True)
-    parser_merge.add_argument('-i2', '--anndata2', help='Specify location of second h5ad object (required)', required=True)
-    parser_merge.add_argument('--dropno', help='Drop non tRNAs genes that are not present in both AnnData objects (optional)', action='store_true')
-    parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
-    parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.merge.h5ad) (optional)', default='h5ad/trnagraph.merge.h5ad')
-    parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
-
-    # Cluster parser
-    parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
-    parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP if you want to have a static seed (default: None) (optional)', default=None, type=int)
-    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 20) (optional)', default=20, type=int)
-    parser_cluster.add_argument('-v', '--coveragetype', help='Specify coverage types for umap clustering treated as features (default: uniquecoverage, readstarts, readends, mismatchedbases, deletions) (optional)', \
-                                choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-                                         'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], nargs='+', default=['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])
-    parser_cluster.add_argument('-c1', '--ncomponentsmp', help='Specify number of components to use for UMAP clustering of samples (default: 2) (optional)', default=2, type=int)
-    parser_cluster.add_argument('-c2', '--ncomponentgrp', help='Specify number of components to use for UMAP clustering of groups (default: 2) (optional)', default=2, type=int)
-    parser_cluster.add_argument('-l1', '--neighborclusmp', help='Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional)', default=150, type=int)
-    parser_cluster.add_argument('-l2', '--neighborclusgrp', help='Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional)', default=40, type=int)
-    parser_cluster.add_argument('-n1', '--neighborstdsmp', help='Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional)', default=75, type=int)
-    parser_cluster.add_argument('-n2', '--neighborstdgrp', help='Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional)', default=20, type=int)
-    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 6) (optional)', default=6, type=int)
-    parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
-    parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
-    parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
-    parser_cluster.add_argument('--clusterobsexperimental', help='This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering (optional)', nargs='+', default=[])
-    parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
-    parser_cluster.add_argument('-o', '--output', help='Specify output directory (default: h5ad/trnagraph.cluster.h5ad) (optional)', default='h5ad/trnagraph.cluster.h5ad')
-    parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
-
-    # Graph parser
-    parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
-    parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='figures')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','bar','cluster','compare','correlation','count','coverage','heatmap','logo','pca','radar','volcano'], \
-        help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
-    # Add argument to filter parameters from AnnData object
-    parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
-    # Options to imporve speed or log output
-    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
-    parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
-    # Bar options
-    parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--barsubgrp', help='Specify AnnData column for secondary spliting of bars into subplots (default: None) (optional)', default=None, required=False)
-    parser_graph.add_argument('--barsort', help='Specify AnnData column to sort the bars by (default: None) (optional)', default=None, required=False)
-    parser_graph.add_argument('--barlabel', help='Specify wether to label the bars using a different AnnData column (default: None) (optional)', default=None, required=False)
-    # Cluster options
-    parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--clusterlabels', help='Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot (optional)', default=None, required=False)
-    parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
-    parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
-    # Compare options
-    parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    # Correlation options
-    parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
-    # Coverage options
-    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default=None)
-    parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
-    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
-        choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-            'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
-    parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
-    parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
-    # Heatmap options
-    parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-            help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
-    parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
-    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
-    # PCA options
-    parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
-    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
-    parser_graph.add_argument('--pcareadtypes', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-            help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
-    # Radar options
-    parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', 
-                              choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
-    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100% (optional)', action='store_true', default=False, required=False)
-    # Seqlogo options
-    parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
-    parser_graph.add_argument('--logomanualname', help='Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified (optional)', default=None)
-    parser_graph.add_argument('--logopseudocount', help='Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
-    parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
-    parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)
-    parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
-    # Volcano options
-    parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)
-    parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
-
-    args = parser.parse_args()
-
-    # Set log file if specified
-    sys.stdout = open(args.log, 'w') if args.log else sys.stdout
-
-    # Read database object or create one from trax run if none provided
+def main(args):
+    '''
+    Main function for running argparse and calling the appropriate class
+    '''
+        # Read database object or create one from trax run if none provided
     if args.mode == 'build':
         # Clean the path to the trax directory
         args.traxdir = os.path.abspath(args.traxdir)
@@ -906,3 +783,145 @@ if __name__ == '__main__':
     else:
         print('Invalid operating mode. Exiting...')
         parser.print_help()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        prog='tRNAgraph',
+        description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
+            a trax output folder, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
+            perform further multivariate analysis such as clustering and classification of readcoverages.',
+        allow_abbrev=False
+    )
+
+    subparsers = parser.add_subparsers(
+        title='Operating modes',
+        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, and/or graphing data from an existing database object',
+        dest='mode',
+        required=True
+    )
+
+    # Build parser
+    parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
+    parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
+    parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
+    parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
+    parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
+    parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.h5ad) (optional)', default='h5ad/trnagraph.h5ad')
+    parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_build.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
+    # Merge parser
+    parser_merge = subparsers.add_parser("merge", help="Merge data from two existing h5ad AnnData objects")
+    parser_merge.add_argument('-i1', '--anndata1', help='Specify location of first h5ad object (required)', required=True)
+    parser_merge.add_argument('-i2', '--anndata2', help='Specify location of second h5ad object (required)', required=True)
+    parser_merge.add_argument('--dropno', help='Drop non tRNAs genes that are not present in both AnnData objects (optional)', action='store_true')
+    parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
+    parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.merge.h5ad) (optional)', default='h5ad/trnagraph.merge.h5ad')
+    parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_merge.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
+    # Cluster parser
+    parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
+    parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP if you want to have a static seed (default: None) (optional)', default=None, type=int)
+    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 20) (optional)', default=20, type=int)
+    parser_cluster.add_argument('-v', '--coveragetype', help='Specify coverage types for umap clustering treated as features (default: uniquecoverage, readstarts, readends, mismatchedbases, deletions) (optional)', \
+                                choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+                                         'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], nargs='+', default=['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])
+    parser_cluster.add_argument('-c1', '--ncomponentsmp', help='Specify number of components to use for UMAP clustering of samples (default: 2) (optional)', default=2, type=int)
+    parser_cluster.add_argument('-c2', '--ncomponentgrp', help='Specify number of components to use for UMAP clustering of groups (default: 2) (optional)', default=2, type=int)
+    parser_cluster.add_argument('-l1', '--neighborclusmp', help='Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional)', default=150, type=int)
+    parser_cluster.add_argument('-l2', '--neighborclusgrp', help='Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional)', default=40, type=int)
+    parser_cluster.add_argument('-n1', '--neighborstdsmp', help='Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional)', default=75, type=int)
+    parser_cluster.add_argument('-n2', '--neighborstdgrp', help='Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional)', default=20, type=int)
+    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 6) (optional)', default=6, type=int)
+    parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
+    parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
+    parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
+    parser_cluster.add_argument('--clusterobsexperimental', help='This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering (optional)', nargs='+', default=[])
+    parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
+    parser_cluster.add_argument('-o', '--output', help='Specify output directory (default: h5ad/trnagraph.cluster.h5ad) (optional)', default='h5ad/trnagraph.cluster.h5ad')
+    parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_cluster.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
+    # Graph parser
+    parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
+    parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='figures')
+    parser_graph.add_argument('-g', '--graphtypes', choices=['all','bar','cluster','compare','correlation','count','coverage','heatmap','logo','pca','radar','volcano'], \
+        help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+    # Add argument to filter parameters from AnnData object
+    parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
+    # Options to imporve speed or log output
+    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
+    parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_graph.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+    # Bar options
+    parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--barsubgrp', help='Specify AnnData column for secondary spliting of bars into subplots (default: None) (optional)', default=None, required=False)
+    parser_graph.add_argument('--barsort', help='Specify AnnData column to sort the bars by (default: None) (optional)', default=None, required=False)
+    parser_graph.add_argument('--barlabel', help='Specify wether to label the bars using a different AnnData column (default: None) (optional)', default=None, required=False)
+    # Cluster options
+    parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--clusterlabels', help='Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot (optional)', default=None, required=False)
+    parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
+    parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
+    # Compare options
+    parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    # Correlation options
+    parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
+    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
+    # Coverage options
+    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default=None)
+    parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
+    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
+        choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+            'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
+    parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
+    parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
+    # Heatmap options
+    parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
+    parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+            help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
+    parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
+    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
+    # PCA options
+    parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
+    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
+    parser_graph.add_argument('--pcareadtypes', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+            help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
+    # Radar options
+    parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', 
+                              choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
+    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100% (optional)', action='store_true', default=False, required=False)
+    # Seqlogo options
+    parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
+    parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
+    parser_graph.add_argument('--logomanualname', help='Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified (optional)', default=None)
+    parser_graph.add_argument('--logopseudocount', help='Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
+    parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
+    parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)
+    parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
+    # Volcano options
+    parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
+    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)
+    parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
+
+    args = parser.parse_args()
+
+    # Set log file if specified
+    sys.stdout = open(args.log, 'w') if args.log else sys.stdout
+    
+    # Run main function
+    if args.quiet:
+        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
+            main(args)
+    else:
+        main(args)
