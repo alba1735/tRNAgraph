@@ -371,19 +371,22 @@ class anndataGrapher:
                 toolsTG.builder(self.args.output)
             if 'obs' in d_config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
-                uns_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
-                uns_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
+                obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
+                obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
                 for k,v in d_config['obs'].items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
-                    # Filter all uns columns by the observation and update the uns_dict
-                    sub_uns_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
-                    sub_uns_dict.update(dict(zip(self.adata.obs['group'], self.adata.obs[k])))
-                    uns_dict = {i:False if sub_uns_dict.get(i,False) not in v else True for i,j in uns_dict.items()}
+                    # Filter all uns columns by the observation and update the obs_dict
+                    sub_obs_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
+                    sub_obs_dict.update(dict(zip(self.adata.obs['group'], self.adata.obs[k])))
+                    obs_dict = {i:False if sub_obs_dict.get(i,False) not in v else True for i,j in obs_dict.items()}
                     # Filter the adata object by the observation
                     self.adata = self.adata[self.adata.obs[k].isin(v), :]
-                # Filter uns columns by the uns_dict
-                for uns in ['amino_counts', 'anticodon_counts', 'nontRNA_counts', 'type_counts']:
-                    self.adata.uns[uns] = self.adata.uns[uns].loc[:, [i for i in self.adata.uns[uns].columns.values if uns_dict[i]]]
+                # Filter uns columns by the obs_dict
+                uns_dict = self.adata.uns.copy() # This was the only way I could get the uns columns to update without an implicit copy warning
+                for uns_key in ['amino_counts', 'anticodon_counts', 'nontRNA_counts', 'type_counts']:
+                    uns_value = self.adata.uns[uns_key].loc[:, [i for i in self.adata.uns[uns_key].columns.values if obs_dict[i]]].copy()
+                    uns_dict[uns_key] = uns_value
+                self.adata.uns = uns_dict
             if 'var' in d_config:
                 for k,v in d_config['var'].items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
@@ -401,9 +404,9 @@ class anndataGrapher:
             output = self.args.output + '/bar/'
             toolsTG.builder(output)
             if self.args.barsubgrp:
-                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).subplots()
+                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_subplots()
             else:
-                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).plots()
+                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_plots()
             print('Bar plots generated.\n')
 
         if 'cluster' in self.args.graphtypes:
@@ -417,7 +420,7 @@ class anndataGrapher:
                 if 'colormap' in d_config:
                     if self.args.clustergrp in d_config['colormap']:
                         colormap = d_config['colormap'][self.args.clustergrp]
-                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, colormap, output).isotype_plots()
+                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, colormap, output).generate_plots()
                 print('Cluster plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -874,7 +877,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
     # Coverage options
-    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default=None)
+    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
     parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
         choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \

@@ -3,12 +3,11 @@
 ## General
 
 * Add options to compute with RAW counts and alternative normalization methods
-* Add a command to run both create and build in one command, skipping build if it already exists
 * Add combination PDF plots to each graph type as needed
 
 ## trnagraph.py
 
-* Allow for new DeSeq2 analysis to be run on the combined object
+* Allow for new DeSeq2 or other analysis to be run on the combined object
 * Add validation that sample names match samples so it can actually write the adatafile
 
 ## pca_tools.py
@@ -38,3 +37,4 @@
 * Add CVS export save as a flag
 * Simnplify the obs entry on adata build to only be a file like with the metadata
 * Move all flag validation in adata obs or var into the trnagraph.py script from the graphing scripts
+* Add tRAX metadata/runinfo to the adata object so that only tRAX runs with the same github version can be used for merging

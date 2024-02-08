@@ -23,7 +23,7 @@ class visualizer():
     def __init__(self, adata, threads, coverage_grp, coverage_combine, coverage_type, coverage_gap, colormap, output):
         self.threads = threads
         if coverage_grp not in adata.obs.columns:
-            raise ValueError('Specified coveragegrp not found in AnnData object.')
+            raise ValueError(f'Specified coveragegrp: {coverage_grp} not found in AnnData object.')
         self.coverage_grp = coverage_grp
         self.coverage_combine = coverage_combine
         self.coverage_type = coverage_type
@@ -53,10 +53,6 @@ class visualizer():
         '''
         Clean AnnData object for plotting.
         '''
-        # Subset AnnData observations if specified
-        # if self.coverage_obs:
-        #     for k,v in self.coverage_obs.items():
-        #         adata = adata[np.isin(adata.obs[k].values, v),:]
         # Subset gaps from AnnData variables
         adata = adata[:,np.isin(adata.var.gap, self.coverage_gap)]
         # If coverage combine is specified, take the mean of the coverage_combine obs column
@@ -71,6 +67,7 @@ class visualizer():
             # Transpose the dataframes into a new AnnData object
             xdf = xdf.T.reset_index(drop=True)
             obs = obs.T.reset_index(drop=True)
+            obs.index = obs.index.astype(str) # Convert index to string to prevent error when creating AnnData object
             adata = ad.AnnData(xdf, obs=obs, var=adata.var)
         # Subset just the readstarts and readends from AnnData variables
         readstarts = adata[:,np.isin(adata.var.coverage, ['readstarts'])].copy()

@@ -18,7 +18,7 @@ plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
     def __init__(self, adata, threads, barcol, bargrp, barsubgrp, barsort, barlabel, colormap, output):
-        self.adata = adata
+        self.adata = self.clean_adata(adata)
         self.threads = threads
         self.barcol = barcol
         self.bargrp = bargrp
@@ -27,14 +27,19 @@ class visualizer():
         self.barsubgrp = barsubgrp
         self.colormap = colormap
         self.output = output
+
+    def clean_adata(self, adata):
+        # Drop Und and Sup from the adata.obs
+        adata = adata[~adata.obs['amino'].isin(['Und','Sup'])]
+        return adata
         
-    def plots(self):
+    def generate_plots(self):
         '''
         Default function to plot the barplots.
         '''
         fig, axs = plt.subplots(figsize=(12,8))
         # Create a dictionary of colors for the bargrp
-        if not self.colormap:
+        if self.colormap == None:
             self.colormap = dict(zip(sorted(self.adata.obs[self.bargrp].unique()), sns.color_palette('hls', len(self.adata.obs[self.bargrp].unique()))))
         # Create a df for the bargrps
         df = self.gen_df(self.adata)
@@ -42,7 +47,7 @@ class visualizer():
         # Save figure
         plt.savefig(f'{self.output}{self.barcol}_percent_{self.bargrp}.pdf', bbox_inches='tight')
 
-    def subplots(self):
+    def generate_subplots(self):
         '''
         Generate subplots for each unique value in the barsubgrp column.
         '''

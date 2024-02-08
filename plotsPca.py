@@ -49,7 +49,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output):
                     break
 
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
-        df = df.pivot_table(index='trna', columns='sample', values=rt)
+        df = df.pivot_table(index='trna', columns='sample', values=rt, observed=True)
         # Scale the data
         df = pd.DataFrame(StandardScaler().fit_transform(df), columns=df.columns, index=df.index)
 

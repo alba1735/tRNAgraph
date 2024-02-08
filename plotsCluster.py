@@ -20,7 +20,7 @@ class visualizer():
         self.colormap = colormap
         self.point_size = 20
 
-    def main(self):
+    def generate_plots(self):
         # Generate overview plot
         if self.overview:
             self.colormap = None

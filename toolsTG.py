@@ -24,9 +24,9 @@ def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
     '''
     df = pd.DataFrame(adata.obs, columns=['trna', comparison_groups, readtype])
     # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
-    sdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='std')
-    mdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='mean')
-    cdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='count')
+    sdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='std', observed=True)
+    mdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='mean', observed=True)
+    cdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='count', observed=True)
     # For rows in df if a value is less than readcount_cutoff, drop the row from df
     mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
     sdf = sdf[mean_drop_list]
@@ -55,9 +55,9 @@ def log2fc_compare_df(adata, countgrp, comparison_groups, readtype, readcount_cu
     '''
     df = pd.DataFrame(adata.obs, columns=[countgrp, *comparison_groups, readtype])
     # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
-    sdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='std')
-    mdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='mean')
-    cdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='count')
+    sdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='std', observed=True)
+    mdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='mean', observed=True)
+    cdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='count', observed=True)
     # For rows in df if a value is less than readcount_cutoff, drop the row from df
     mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
     sdf = sdf[mean_drop_list]
