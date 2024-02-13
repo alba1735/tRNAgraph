@@ -420,7 +420,7 @@ class anndataGrapher:
                 if 'colormap' in d_config:
                     if self.args.clustergrp in d_config['colormap']:
                         colormap = d_config['colormap'][self.args.clustergrp]
-                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, colormap, output).generate_plots()
+                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output).generate_plots()
                 print('Cluster plots generated.\n')
 
         if 'compare' in self.args.graphtypes:
@@ -870,6 +870,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--clusterlabels', help='Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot (optional)', default=None, required=False)
     parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
     parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
+    parser_graph.add_argument('--clustermask', help='Specify wether to mask the cluster plots to annotated HDBSCAN clusters (default: False) (optional)', default=False, action='store_true', required=False)
     # Compare options
     parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)

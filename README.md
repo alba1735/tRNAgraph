@@ -137,6 +137,7 @@ The following parameters are optional and can be used to customize the graphs:
 - `--clusterlabels` is whether to include labels in the cluster plots. By default, this is disabled. If enabled provide an AnnData observation to use for the labels, it doesnt have to be the same observation as the `--clustergrp` flag. This is useful if you have custom names for your HDBscan clusters.
 - `--clusteroverview` is whether to generate a 2x2 overview of the cluster plots for amino, iso, readcount, and HDBscan cluster. By default, this is disabled. If enabled, the `--clustergrp` flag will be ignored.
 - `--clusternumeric` is whether to use numeric values for the cluster plots. By default, this is disabled. Enabling this will plot a colorbar with the numeric values in the legend.
+- `--clustermask` is whether to mask the cluster plots by the HDBSCAN unclustered points. By default, this is disabled. Enabling this will plot the unclustered points in gray.
 
 #### Compare Plots
 

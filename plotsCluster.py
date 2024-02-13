@@ -10,13 +10,14 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
-    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, colormap, output):
+    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output):
         self.adata = adata
         self.output = output
         self.clustgrp = clustgrp
         self.overview = clustover
         self.numeric = clusternumeric
         self.clusterlabels = clusterlabels
+        self.masking = masking
         self.colormap = colormap
         self.point_size = 20
 
@@ -93,35 +94,27 @@ class visualizer():
         cluster = '_'.join([umapgroup,'cluster'])
         # Subset the AnnData object to the umapgroup where not NaN (i.e. clustered data that wasn't filtered out)
         adata = adata[~adata.obs[cluster].isna(), :]
-        # Determine wether to mask NaN values
+        # Set masking parameters
         masking = False
-        if adata.obs[clustgrp].isna().any() or clustgrp == cluster:
-            masking = True
-            if clustgrp == cluster:
-                # Create a list of clusters greater than or equal to 0 in size to filter out non-clustered reads from the HDBScan cluster
-                mask = adata.obs[cluster] >= 0
-            else:
-                mask = ~adata.obs[clustgrp].isnull()
-        else:
-            mask = ~adata.obs[clustgrp].isnull()
-        # Create the figure
-        fig, axs = plt.subplots(figsize=(8,8))
+        mask = ~adata.obs[clustgrp].isna()
         # Create a palette for the categorical variable
-        # if clustgrp == cluster:
-            # pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp]))-1)))
-            # pal = dict(zip(sorted(pd.unique(adata.obs[i[1]][hdbscan_annotated])), sns.color_palette("hls", len(pd.unique(adata.obs[i[1]]))-1)))
         if numeric:
             pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette("mako_r", len(pd.unique(adata.obs[clustgrp])))))
         else:
-            if masking:
-                pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp][mask])))))
-            else:
-                if self.colormap:
-                    pal = self.colormap
-                else:
-                    pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp])))))
+            pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp][mask])))))
+        # Check if the user has defined a colormap
+        if self.colormap:
+            # Replace the palette values with the user defined ones if available
+            pal = {k:self.colormap.get(k,v) for k,v in pal.items()}
+        # Determine wether to mask NaN values after making pal and mask this helps with NaN problems
+        if adata.obs[clustgrp].isna().any() or clustgrp == cluster or self.masking:
+            masking = True
+            mask = adata.obs[cluster] >= 0
+            mask = mask & ~adata.obs[clustgrp].isna()
         # Sort the adata object by the categorical variable for legend purposes
         adata = adata[adata.obs[clustgrp].sort_values().index, :]
+        # Create the figure
+        fig, axs = plt.subplots(figsize=(8,8))
         if masking:
             sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=self.point_size, linewidth=0.25, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
             sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=self.point_size, linewidth=0.25, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
@@ -153,12 +146,37 @@ class visualizer():
             plt.colorbar(sm, ax=axs, pad=0.02)
         else:
             plt.legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
+            # Add an astrix to the legend to indicate the masked data in addition to the legend
+            if masking:
+                handles, labels = axs.get_legend_handles_labels()
+                # if value counts is 0, then add a gray dot to the legend
+                mask_dict = {}
+                for k,v in adata.obs[clustgrp][mask].value_counts().items():
+                    if v == 0:
+                        mask_dict[k] = '**'
+                    if v != adata.obs[clustgrp].value_counts()[k]:
+                        mask_dict[k] = '*'
+                # Change the color of the handles to gray for masked data
+                if len(mask_dict.items()) > 0: # If there are any masked data, this prevents NaN from being added to the legend
+                    for i in range(len(handles)):
+                        labels[i] = labels[i] + mask_dict.get(labels[i],'')
+                    # Add disclaimer to the legend
+                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
+                    labels.append('')
+                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
+                    labels.append('* Data Partially Masked')
+                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
+                    labels.append('** Data Fully Masked')
+                axs.legend(handles, labels, bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
         # Add title
         plt.title(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
         # Set layout to equal with gca
         # plt.gca().set_aspect('equal', adjustable='box')
         # Save figure
-        plt.savefig(output + f'{umapgroup}_by_{clustgrp}.pdf', bbox_inches='tight')
+        if masking:
+            plt.savefig(output + f'{umapgroup}_by_{clustgrp}_masked.pdf', bbox_inches='tight')
+        else:
+            plt.savefig(output + f'{umapgroup}_by_{clustgrp}.pdf', bbox_inches='tight')
         plt.close()
 
 if __name__ == '__main__':
