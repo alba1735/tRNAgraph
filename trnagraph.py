@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import contextlib
+import multiprocessing
 # Custom functions
 import toolsTG
 import plotsBar
@@ -31,7 +32,7 @@ class trax2anndata():
     '''
     Create h5ad AnnData object from a trax run
     '''
-    def __init__(self, traxdir, metadata, observations, output):
+    def __init__(self, traxdir, metadata, output):
         '''
         Initialize trax2anndata object by loading various files from tRAX run
         '''
@@ -67,35 +68,37 @@ class trax2anndata():
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
-        self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
+        try:
+            self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
+        except:
+            raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
+        # turn first row into a list then remove it from the dataframe
+        self.observations = self.metadata.iloc[0].dropna().values.tolist()
+        # self.metadata.columns = self.observations
+        self.metadata = self.metadata.iloc[1:]
         # Create list of reference sequences from actualbase column of coverage file - skips gap positions
         self.seqs = self._seq_build_()
         self.seqs_full = self._seq_build_(gap=True)
-        # For adding categories to adata object
-        self.observations = observations
-        if self.observations:
-            # Make sure that observations are not going to be generated automatically
-            auto_obs = ['trna', 'iso', 'amino', 'sample', 'group', 'deseq2_sizefactor', 'refseq', 'dataset', 'pseudogene']
-            if any(x in self.observations for x in auto_obs):
-                raise ValueError(f'The following observation categories will automatically be generated please remove these if you included them: {auto_obs}')
-            # Make sure that observations are unique
-            if len(self.observations) != len(set(self.observations)):
-                raise ValueError(f'Observation categories must be unique, please remove duplicates from the observation catgories you wish to generate: {self.observations}')
-            self.observations.insert(0,'sample')
-            self.observations.insert(1,'group')
-            # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the trax coverage file
-            if len(self.observations) != len(self.metadata.columns):
-                diff_obs_count = len(self.metadata.columns)-len(self.observations)
-                print(f'Number of observations does not match number of parameters in trax coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
-                if diff_obs_count > 0:
-                    print(f'Adding {diff_obs_count} observations to the end of the list')
-                    self.observations += ['obs_' + str(x) for x in range(diff_obs_count)]
-                if diff_obs_count < 0:
-                    print(f'Removing {abs(diff_obs_count)} observations from the end of the list')
-                    self.observations = self.observations[:diff_obs_count]
-        else:
-            diff_obs_count = abs(len(self.metadata.columns)-2)
-            self.observations = ['sample', 'group'] + ['obs_' + str(x) for x in range(diff_obs_count)]
+        # Make sure that observations are not going to be generated automatically
+        auto_obs = ['trna', 'iso', 'amino', 'deseq2_sizefactor', 'refseq', 'dataset', 'pseudogene']
+        if any(x in self.observations for x in auto_obs):
+            raise ValueError(f'The following observation categories will automatically be generated please remove these if you included them: {auto_obs}')
+        # Make sure that observations are unique
+        if len(self.observations) != len(set(self.observations)):
+            raise ValueError(f'Observation categories must be unique, please remove duplicates from the observation catgories you wish to generate: {self.observations}')
+        # Make sure that sample and group are the first two observations
+        if self.observations[0] != 'sample' or self.observations[1] != 'group':
+            raise ValueError(f'The first two observation categories must be "sample" and "group" please reorder your observation categories to match the following: ["sample", "group", ...]: {self.observations}')
+        # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the trax coverage file
+        if len(self.observations) != len(self.metadata.columns):
+            diff_obs_count = len(self.metadata.columns)-len(self.observations)
+            print(f'Number of observations does not match number of parameters in trax coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
+            if diff_obs_count > 0:
+                print(f'Adding {diff_obs_count} observations to the end of the list')
+                self.observations += ['obs_' + str(x) for x in range(diff_obs_count)]
+            if diff_obs_count < 0:
+                print(f'Removing {abs(diff_obs_count)} observations from the end of the list')
+                self.observations = self.observations[:diff_obs_count]
         # Add align observation categories to metadata
         self.metadata.columns = self.observations
         self.metadata.set_index('sample', inplace=True)
@@ -140,10 +143,11 @@ class trax2anndata():
         adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
         # Quality check adata by dropping NaN values and printing summary
         if adata.obs.isna().any(axis=0).any():
-            print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or have a different number of observations per sample. ' \
-                  'Another consideration is to make sure your .tsv/.csv is using tabs or commas appropriately. ' \
-                  'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct:\n ' \
-                  + str(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist()))
+            print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or havinge a different number of observations per sample.\n' + \
+                  'Another consideration is to make sure your .tsv/.csv is using tabs or commas appropriately.\n' + \
+                  'It can also be caused by metadata containing NaN or None values. Please check your metadata file to make sure the following are correct\n' + \
+                  f'Observations:\n{str(adata.obs.columns[adata.obs.isna().any(axis=0)].tolist())}\n' + \
+                  f'Samples with NaN:\n{str(list(set(adata.obs["sample"][adata.obs.isna().any(axis=1)].tolist())))}\n')
         # Add output name to adata object index
         adata.obs.index = [os.path.basename(self.output).split('.')[0] + '_' + str(x) for x in adata.obs.index]
         # Save adata object
@@ -357,23 +361,33 @@ class anndataGrapher:
         self.adata = ad.read_h5ad(args.anndata)
         self.args = args
 
-    def graph(self):
+    def main(self):
+        # Load cmap dict for each graph type
+        self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
+                          'coverage':self.args.coveragegrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
+        # Load max threads available unless specified
+        if self.args.threads == 0:
+            try:
+                self.args.threads = len(os.sched_getaffinity(0)) # This is a linux only function but is less likely to cause problems than multiprocessing.cpu_count()
+            except:
+                self.args.threads = multiprocessing.cpu_count()
+        # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['bar', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
             self.args.clusteroverview = True
-
+        # Load config file if specified
         if self.args.config:
             print('Loading config file: ' + self.args.config)
             with open(self.args.config, 'r') as f:
-                d_config = json.load(f)
-            if 'name' in d_config:
-                self.args.output += '/' + d_config['name']
-                toolsTG.builder(self.args.output)
-            if 'obs' in d_config:
+                self.d_config = json.load(f)
+            if 'name' in self.d_config:
+                self.args.output += '/' + self.d_config['name']
+                print(toolsTG.builder(self.args.output))
+            if 'obs' in self.d_config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
                 obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
-                for k,v in d_config['obs'].items():
+                for k,v in self.d_config['obs'].items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
                     # Filter all uns columns by the observation and update the obs_dict
                     sub_obs_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
@@ -387,145 +401,128 @@ class anndataGrapher:
                     uns_value = self.adata.uns[uns_key].loc[:, [i for i in self.adata.uns[uns_key].columns.values if obs_dict[i]]].copy()
                     uns_dict[uns_key] = uns_value
                 self.adata.uns = uns_dict
-            if 'var' in d_config:
-                for k,v in d_config['var'].items():
+            if 'var' in self.d_config:
+                for k,v in self.d_config['var'].items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
                     self.adata = self.adata[:, self.adata.var[k].isin(v)]
             print('Config file loaded.\n')
         else:
-            d_config = {}
-
+            self.d_config = {}
+        # Generate graphs
+        print('Generating graphs with the following parameters:\n')
+        for i in self.args.__dict__: print(f'{i}: {self.args.__dict__[i]}')
+        print('')
+        # Remove bar and coverage from self.args.graphtypes and add them to non_pooled_graphs if they are present
+        # This is because the bar and coverage plots already implement multiprocessing
+        non_pooled_graphs = []
         if 'bar' in self.args.graphtypes:
-            colormap = None
-            if 'colormap' in d_config:
-                if self.args.bargrp in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.bargrp]
-            print('Generating bar plots...')
-            output = self.args.output + '/bar/'
-            toolsTG.builder(output)
-            if self.args.barsubgrp:
-                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_subplots()
-            else:
-                plotsBar.visualizer(self.adata.copy(), self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_plots()
-            print('Bar plots generated.\n')
-
-        if 'cluster' in self.args.graphtypes:
-            if not 'cluster_runinfo' in self.adata.uns:
-                print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
-            else:
-                print('Generating cluster plots...')
-                output = self.args.output + '/clustering/'
-                toolsTG.builder(output)
-                colormap = None
-                if 'colormap' in d_config:
-                    if self.args.clustergrp in d_config['colormap']:
-                        colormap = d_config['colormap'][self.args.clustergrp]
-                plotsCluster.visualizer(self.adata.copy(), self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output).generate_plots()
-                print('Cluster plots generated.\n')
-
-        if 'compare' in self.args.graphtypes:
-            colormap = None
-            if 'colormap' in d_config:
-                if self.args.comparegrp1 in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.comparegrp1]
-            print('Generating comparison plots...')
-            output = self.args.output + '/compare/'
-            toolsTG.builder(output)
-            plotsCompare.visualizer(self.adata.copy(), self.args.comparegrp1, self.args.comparegrp2, colormap, output)
-            print('Comparison plots generated.\n')
-
-        if 'correlation' in self.args.graphtypes:
-            print('Generating correlation plots...')
-            output = self.args.output + '/correlation/'
-            toolsTG.builder(output)
-            plotsCorrelation.visualizer(self.adata.copy(), output, self.args.corrmethod, self.args.corrgroup)
-            print('Correlation plots generated.\n')
-
-        if 'count' in self.args.graphtypes:
-            colormap_tc, colormap_bg = None, None
-            if 'colormap' in d_config:
-                if 'sample' in d_config['colormap']:
-                    colormap_bg = d_config['colormap']['sample']
-                if 'group' in d_config['colormap']:
-                    colormap_tc = d_config['colormap']['group']
-            print('Generating count plots...')
-            output = self.args.output + '/count/'
-            toolsTG.builder(output)
-            plotsCount.visualizer(self.adata.copy(), colormap_tc, colormap_bg, output)
-            print('Count plots generated.\n')
-
+            self.args.graphtypes.remove('bar')
+            non_pooled_graphs.append('bar')
         if 'coverage' in self.args.graphtypes:
-            output = self.args.output + '/coverage/'
-            toolsTG.builder(output)
-            colormap = None
-            if 'colormap' in d_config:
-                coveragegrp = 'group' 
-                if self.args.coveragegrp:
-                    coveragegrp = self.args.coveragegrp
-                if coveragegrp in d_config['colormap']:
-                    colormap = d_config['colormap'][coveragegrp]
-            pcV = plotsCoverage.visualizer(self.adata.copy(), self.args.threads, self.args.coveragegrp, self.args.coveragecombine, self.args.coveragetype, self.args.coveragegap, colormap, output)
-            if self.args.combineonly:
+            self.args.graphtypes.remove('coverage')
+            non_pooled_graphs.append('coverage')
+        # Pool if applicable
+        if self.args.threads > 1 and len(self.args.graphtypes) > 1:
+            print(f'Multithreading enabled with {self.args.threads} threads to generate plots\n')
+            # Create a multiprocessing pool
+            pool = multiprocessing.Pool(self.args.threads)
+            # Generate graphs
+            pool_output = pool.map(self.plot, self.args.graphtypes)
+            # Close the pool and wait for the work to finish
+            pool.close()
+            pool.join()
+            for gt in non_pooled_graphs:
+                self.plot(gt, threaded=False)
+            for po in pool_output:
+                print(po + '\n')
+        else:
+            # Combine non_pooled_graphs with self.args.graphtypes
+            self.args.graphtypes += non_pooled_graphs
+            for gt in self.args.graphtypes:
+                self.plot(gt, threaded=False)
+
+    def plot(self, gt, threaded=True):
+        if threaded:
+            threaded = f'Generating {gt} plots...\n'
+        else:
+            print(f'Generating {gt} plots...')
+        adata_c = self.adata.copy()
+        # Define the colormap to use for the graph type
+        colormap, colormap_tc, colormap_bg = None, None, None # For counts plot
+        cmapgrp = gt
+        if gt == 'coverage':
+            if not self.args.coveragegrp:
+                cmapgrp = 'group'
+        cmappar = self.cmap_dict.get(cmapgrp, None)
+        if 'colormap' in self.d_config:
+            if cmappar in self.d_config['colormap']:
+                colormap = self.d_config['colormap'][cmappar]
+            if gt == 'count':
+                if 'sample' in self.d_config['colormap']:
+                    colormap_bg = self.d_config['colormap']['sample']
+                if 'group' in self.d_config['colormap']:
+                    colormap_tc = self.d_config['colormap']['group']
+        # Create the output directory
+        output = self.args.output + '/' + gt + '/'
+        if threaded:
+            threaded += toolsTG.builder(output) + '\n'
+        else:
+            print(toolsTG.builder(output))
+        # Plot specific parameters
+        if gt == 'bar':
+            if self.args.barsubgrp:
+                plotsBar.visualizer(adata_c, self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_subplots()
+            else:
+                plotsBar.visualizer(adata_c, self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_plots()
+        if gt == 'cluster':
+            if not 'cluster_runinfo' in self.adata.uns:
+                if threaded:
+                    threaded += 'No cluster run information found in AnnData object. Please run the cluster command first.\n'
+                else:
+                    print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
+            else:
+                threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded).generate_plots()
+        if gt == 'compare':
+            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded)
+        if gt == 'correlation':
+            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded)
+        if gt == 'count':
+            threaded = plotsCount.visualizer(adata_c, colormap_tc, colormap_bg, output, threaded=threaded) # Need to add better threading to this
+        if gt == 'coverage':
+            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.coveragegrp, self.args.coveragecombine, self.args.coveragetype, self.args.coveragegap, colormap, output)
+            if self.args.coveragecombine:
                 print('Generating combined coverage plots...')
                 pcV.generate_combine()
             else:
                 print('Generating individual coverage plots...')
                 if self.args.coveragecombine:
-                    toolsTG.builder(output+'single/combined/')
-                    toolsTG.builder(output+'single/combined/low_coverage/')
+                    print(toolsTG.builder(output+'single/combined/'))
+                    print(toolsTG.builder(output+'single/combined/low_coverage/'))
                 else:
-                    toolsTG.builder(output+'single/')
-                    toolsTG.builder(output+'single/low_coverage/')
+                    print(toolsTG.builder(output+'single/'))
+                    print(toolsTG.builder(output+'single/low_coverage/'))
                 pcV.generate_split()
                 print('Generating combined coverage plots...')
                 pcV.generate_combine()
-            print('Coverage plots generated.\n')
-
-        if 'heatmap' in self.args.graphtypes:
-            print('Generating heatmaps...')
-            output = self.args.output + '/heatmap/'
-            toolsTG.builder(output)
-            plotsHeatmap.visualizer(self.adata.copy(), self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
-            print('Heatmaps generated.\n')
-
-        if 'logo' in self.args.graphtypes:
-            print('Generating logo plots...')
-            output = self.args.output + '/seqlogo/'
-            toolsTG.builder(output)
-            plotsSeqlogo.visualizer(self.adata.copy(), self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
-            print('Logo plots generated.\n')
-
-        if 'pca' in self.args.graphtypes:
-            colormap = None
-            if 'colormap' in d_config:
-                if self.args.pcacolors in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.pcacolors]
-            print('Generating pca plots...')
-            output = self.args.output + '/pca/'
-            toolsTG.builder(output)
-            plotsPca.visualizer(self.adata.copy(), self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output)
-            print('PCA plots generated.\n')
-
-        if 'radar' in self.args.graphtypes:
-            colormap = None
-            if 'colormap' in d_config:
-                if self.args.radargrp in d_config['colormap']:
-                    colormap = d_config['colormap'][self.args.radargrp]
-            print('Generating radar plots...')
-            output = self.args.output + '/radar/'
-            toolsTG.builder(output)
+        if gt == 'heatmap':
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
+        if gt == 'logo':
+            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
+        if gt == 'pca':
+            threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded)
+        if gt == 'radar':
             if self.args.radarmethod == 'all' or 'all' in self.args.radarmethod:
                 self.args.radarmethod = ['mean', 'median', 'max', 'sum']
             for radarmethod in self.args.radarmethod:
-                plotsRadar.visualizer(self.adata.copy(), self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output)
-            print('Radar plots generated.\n')
-
-        if 'volcano' in self.args.graphtypes:
-            print('Generating volcano plots...')
-            output = self.args.output + '/volcano/'
-            toolsTG.builder(output)
-            plotsVolcano.visualizer(self.adata.copy(), self.args.volgrp, self.args.volrt, self.args.volcutoff, output)
-            print('Volcano plots generated.\n')       
+                threaded = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
+        if gt == 'volcano':
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrt, self.args.volcutoff, output, threaded=threaded)
+        # Return threaded output  
+        if threaded:
+            threaded += f'{gt.capitalize()} plots generated!\n'
+            return threaded
+        else:
+            print(f'{gt.capitalize()} plots generated!\n')
 
 class anndataMerger():
     '''
@@ -733,24 +730,11 @@ def main(args):
         if args.metadata:
             if not os.path.isfile(args.metadata):
                 raise Exception('Error: metadata file does not exist.')
-        # Raise exception if observations file is empty or doesn't exist
-        if args.observationsfile:
-            if not os.path.isfile(args.observationsfile):
-                raise Exception('Error: observations file does not exist.')
         print('Building AnnData object...')
-        if args.observationslist and args.observationsfile:
-            print('Error: Only one of --observationslist or --observationsfile can be used. Defaulting to --observationsfile...')
-        if not args.observationslist and not args.observationsfile:
-            print('No observations provided. Defaulting to sample names from trax coverage file...')
-        if args.observationsfile:
-            args.observationslist = []
-            with open(args.observationsfile, 'r') as f:
-                for line in f:
-                    args.observationslist += line.split()
         # Create path to output directory if it doesn't exist
-        toolsTG.builder(args.output)
+        print(toolsTG.builder(args.output))
         # Create AnnData object
-        trax2anndata(args.traxdir, args.metadata, args.observationslist, args.output).create()
+        trax2anndata(args.traxdir, args.metadata, args.output).create()
         print('Done!\n')
     elif args.mode == 'merge':
         # Raise exception if h5ad file is empty or doesn't exist
@@ -759,7 +743,7 @@ def main(args):
         if not os.path.isfile(args.anndata2):
             raise Exception('Error: second h5ad file does not exist.')
         # Create path to output directory if it doesn't exist
-        toolsTG.builder(args.output)
+        print(toolsTG.builder(args.output))
         # Merge AnnData objects
         print('Merging database objects...\n')
         anndataMerger(args).merge()
@@ -769,19 +753,19 @@ def main(args):
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')
         # Create path to output directory if it doesn't exist
-        toolsTG.builder(args.output)
+        print(toolsTG.builder(args.output))
         print('Clustering data from database object...\n')
         anndataCluster(args).main()
         print('Done!\n')
     elif args.mode == 'graph':
         # Create output directory if it doesn't exist
         args.output = os.path.abspath(args.output)
-        toolsTG.builder(args.output)
+        print(toolsTG.builder(args.output))
         # Raise exception if h5ad file is empty or doesn't exist
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')
         print('Graphing data from database object...\n')
-        anndataGrapher(args).graph()
+        anndataGrapher(args).main()
         print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...')
@@ -807,8 +791,8 @@ if __name__ == '__main__':
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
     parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
     parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
-    parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
-    parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
+    # parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
+    # parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
     parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.h5ad) (optional)', default='h5ad/trnagraph.h5ad')
     parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_build.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
@@ -856,7 +840,7 @@ if __name__ == '__main__':
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
     # Options to imporve speed or log output
-    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: 1) (optional)', default=1, type=int)
+    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_graph.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
     # Bar options

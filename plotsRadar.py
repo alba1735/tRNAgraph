@@ -11,13 +11,14 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 class visualizer:
-    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output):
+    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=True):
         self.adata = adata
         self.radargrp = radargrp
         self.radarmethod = radarmethod
         self.radarscaled = radarscaled
         self.colormap = colormap
         self.output = output
+        self.threaded = threaded
 
     def isotype_plots(self):
         for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
@@ -38,6 +39,8 @@ class visualizer:
                      self.generate_plot(df[df.index.isin(codons)], readtype, aminoacid=aa)
             # Create radar plot for all isoforms
             self.generate_plot(df, readtype)
+        if self.threaded:
+            return self.threaded
 
     def generate_plot(self, df, readtype, aminoacid=False):
         '''
@@ -74,7 +77,10 @@ class visualizer:
             colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
             for v in tdf.columns:
                 if v not in colormap:
-                    print(f'Color {v} not found in colormap. Using default colors instead.')
+                    if self.threaded:
+                        self.threaded += f'Color {v} not found in colormap. Using default colors instead.\n'
+                    else:
+                        print(f'Color {v} not found in colormap. Using default colors instead.')
                     colormap = None
                     break
         # Plot data
@@ -110,7 +116,10 @@ class visualizer:
         if readtype == 'nreads_total_unique_norm':
             outname += '_unique'
         outname += f'_{self.radarmethod}.pdf'
-        print(f'Plot saved to {outname}')
+        if self.threaded:
+            self.threaded += f'Plot saved to {outname}\n'
+        else:   
+            print(f'Plot saved to {outname}')
         plt.savefig(outname, bbox_inches='tight')
         plt.close()
 

@@ -3,8 +3,6 @@
 import seaborn as sns
 import numpy as np
 import pandas as pd
-# import anndata as ad
-# import argparse
 
 import toolsTG
 
@@ -15,7 +13,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
+def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=True):
     '''
     Generate heatmap visualizations for each group in an AnnData object.
     '''
@@ -43,7 +41,10 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
             for col in [i for i in df.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df, col, cmap, heatbound)
                 # Save figure
-                print(f'Saving heatmap for {readtype} {col}...')
+                if threaded:
+                    threaded += f'Saving heatmap for {readtype} {col}...\n'
+                else:
+                    print(f'Saving heatmap for {readtype} {col}...')
                 if heatsubplots:
                     plt.savefig(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
@@ -54,11 +55,16 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output):
             for col in [i for i in df_combine.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df_combine, col, cmap, heatbound)
                 # Save figure
-                print(f'Saving heatmap for combine {col}...')
+                if threaded:
+                    threaded += f'Saving heatmap for combine {col}...\n'
+                else:
+                    print(f'Saving heatmap for combine {col}...')
                 if heatsubplots:
                     plt.savefig(f'{output}{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
                 plt.close()
+    if threaded:
+        return threaded
 
 def heatmap_plot(df, col, cmap, heatbound):
     # Sort df by the sum of the log2FC values for each row
@@ -113,27 +119,3 @@ def heatmap_plot(df, col, cmap, heatbound):
 
 if __name__ == '__main__':
     pass
-    # parser = argparse.ArgumentParser(
-    #     prog='pca_tools.py',
-    #     description='Generate heatmap visualizations for each group in an AnnData object.'
-    # )
-
-    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='heatmap', required=False)
-    # parser.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    # parser.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-    #      'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-    #         help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-    #             nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    # parser.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
-    # parser.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, type=int, required=False)
-    # parser.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', required=False)
-
-    # args = parser.parse_args()
-
-    # # Create output directory if it doesn't exist
-    # toolsTG.builder(args.output)
-
-    # adata = ad.read_h5ad(args.anndata)
-
-    # visualizer(adata, args.heatgrp, args.heatrts, args.heatcutoff, args.heatbound, args.heatsubplots, args.output)

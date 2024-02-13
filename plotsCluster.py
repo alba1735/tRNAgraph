@@ -10,9 +10,10 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
-    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output):
+    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True):
         self.adata = adata
         self.output = output
+        self.threaded = threaded
         self.clustgrp = clustgrp
         self.overview = clustover
         self.numeric = clusternumeric
@@ -44,6 +45,9 @@ class visualizer():
             else:
                 self.clusterPlot(self.adata, 'sample', self.clustgrp, self.output, numeric=self.numeric)
                 self.clusterPlot(self.adata, 'group', self.clustgrp, self.output, numeric=self.numeric)
+        # Return the threaded string if threaded
+        if self.threaded:
+            return self.threaded
 
     def overviewPlot(self, adata, umapgroup, output):
         # Define varibles
@@ -83,7 +87,10 @@ class visualizer():
         # Add title
         fig.suptitle(f'UMAP Projection of tRNAs sorted by tRAX {umapgroup}', y=0.925)
         # Save figure
-        print(f'Saving figure: {output}umap_{umapgroup}_overview.pdf')
+        if self.threaded:
+            self.threaded += f'Saving figure: {output}umap_{umapgroup}_overview.pdf\n'
+        else:
+            print(f'Saving figure: {output}umap_{umapgroup}_overview.pdf')
         plt.savefig(f'{output}overview_{umapgroup}.pdf', bbox_inches='tight')
         plt.close()
 

@@ -2,8 +2,6 @@
 
 import seaborn as sns
 import numpy as np
-# import anndata as ad
-# import argparse
 
 import toolsTG
 
@@ -13,7 +11,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtype, cutoff, output):
+def visualizer(adata, grp, readtype, cutoff, output, threaded=True):
     '''
     Generate volcano visualizations for each group in an AnnData object.
     '''
@@ -43,28 +41,15 @@ def visualizer(adata, grp, readtype, cutoff, output):
         ax.set_ylabel('-log10(p-value)')
         ax.set_title(f'Volcano plot of {pair} tRNA read counts')
         # Save figure
-        print(f'Saving figure: {output}{pair}_{readtype}_{cutoff}_volcano.pdf')
+        if threaded:
+            threaded += f'Saving figure: {output}{pair}_{readtype}_{cutoff}_volcano.pdf\n'
+        else:   
+            print(f'Saving figure: {output}{pair}_{readtype}_{cutoff}_volcano.pdf')
         plt.savefig(f'{output}{pair}_{readtype}_{cutoff}_volcano.pdf', bbox_inches='tight')
         plt.close()
 
+    if threaded:
+        return threaded
+
 if __name__ == '__main__':
     pass
-    # parser = argparse.ArgumentParser(
-    #     prog='pca_tools.py',
-    #     description='Generate volcano visualizations for each group in an AnnData object.'
-    # )
-
-    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='volcano', required=False)
-    # parser.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    # parser.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_norm', required=False)
-    # parser.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
-
-    # args = parser.parse_args()
-
-    # # Create output directory if it doesn't exist
-    # toolsTG.builder(args.output)
-
-    # adata = ad.read_h5ad(args.anndata)
-
-    # visualizer(adata, args.volgrp, args.volrt, args.volcutoff, args.output)

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 
 import numpy as np
-# import pandas as pd
-# import anndata as ad
-# import argparse
 
 import toolsTG
 
@@ -14,7 +11,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
-def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
+def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True):
     # Check if the specified columns exist in the AnnData object
     if comparegrp1 not in adata.obs.columns:
         raise ValueError('Specified comparegrp1 not found in AnnData object.')
@@ -78,27 +75,12 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output):
             # Add a title
             ax.set_title(f'{cgrp2} by {comparegrp1} {countgrp.capitalize()} Log2 Fold-Change')
             # Save the figure
-            print(f'Saving figure to {output}...')
             plt.savefig(f'{output}{comparegrp2}_{cgrp2}_by_{comparegrp1}_{countgrp}_log2fc.pdf', bbox_inches='tight')
+            if threaded:
+                threaded += f'Saving figure to {output}...\n'
+                return threaded
+            else:
+                print(f'Saving figure to {output}...')
 
 if __name__ == '__main__':
     pass
-    # parser = argparse.ArgumentParser(
-    #     prog='compare_tools.py',
-    #     description='Generate comparison condition plots from combined objects in an AnnData object.',
-    # )
-
-    # parser.add_argument('-i', '--anndata', help='Specify AnnData input', required=True)
-    # parser.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
-    # parser.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    # parser.add_argument('--colormap', help='Specify a colormap for coverage plots (optional)', default=None)
-    # parser.add_argument('-o', '--output', help='Specify output directory', default='compare', required=False)
-
-    # args = parser.parse_args()
-
-    # # Create output directory if it doesn't exist
-    # toolsTG.builder(args.output)
-
-    # adata = ad.read_h5ad(args.anndata)
-
-    # visualizer(adata, args.comparegrp1, args.comparegrp2, args.colormap, args.output)

@@ -51,23 +51,17 @@ tRNAgraph will work with any tRAX (Python3 Version) generated coverage file howe
 
 ### Metadata
 
-You will need to impute the meta-data associated with the samples if you want to generate graphs based on specific experimental conditions. To do this you can provide a whitespace/.csv/.tsv file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. If you wish to run the tool without providing a metadata file, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run. An example meta-data file is shown below:
+You will need to impute the meta-data associated with the samples if you want to generate graphs based on specific experimental conditions. To do this you can provide a .tsv/.csv file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. This file must also contain a header row with at minimum `sample` and `group` columns. The meta-data file can contain any number of additional columns corresponding to the experimental conditions you want to visualize. An example meta-data file is shown below:
 
 ```tsv
+sample  group	celltype	treatment	condition
 sample1 sampleGroup1 celltypeX treatmentA condition1
 sample2 sampleGroup1 celltypeX treatmentA condition2
 sample3 sampleGroup2 celltypeY treatmentB condition1
 ```
 
-It is recommended that either a list of observations (`-l/--observationslist`) or a file containing a list of observations (`-f/--observationsfile`) be provided. The observations should match the categories found in the tRAX generation file, not including the `sample` and `group` columns. The observations can be provided in the form of a list or a file containing a list of observations. If a file is provided, each observation should be tab-separated.
-
-Example list of observations:
-
-```tsv
-celltype treatment condition
-```
-
-If no list of observations is provided then all observations will be annotated automatically `obs_#` where `#` is the ordered observation.
+- If you wish to run the tool without providing a metadata file, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run and add the header row to the top of the file. The samples file should contain the `sample group fastq`.
+- If no list of observations is provided then all observations will be annotated automatically `obs_#` where `#` is the ordered observation.
 
 ## Usage
 
@@ -116,7 +110,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   - `volcano` - Generates volcano plots of differential tRNA expression.
   - `all` - Generates all of the above plots. Exclude `compare` and `cluster` as they require additional parameters.
 - `--config` is an optional flag to the path to a JSON file containing additional graph parameters. [See the configuration section below for more details.](#configuration)
-- `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to 1. This is mostly useful for generating coverage plots and seqlogos as they can take a long time to generate.
+- `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to the CPU_MAX. This is mostly useful for generating coverage plots and seqlogos as they can take a long time to generate. It will however run all non-threaded plots in parallel.
 - `--log` is used to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 - `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
