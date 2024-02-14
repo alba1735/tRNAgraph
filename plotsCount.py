@@ -47,32 +47,31 @@ def visualizer(adata, colormap_tc, colormap_bg, output, threaded=True):
                         print(f'Color {v} not found in colormap. Using default colors instead.')
                     use_colormap = False
                     break
-
         if use_colormap:
-            split_barplots(df.copy(), count_type, output, colormap=colormap, threaded=threaded)
-            split_barplots(df*100/df.sum(), count_type, output, colormap=colormap, percent=True, threaded=threaded)
+            threaded = split_barplots(df.copy(), count_type, output, colormap=colormap, threaded=threaded)
+            threaded = split_barplots(df*100/df.sum(), count_type, output, colormap=colormap, percent=True, threaded=threaded)
             if count_type == 'amino_counts' and grp != 'sample':
-                split_barplots(df_combine_mean.copy(), count_type, output, title='mean', colormap=colormap, threaded=threaded)
-                split_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', colormap=colormap, percent=True, threaded=threaded)
-                split_barplots(df_combine_sum.copy(), count_type, output, title='sum', colormap=colormap, threaded=threaded)
-                split_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', colormap=colormap, percent=True, threaded=threaded)
+                threaded = split_barplots(df_combine_mean.copy(), count_type, output, title='mean', colormap=colormap, threaded=threaded)
+                threaded = split_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', colormap=colormap, percent=True, threaded=threaded)
+                threaded = split_barplots(df_combine_sum.copy(), count_type, output, title='sum', colormap=colormap, threaded=threaded)
+                threaded = split_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', colormap=colormap, percent=True, threaded=threaded)
         else:
-            split_barplots(df.copy(), count_type, output, threaded=threaded)
-            split_barplots(df*100/df.sum(), count_type, output, percent=True, threaded=threaded)
+            threaded = split_barplots(df.copy(), count_type, output, threaded=threaded)
+            threaded = split_barplots(df*100/df.sum(), count_type, output, percent=True, threaded=threaded)
             if count_type == 'amino_counts' and grp != 'sample':
-                split_barplots(df_combine_mean.copy(), count_type, output, title='mean', threaded=threaded)
-                split_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', percent=True, threaded=threaded)
-                split_barplots(df_combine_sum.copy(), count_type, output, title='sum', threaded=threaded)
-                split_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', percent=True, threaded=threaded)
+                threaded = split_barplots(df_combine_mean.copy(), count_type, output, title='mean', threaded=threaded)
+                threaded = split_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', percent=True, threaded=threaded)
+                threaded = split_barplots(df_combine_sum.copy(), count_type, output, title='sum', threaded=threaded)
+                threaded = split_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', percent=True, threaded=threaded)
         
-        stacked_barplots(df.copy(), count_type, output, threaded=threaded)
-        stacked_barplots(df*100/df.sum(), count_type, output, percent=True, threaded=threaded)
+        threaded = stacked_barplots(df.copy(), count_type, output, threaded=threaded)
+        threaded = stacked_barplots(df*100/df.sum(), count_type, output, percent=True, threaded=threaded)
         if count_type == 'amino_counts' and grp != 'sample':
-            stacked_barplots(df_combine_mean.copy(), count_type, output, title='mean', threaded=threaded)
-            stacked_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', percent=True, threaded=threaded)
-            stacked_barplots(df_combine_sum.copy(), count_type, output, title='sum', threaded=threaded)
-            stacked_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', percent=True, threaded=threaded)
-
+            threaded = stacked_barplots(df_combine_mean.copy(), count_type, output, title='mean', threaded=threaded)
+            threaded = stacked_barplots(df_combine_mean*100/df_combine_mean.sum(), count_type, output, title='mean', percent=True, threaded=threaded)
+            threaded = stacked_barplots(df_combine_sum.copy(), count_type, output, title='sum', threaded=threaded)
+            threaded = stacked_barplots(df_combine_sum*100/df_combine_sum.sum(), count_type, output, title='sum', percent=True, threaded=threaded)
+    
     if threaded:
         return threaded
 
@@ -112,18 +111,24 @@ def split_barplots(df, count_type, output, title=None, colormap=None, percent=Fa
     if percent:
         if title:
             plt.savefig(f'{output}percent_{count_type}_split_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}percent_{count_type}_split_{title}.pdf')
+            ps = f'Plot saved to {output}percent_{count_type}_split_{title}.pdf'
         else:
             plt.savefig(f'{output}percent_{count_type}_split.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}percent_{count_type}_split.pdf')
+            ps = f'Plot saved to {output}percent_{count_type}_split.pdf'
     else:
         if title:
             plt.savefig(f'{output}total_{count_type}_split_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}total_{count_type}_split_{title}.pdf')
+            ps = f'Plot saved to {output}total_{count_type}_split_{title}.pdf'
         else:
             plt.savefig(f'{output}total_{count_type}_split.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}total_{count_type}_split.pdf')
+            ps = f'Plot saved to {output}total_{count_type}_split.pdf'
     plt.close()
+    if threaded:
+        threaded += f'{ps}\n'
+        return threaded
+    else:
+        print(ps)
+        return None
 
 def stacked_barplots(df, count_type, output, title=None, percent=False, threaded=True):
     '''
@@ -168,18 +173,24 @@ def stacked_barplots(df, count_type, output, title=None, percent=False, threaded
     if percent:
         if title:
             plt.savefig(f'{output}percent_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}percent_{count_type}_stacked_{title}.pdf')
+            ps = f'Plot saved to {output}percent_{count_type}_stacked_{title}.pdf'
         else:
             plt.savefig(f'{output}percent_{count_type}_stacked.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}percent_{count_type}_stacked.pdf')
+            ps = f'Plot saved to {output}percent_{count_type}_stacked.pdf'
     else:
         if title:
             plt.savefig(f'{output}total_{count_type}_stacked_{title}.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}total_{count_type}_stacked_{title}.pdf')
+            ps = f'Plot saved to {output}total_{count_type}_stacked_{title}.pdf'
         else:
             plt.savefig(f'{output}total_{count_type}_stacked.pdf', bbox_inches='tight')
-            print(f'Plot saved to {output}total_{count_type}_stacked.pdf')
+            ps = f'Plot saved to {output}total_{count_type}_stacked.pdf'
     plt.close()
+    if threaded:
+        threaded += f'{ps}\n'
+        return threaded
+    else:
+        print(ps)
+        return None
 
 if __name__ == '__main__':
     pass

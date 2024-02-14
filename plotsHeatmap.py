@@ -13,7 +13,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=True):
+def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False):
     '''
     Generate heatmap visualizations for each group in an AnnData object.
     '''

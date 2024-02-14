@@ -46,7 +46,7 @@ class trax2anndata():
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.size_factors_list = None
         # For adding unique counts to coverage file
-        trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-trnauniquecounts.txt'
+        trnauniquecounts = traxdir + '/unique/' + traxdir.split('/')[-1] + '-unique-trnas.txt' #'-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
         # For adding normalized read counts to coverage file split by read type
         normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
@@ -103,6 +103,12 @@ class trax2anndata():
         self.metadata.columns = self.observations
         self.metadata.set_index('sample', inplace=True)
         self.metadata = self.metadata.to_dict()
+        # For adding the tRAX runinfo
+        with open(traxdir + '/' + traxdir.split('/')[-1] + '-runinfo.txt', 'r') as f:
+            runinfo = f.read()
+        # Split the strings and convert to dictionary
+        runinfo = [x.strip().split('\t') for x in runinfo]
+        self.run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
         # Output file name
         self.output = output
         # Names of coverage types to add to adata object from coverage file
@@ -350,6 +356,8 @@ class trax2anndata():
         adata.uns['type_counts'] = self.type_counts
         # Add non tRNA counts as uns
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
+        # Add runinfo as uns
+        adata.uns['runinfo'] = self.run_info
         
         return adata
 
@@ -427,21 +435,21 @@ class anndataGrapher:
             # Create a multiprocessing pool
             pool = multiprocessing.Pool(self.args.threads)
             # Generate graphs
-            pool_output = pool.map(self.plot, self.args.graphtypes)
+            pool_output = pool.starmap(self.plot, [(gt, True) for gt in self.args.graphtypes])
             # Close the pool and wait for the work to finish
             pool.close()
             pool.join()
             for gt in non_pooled_graphs:
-                self.plot(gt, threaded=False)
+                self.plot(gt)
             for po in pool_output:
                 print(po + '\n')
         else:
             # Combine non_pooled_graphs with self.args.graphtypes
             self.args.graphtypes += non_pooled_graphs
             for gt in self.args.graphtypes:
-                self.plot(gt, threaded=False)
+                self.plot(gt)
 
-    def plot(self, gt, threaded=True):
+    def plot(self, gt, threaded=None):
         if threaded:
             threaded = f'Generating {gt} plots...\n'
         else:
@@ -511,10 +519,14 @@ class anndataGrapher:
         if gt == 'pca':
             threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded)
         if gt == 'radar':
+            # Not sure why argparse isn't converting the list of strings to a list of strings as it should
+            if self.args.radarmethod != type(list):
+                self.args.radarmethod = [self.args.radarmethod]
             if self.args.radarmethod == 'all' or 'all' in self.args.radarmethod:
                 self.args.radarmethod = ['mean', 'median', 'max', 'sum']
             for radarmethod in self.args.radarmethod:
-                threaded = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
+                pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
+                threaded = pRd.isotype_plots()
         if gt == 'volcano':
             threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrt, self.args.volcutoff, output, threaded=threaded)
         # Return threaded output  

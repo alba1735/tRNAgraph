@@ -17,10 +17,10 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
     '''
     Generate PCA visualizations for each sample in an AnnData object.
     '''
-    if pcamarkers not in adata.obs.columns:
-        raise ValueError('Specified pcamarkers not found in AnnData object.')
-    if pcacolors not in adata.obs.columns:
-        raise ValueError('Specified pcacolor not found in AnnData object.')
+    # if pcamarkers not in adata.obs.columns:
+    #     raise ValueError('Specified pcamarkers not found in AnnData object.')
+    # if pcacolors not in adata.obs.columns:
+    #     raise ValueError('Specified pcacolor not found in AnnData object.')
     # Create a list of readtypes to iterate over if 'all' is specified
     if 'all' in pcareadtypes:
         pcareadtypes = ['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 'wholecounts',
@@ -46,32 +46,15 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                         print(f'Color {v} not found in colormap. Using default colors instead.')
                     colormap = None
                     break
-
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
         df = df.pivot_table(index='trna', columns='sample', values=rt, observed=True)
-
-
-        print(df)
-
-        # exit()
-
         # Scale the data
         df = pd.DataFrame(StandardScaler().fit_transform(df), columns=df.columns, index=df.index)
-
         # Create a PCA object
         pca = PCA(n_components=min(len(df.columns), 5))
         pca.fit_transform(df)
-
-        print(df)
-
-        exit()
-
         evr = pca.explained_variance_ratio_
-
-        print(pca)
-
-        exit()
-
+        # Print the explained variance ratio
         if threaded:
             threaded += f'Principal components: {[f"PC{x}" for x in range(1, len(evr)+1)]}\n'
             threaded += f'Explained variance: {[f"{i:.4f}" for i in pca.explained_variance_]}\n'

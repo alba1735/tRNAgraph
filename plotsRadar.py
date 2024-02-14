@@ -11,7 +11,7 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 class visualizer:
-    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=True):
+    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False):
         self.adata = adata
         self.radargrp = radargrp
         self.radarmethod = radarmethod
@@ -26,12 +26,12 @@ class visualizer:
             df = pd.DataFrame(self.adata.obs, columns=['iso', 'amino', self.radargrp, readtype])
             # Drop rows where iso is NNN
             df = df[df['iso']!='NNN']
-            # Convert the df to a pivot table and use the specified stats method to aggregate the data
-            df = pd.pivot_table(df, values=readtype, index=['iso'], columns=[self.radargrp], aggfunc=self.radarmethod, observed=True)
             # Create dict from all iso and amino where each amino is a key and each value is a list of iso that have that amino
             amino_dict = {}
             for amino in df['amino'].unique():
                 amino_dict[amino] = df[df['amino']==amino]['iso'].unique().tolist()
+            # Convert the df to a pivot table and use the specified stats method to aggregate the data
+            df = pd.pivot_table(df, values=readtype, index=['iso'], columns=[self.radargrp], aggfunc=self.radarmethod, observed=True)
             # Only create radar plots for amino acids with at least 3 isoforms
             for aa, codons, in amino_dict.items():
                 if len(codons) >= 3:
@@ -39,8 +39,6 @@ class visualizer:
                      self.generate_plot(df[df.index.isin(codons)], readtype, aminoacid=aa)
             # Create radar plot for all isoforms
             self.generate_plot(df, readtype)
-        if self.threaded:
-            return self.threaded
 
     def generate_plot(self, df, readtype, aminoacid=False):
         '''
@@ -73,7 +71,7 @@ class visualizer:
         if self.radarscaled:
             ax.set_ylim(0,100)
         # Set colormap if specified
-        if colormap != None:
+        if self.colormap != None:
             colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
             for v in tdf.columns:
                 if v not in colormap:
@@ -89,7 +87,7 @@ class visualizer:
             v = np.concatenate((v, v[:1]))
             a = angles + angles[:1]
             # Plot data for each anticodon group
-            if colormap != None:
+            if self.colormap != None:
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=colormap[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=colormap[i])
             else:
@@ -107,6 +105,7 @@ class visualizer:
         else:
             plt.title('Codon Pool Percent Expression Change')
         # Save plot
+        outname = ''
         if aminoacid:
             outname += f'{self.output}{aminoacid}_radar_by_{self.radargrp}'
         else:
@@ -122,6 +121,8 @@ class visualizer:
             print(f'Plot saved to {outname}')
         plt.savefig(outname, bbox_inches='tight')
         plt.close()
+        if self.threaded:
+            return self.threaded
 
 if __name__ == '__main__':
     pass
