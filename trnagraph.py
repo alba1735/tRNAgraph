@@ -105,10 +105,17 @@ class trax2anndata():
         self.metadata = self.metadata.to_dict()
         # For adding the tRAX runinfo
         with open(traxdir + '/' + traxdir.split('/')[-1] + '-runinfo.txt', 'r') as f:
-            runinfo = f.read()
+            runinfo = f.readlines()
         # Split the strings and convert to dictionary
-        runinfo = [x.strip().split('\t') for x in runinfo]
-        self.run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
+        runinfo = [x.rstrip().split('\t') for x in runinfo]
+        self.trax_run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
+        # Add trnagraph version to trax run info bashed on github hash - Will be changed to git describe once the package is deployed
+        trnagraphdir = os.path.dirname(os.path.abspath(__file__))
+        self.trnagraph_run_info = {'expname': traxdir.split('/')[-1], 
+                                   'time': os.popen('date').read().rstrip(),
+                                   'trax_directory': traxdir,
+                                   'git version': os.popen('git --git-dir='+trnagraphdir+'/.git describe').read().rstrip(),
+                                   'git version hash': os.popen('git --git-dir='+trnagraphdir+'/.git rev-parse HEAD').read().rstrip()}
         # Output file name
         self.output = output
         # Names of coverage types to add to adata object from coverage file
@@ -357,10 +364,12 @@ class trax2anndata():
         # Add non tRNA counts as uns
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
-        adata.uns['runinfo'] = self.run_info
+        adata.uns['traxruninfo'] = self.trax_run_info
+        adata.uns['trnagraphruninfo'] = self.trnagraph_run_info
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
-        toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm').main()
-        toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm').main()
+        for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i).main()
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i).main()
         
         return adata
 
@@ -525,10 +534,7 @@ class anndataGrapher:
         if gt == 'pca':
             threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded)
         if gt == 'radar':
-            # Not sure why argparse isn't converting the list of strings to a list of strings as it should
-            if self.args.radarmethod != type(list):
-                self.args.radarmethod = [self.args.radarmethod]
-            if self.args.radarmethod == 'all' or 'all' in self.args.radarmethod:
+            if 'all' in self.args.radarmethod:
                 self.args.radarmethod = ['mean', 'median', 'max', 'sum']
             for radarmethod in self.args.radarmethod:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)

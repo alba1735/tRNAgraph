@@ -3,6 +3,8 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - 'python>=3.10'
+  - 'git'
   - 'numpy'
   - 'pandas'
   - 'pyarrow'
@@ -15,5 +17,3 @@ dependencies:
   - 'hdbscan'
   - 'logomaker'
   - 'statannot'
-  - 'jupyter'
-  - 'jupyterlab>=4.0.12'

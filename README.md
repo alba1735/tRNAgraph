@@ -47,7 +47,7 @@ conda env create -f environment.yml
 
 ## Input files
 
-tRNAgraph will work with any tRAX (Python3 Version) generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool.
+tRNAgraph will work with tRAX (Python3 Version >= `v1.1.0-beta`) generated coverage file however imputing the meta-data associated with the samples will increase the utility of the tool.
 
 ### Metadata
 
@@ -71,7 +71,9 @@ sample3 sampleGroup2 celltypeY treatmentB condition1
 conda activate trnagraph
 ```
 
-### Building a database object
+tRNAgraph can be used with `build`, `graph`, `cluster`, and `merge` commands. The `build` command is used to generate an AnnData object from a tRAX coverage file. The `graph` command is used to generate visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
+
+### Build
 
 The tRNAgraph.py script can be used to build a database object from a tRAX directory with the following command:
 
@@ -86,7 +88,7 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 - `--log` is used to output a log of the shell commands used to generate the AnnData object. By default, the log will not be output.
 - `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
 
-### Generating visualizations
+### Graph
 
 The tRNAgraph.py script can be used to generate a variety of visualizations from a database object with the following command:
 
@@ -113,6 +115,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
 - `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to the CPU_MAX. This is mostly useful for generating coverage plots and seqlogos as they can take a long time to generate. It will however run all non-threaded plots in parallel.
 - `--log` is used to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 - `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
+- `-v` or `--verbose` is used to increase the verbosity of the output, includes all flags used in output. By default, the output will not be verbose.
 
 The following parameters are optional and can be used to customize the graphs:
 
@@ -188,6 +191,105 @@ The following parameters are optional and can be used to customize the graphs:
 - `--volrt` is the read type to use for the volcano plots. By default, the volcano plots will be generated using the total unique normalized reads.
 - `--volcutoff` is the cutoff for reads to include in the volcano plots. By default, the volcano plots will discard anything with less than 80 reads.
 
+### Cluster
+
+The database object can be clustered using the `cluster` function. The following code will cluster the database object using [UMAP](https://umap-learn.readthedocs.io/en/latest/index.html) and cluster using [HDBSCAN](https://hdbscan.readthedocs.io/en/latest/index.html). The default parameters used in tRNAgraph work well on ARMseq, DM-tRNAseq, and OTTRseq data, however, each dataset is different and may require fine-tuning of the parameters to yield the best results. The following code will cluster the database object and save the result to a new database object:
+
+```bash
+python trnagraph.py cluster -i <input_database> -o <output_database>
+```
+
+Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the AnnData object. When performing clustering, it is important to verify that it is reproducible and that the results reflect the data. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples, every set of reads for every single tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2`, respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
+
+- `-i` or `--anndata` - The input database object.
+- `-o` or `--output` - The output database object, if clustering was already performed on the input database object, the output database object must also be run with the `--overwrite` flag.
+- `-w` or `--overwrite` - Whether to overwrite the output database object if it already contains clustering information.
+- `-r` or `--randomstate` - Specify the random state for UMAP if you want to have a static seed (default: None) (optional). UMAP clustering should give reproducible results regardless of the random state. However, you may want to use a static seed to reproduce the same results for a particular dataset. It is important to verify that the clustering is reproducible before using a static seed.
+- `-t` or `--readcutoff` - Specify readcount cutoff for clustering (default: 15) (optional). This is the minimum number of reads required for a tRNA to be included in the clustering. This is useful for removing tRNAs not expressed in the dataset, as they can skew the clustering.
+- `-c1` or `--ncomponentsmp` - Specify the number of components to use for UMAP clustering of samples (default: 2) (optional). This is the number of components to use for the UMAP clustering of the samples. Since this is independent of the number of components used for the UMAP plotting, you can use more components for clustering to get better results. This will need to be tuned for each dataset and depends on the variability of the dataset.
+- `-c2` or `--ncomponentgrp` - Specify the number of components to use for UMAP clustering of groups (default: 2) (optional). See above.
+- `-l1` or `--neighborclusmp` - Specify the number of neighbors to use for UMAP clustering of samples (default: 150) (optional). This is the number of neighbors to use for the UMAP clustering of the samples. This will need to be tuned for each dataset and depends on the variability of the dataset. In general, a higher number of neighbors will yield a wider dispersion of the clusters across the projection.
+- `-l2` or `--neighborclusgrp` - Specify the number of neighbors to use for UMAP clustering of groups (default: 40) (optional). See above.
+- `-n1` or `--neighborstdsmp` - Specify the number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional). See above.
+- `-n2` or `--neighborstdgrp` - Specify the number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional). See above.
+- `-d1` or `--hdbscanminsampsmp` - Specify minsamples size to use for HDBSCAN clustering of samples (default: 5) (optional). This is the minimum number of samples required to be considered a cluster.
+- `-d2` or `--hdbscanminsampgrp` - Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional). See above.
+- `-b1` or `--hdbscanminclusmp` - Specify the minimum cluster size to use for HDBSCAN clustering of samples (default: 30) (optional). This is the minimum number of samples required to be considered a cluster.
+- `-b2` or `--hdbscanminclugrp` - Specify the minimum cluster size to use for HDBSCAN clustering of groups (default: 10) (optional). See above.
+- `--clusterobsexperimental` - Whether to use observations for clustering by incorporating them into the adata.X and adata.var.
+  - NOTE!: This is an experimental test feature and should be used with caution. It is not recommended to use this feature unless you are familiar with the AnnData object and the clustering process and you are certain that this is the desired behavior.
+- `--log` is used to output a log of the shell commands used to generate the clustered AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
+
+When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. You may want to filter these out before performing any analysis, depending on your use case.
+
+### Merge
+
+Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
+
+```bash
+python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
+```
+
+- `-i1` or `--anndata1` - The first input database object.
+- `-i2` or `--anndata2` - The second input database object.
+- `-o` or `--output` The output database object.
+- `--dropno` - Whether to drop samples not found in both nontRNA_counts files. By default, samples not found in both nontRNA_counts files are kept and filled with zeros.
+  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
+- `--droprna` - Whether to drop samples not found in both type_counts files. By default, samples not found in both type_counts files are kept and filled with zeros.
+  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
+- `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
+
+## Downstream Analysis and Filtering
+
+Using the database object for further analysis is easy and follows the same syntax as using the AnnData object. For example, the following code will filter the database object to only include the coverage type `unique` and drop the `gap` positions:
+
+```python
+import anndata as ad
+
+adata = ad.read_h5ad("tRNAgraph.h5ad")
+adata = adata[adata.var["coverage"] == "unique"]
+adata = adata[adata.var["gap"] == False]
+```
+
+If you wanted to filter the database object further only to include samples from group `A` and tRNA `tRNA-Ala-AGC-1` you could use the following code:
+
+```python
+adata = adata[adata.obs["group"] == "A"]
+adata = adata[adata.obs["trna"] == "tRNA-Ala-AGC-1"]
+```
+
+The resulting table can be called using `adata.X`.
+
+### Configuration Files
+
+A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank, and they will be skipped.
+
+- `name` - This is a name for the filtering configuration and will be saved as a subfolder in the output directory.
+- `obs` and `var` - These are conditions to filter on in the AnnData observation and variable categories, respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only those in the list. If no values are provided, the data will not be filtered on that category.
+- `colormap` - It is a dictionary of dictionaries that allows custom colormaps to be used for the observations. The first level of the dictionary is the observation category, and the second level is the value of color. The value can be a hex color code or an RGB tuple value. If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
+  - `group` - Some plots default to using this category for plotting making a colormap with this name will override the default colormap in those cases.
+
+```json
+{
+    "name": "name",
+    "obs": {
+        "observation_1": ["value1", "value2"],
+        "observation_2": ["value1"]
+    },
+    "var": {
+        "variable_1": ["value1", "value2"]
+    },
+    "colormap": {
+        "observation_1": {
+            "value1": "#000000",
+            "value2": "#FFFFFF"
+        }
+    }
+}
+```
+
 ## Database Variables
 
 The database object aggregates all the information from the tRAX directory into a single object allowing for easy calls to the data. In addition to being able to use the following variables as flags for figure generation, they can be used for further analysis and data manipulation independent of tRNAgraph.
@@ -256,104 +358,21 @@ Since all coverage types are stored in the database object, it is useful to spec
 
 By default, all values in the database object (`adata.X`) are normalized using the DESeq2 size factor. The layers feature of AnnData is used to store the raw data from the coverage file for convenience. To access the raw data, you can use `adata.layers["raw"]` instead of `adata.X`.
 
-### Downstream Analysis and Filtering
+### Uns
 
-Using the database object for further analysis is easy and follows the same syntax as using the AnnData object. For example, the following code will filter the database object to only include the coverage type `unique` and drop the `gap` positions:
+The uns attribute of the database object is used to store information that is not directly aligned with the observations and variables and other metadata. The following uns categories are automatically added to the database object:
 
-```python
-import anndata as ad
-
-adata = ad.read_h5ad("tRNAgraph.h5ad")
-adata = adata[adata.var["coverage"] == "unique"]
-adata = adata[adata.var["gap"] == False]
-```
-
-If you wanted to filter the database object further only to include samples from group `A` and tRNA `tRNA-Ala-AGC-1` you could use the following code:
-
-```python
-adata = adata[adata.obs["group"] == "A"]
-adata = adata[adata.obs["trna"] == "tRNA-Ala-AGC-1"]
-```
-
-The resulting table can be called using `adata.X`.
-
-### Merge
-
-Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
-
-```bash
-python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
-```
-
-- `-i1` or `--anndata1` - The first input database object.
-- `-i2` or `--anndata2` - The second input database object.
-- `-o` or `--output` The output database object.
-- `--dropno` - Whether to drop samples not found in both nontRNA_counts files. By default, samples not found in both nontRNA_counts files are kept and filled with zeros.
-  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
-- `--droprna` - Whether to drop samples not found in both type_counts files. By default, samples not found in both type_counts files are kept and filled with zeros.
-  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. It is recommended to use the same GTF file and sequencing method for both input files to minimize this.
-- `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
-- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
-
-### Clustering
-
-The database object can be clustered using the `cluster` function. The following code will cluster the database object using [UMAP](https://umap-learn.readthedocs.io/en/latest/index.html) and cluster using [HDBSCAN](https://hdbscan.readthedocs.io/en/latest/index.html). The default parameters used in tRNAgraph work well on ARMseq, DM-tRNAseq, and OTTRseq data, however, each dataset is different and may require fine-tuning of the parameters to yield the best results. The following code will cluster the database object and save the result to a new database object:
-
-```bash
-python trnagraph.py cluster -i <input_database> -o <output_database>
-```
-
-Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the AnnData object. When performing clustering, it is important to verify that it is reproducible and that the results reflect the data. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples, every set of reads for every single tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2`, respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
-
-- `-i` or `--anndata` - The input database object.
-- `-o` or `--output` - The output database object, if clustering was already performed on the input database object, the output database object must also be run with the `--overwrite` flag.
-- `-w` or `--overwrite` - Whether to overwrite the output database object if it already contains clustering information.
-- `-r` or `--randomstate` - Specify the random state for UMAP if you want to have a static seed (default: None) (optional). UMAP clustering should give reproducible results regardless of the random state. However, you may want to use a static seed to reproduce the same results for a particular dataset. It is important to verify that the clustering is reproducible before using a static seed.
-- `-t` or `--readcutoff` - Specify readcount cutoff for clustering (default: 15) (optional). This is the minimum number of reads required for a tRNA to be included in the clustering. This is useful for removing tRNAs not expressed in the dataset, as they can skew the clustering.
-- `-c1` or `--ncomponentsmp` - Specify the number of components to use for UMAP clustering of samples (default: 2) (optional). This is the number of components to use for the UMAP clustering of the samples. Since this is independent of the number of components used for the UMAP plotting, you can use more components for clustering to get better results. This will need to be tuned for each dataset and depends on the variability of the dataset.
-- `-c2` or `--ncomponentgrp` - Specify the number of components to use for UMAP clustering of groups (default: 2) (optional). See above.
-- `-l1` or `--neighborclusmp` - Specify the number of neighbors to use for UMAP clustering of samples (default: 150) (optional). This is the number of neighbors to use for the UMAP clustering of the samples. This will need to be tuned for each dataset and depends on the variability of the dataset. In general, a higher number of neighbors will yield a wider dispersion of the clusters across the projection.
-- `-l2` or `--neighborclusgrp` - Specify the number of neighbors to use for UMAP clustering of groups (default: 40) (optional). See above.
-- `-n1` or `--neighborstdsmp` - Specify the number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional). See above.
-- `-n2` or `--neighborstdgrp` - Specify the number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional). See above.
-- `-d1` or `--hdbscanminsampsmp` - Specify minsamples size to use for HDBSCAN clustering of samples (default: 5) (optional). This is the minimum number of samples required to be considered a cluster.
-- `-d2` or `--hdbscanminsampgrp` - Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional). See above.
-- `-b1` or `--hdbscanminclusmp` - Specify the minimum cluster size to use for HDBSCAN clustering of samples (default: 30) (optional). This is the minimum number of samples required to be considered a cluster.
-- `-b2` or `--hdbscanminclugrp` - Specify the minimum cluster size to use for HDBSCAN clustering of groups (default: 10) (optional). See above.
-- `--clusterobsexperimental` - Whether to use observations for clustering by incorporating them into the adata.X and adata.var.
-  - NOTE!: This is an experimental test feature and should be used with caution. It is not recommended to use this feature unless you are familiar with the AnnData object and the clustering process and you are certain that this is the desired behavior.
-- `--log` is used to output a log of the shell commands used to generate the clustered AnnData object. By default, the log will not be output.
-- `-q` or `--quiet` is used to suppress the output of the shell commands used to generate the graphs. By default, the output will be displayed.
-
-When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. You may want to filter these out before performing any analysis, depending on your use case.
-
-### Configuration
-
-A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank, and they will be skipped.
-
-- `name` - This is a name for the filtering configuration and will be saved as a subfolder in the output directory.
-- `obs` and `var` - These are conditions to filter on in the AnnData observation and variable categories, respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only those in the list. If no values are provided, the data will not be filtered on that category.
-- `colormap` - It is a dictionary of dictionaries that allows custom colormaps to be used for the observations. The first level of the dictionary is the observation category, and the second level is the value of color. The value can be a hex color code or an RGB tuple value. If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
-  - `group` - Some plots default to using this category for plotting making a colormap with this name will override the default colormap in those cases.
-
-```json
-{
-    "name": "name",
-    "obs": {
-        "observation_1": ["value1", "value2"],
-        "observation_2": ["value1"]
-    },
-    "var": {
-        "variable_1": ["value1", "value2"]
-    },
-    "colormap": {
-        "observation_1": {
-            "value1": "#000000",
-            "value2": "#FFFFFF"
-        }
-    }
-}
-```
+- `amino_counts` - The amino acid counts for the tRNAs from the tRAX output directory.
+- `anticodon_counts` - The anticodon counts for the tRNAs from the tRAX output directory.
+- `nontRNA_counts` - The non-tRNA counts for the tRNAs from the tRAX output directory, this based on the GTF file used for tRAX.
+- `type_counts` - The tRNA type counts for the tRNAs from the tRAX output directory.
+- `cluster_runinfo` - The information from the clustering run if it was performed.
+- `group_cluster_umap` - The UMAP coordinates for the group clustering if it was performed.
+- `sample_cluster_umap` - The UMAP coordinates for the sample clustering if it was performed.
+- `log2FC` - The log2 fold change for the differential tRNA expression saved as dictionary of dataframes.
+  - This is automatically calculated for `nredas_total_unique_norm` and `nreads_total_norm` for between groups with common readcut-offs.
+- `traxruninfo` - The information from the tRAX run based on the runinfo file.
+- `trnagraphruninfo` - The information from the tRNAgraph when the database object was generated.
 
 ## License
 

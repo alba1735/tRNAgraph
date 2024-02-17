@@ -29,7 +29,8 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
-        df = toolsTG.log2fc_df(adata, grp, readtype, cutoff)
+        df = toolsTG.adataLog2FC(adata, grp, readtype, overwrite=False, readcount_cutoff=cutoff).main()
+
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':

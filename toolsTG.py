@@ -20,28 +20,29 @@ def builder(directory):
     return output
 
 class adataLog2FC():
-    def __init__(self, adata, compare, readtype, overwrite=False, readcount_cutoff=15):
+    def __init__(self, adata, compare, readtype, overwrite=False, readcount_cutoff=80):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
         self.overwrite = overwrite
-        self.readcount_cutoff = readcount_cutoff
+        self.readcount_cutoff = str(readcount_cutoff)
 
     def main(self):
-        # Search nested adata.uns for log2FC for compare and readtype
+        # Search nested adata.uns for log2FC for compare, readtype, the readcutoff
         self.log2fc_dict = self.adata.uns.get('log2FC', {})
         self.log2fc_dict[self.compare] = self.log2fc_dict.get(self.compare, {})
         self.log2fc_dict[self.compare][self.readtype] = self.log2fc_dict[self.compare].get(self.readtype, {})
-        df = self.log2fc_dict[self.compare][self.readtype].get('df', None)
-        if not df or self.overwrite:
+        self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff] = self.log2fc_dict[self.compare][self.readtype].get(self.readcount_cutoff, {})
+        df = self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
+        if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
-            self.log2fc_dict[self.compare][self.readtype]['df'] = df
-            self.log2fc_dict[self.compare][self.readtype]['pairs'] = pairs
+            self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff]['df'] = df
+            self.log2fc_dict[self.compare]['pairs'] = pairs
             self.adata.uns['log2FC'] = self.log2fc_dict
         else:
-            df = self.log2fc_dict[self.compare][self.readtype]['df']
-            pairs = self.log2fc_dict[self.compare][self.readtype]['pairs']
-        return df, pairs
+            df = self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff]['df']
+            pairs = self.log2fc_dict[self.compare]['pairs']
+        return df
 
     def log2fc_df(self):
         df = pd.DataFrame(self.adata.obs, columns=['trna', self.compare, self.readtype])
@@ -50,7 +51,7 @@ class adataLog2FC():
         mdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
         cdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='count', observed=True)
         # For rows in df if a value is less than readcount_cutoff, drop the row from df
-        mean_drop_list = [True if i >= self.readcount_cutoff else False for i in mdf.mean(axis=1)]
+        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
         sdf = sdf[mean_drop_list]
         mdf = mdf[mean_drop_list]
         cdf = cdf[mean_drop_list]
@@ -70,39 +71,6 @@ class adataLog2FC():
         # sort the columns alphabetically so log2FC are followed by pvals
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
         return df_pairs, pairs
-
-def log2fc_df(adata, comparison_groups, readtype, readcount_cutoff):
-    '''
-    Calculate log2FC of tRNA read counts between groups.
-    '''
-    df = pd.DataFrame(adata.obs, columns=['trna', comparison_groups, readtype])
-    # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
-    sdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='std', observed=True)
-    mdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='mean', observed=True)
-    cdf = df.pivot_table(index='trna', columns=comparison_groups, values=readtype, aggfunc='count', observed=True)
-    # For rows in df if a value is less than readcount_cutoff, drop the row from df
-    mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
-    sdf = sdf[mean_drop_list]
-    mdf = mdf[mean_drop_list]
-    cdf = cdf[mean_drop_list]
-    # Drop rows with NaN values
-    sdf = sdf.dropna()
-    mdf = mdf.dropna()
-    cdf = cdf.dropna()
-    # Replace 0 with 0.00000000000000000001 to avoid log2(0) = -inf
-    mdf = mdf.replace(0, 0.00000000000000000001)
-    # Create permutations of pairings of groups for heatmap
-    pairs = list(itertools.combinations(mdf.columns, 2))
-    # Create df of log2FC values for each pair from adata.obs nreads_total_raw
-    df_pairs = pd.DataFrame()
-    for pair in pairs:
-        df_pairs[f'log2_{pair[0]}-{pair[1]}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
-        df_pairs[f'pval_{pair[0]}-{pair[1]}'] = stats.ttest_ind_from_stats(mdf[pair[0]], sdf[pair[0]], cdf[pair[0]], mdf[pair[1]], sdf[pair[1]], cdf[pair[1]])[1]
-
-    # sort the columns alphabetically so log2FC are followed by pvals
-    df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
-
-    return df_pairs
 
 def log2fc_compare_df(adata, countgrp, comparison_groups, readtype, readcount_cutoff):
     '''

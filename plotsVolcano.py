@@ -16,7 +16,7 @@ def visualizer(adata, grp, readtype, cutoff, output, threaded=True):
     Generate volcano visualizations for each group in an AnnData object.
     '''
     # Create a correlation matrix from reads stored in adata observations
-    df = toolsTG.log2fc_df(adata, grp, readtype, cutoff)
+    df = toolsTG.adataLog2FC(adata, grp, readtype, overwrite=False, readcount_cutoff=cutoff).main()
 
     pairs = ['_'.join(i.split('_')[1:]) for i in df.columns]
     for pair in pairs:
