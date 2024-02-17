@@ -204,11 +204,11 @@ class trax2anndata():
         obs_df['sizefactor'] = self.size_factors_list # [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
         # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         # Create unique counts for each tRNA split by type
-        for rt in ['fiveprime','threeprime','whole','other']:
+        for rt in ['fiveprime','threeprime','wholecounts','other']: # Changed whole to wholecounts in recent trax versions
             obs_df[f'nreads_{rt}_unique_raw'] = [self.unique_counts.get(i[0]+f'_{rt}').get('_'.join(i[1:])) if self.unique_counts.get(i[0]+f'_{rt}') else 0 for i in [x.split('_') for x in x_df.index.values]]
             obs_df[f'nreads_{rt}_unique_norm'] = obs_df[f'nreads_{rt}_unique_raw']/obs_df['sizefactor']
         # Add total unique read counts to obs dataframe
-        obs_df['nreads_total_unique_raw'] = obs_df[[f'nreads_{rt}_unique_raw' for rt in ['fiveprime','threeprime','whole','other']]].sum(axis=1)
+        obs_df['nreads_total_unique_raw'] = obs_df[[f'nreads_{rt}_unique_raw' for rt in ['fiveprime','threeprime','wholecounts','other']]].sum(axis=1)
         obs_df['nreads_total_unique_norm'] = obs_df['nreads_total_unique_raw']/obs_df['sizefactor']
         # Add read counts (from bowtie2) for each tRNA split by type
         for rt in self.read_types:
@@ -297,7 +297,7 @@ class trax2anndata():
         for ob in self.observations:
             adata.obs[ob] = obs_df[ob].values
         # Add the numer of reads per tRNA as observations-annotation to adata from trna unique counts file
-        for rt in ['whole','fiveprime','threeprime','other']:
+        for rt in ['wholecounts','fiveprime','threeprime','other']:
             adata.obs['nreads_' + rt + '_unique_raw'] = obs_df['nreads_' + rt + '_unique_raw'].values
             adata.obs['nreads_' + rt + '_unique_norm'] = obs_df['nreads_' + rt + '_unique_norm'].values
         adata.obs['nreads_total_unique_raw'] = obs_df['nreads_total_unique_raw'].values
@@ -358,6 +358,9 @@ class trax2anndata():
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
         adata.uns['runinfo'] = self.run_info
+        # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
+        toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm').main()
+        toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm').main()
         
         return adata
 
@@ -368,21 +371,20 @@ class anndataGrapher:
     def __init__(self, args):
         self.adata = ad.read_h5ad(args.anndata)
         self.args = args
-
-    def main(self):
         # Load cmap dict for each graph type
         self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.coveragegrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
-        # Load max threads available unless specified
-        if self.args.threads == 0:
-            try:
-                self.args.threads = len(os.sched_getaffinity(0)) # This is a linux only function but is less likely to cause problems than multiprocessing.cpu_count()
-            except:
-                self.args.threads = multiprocessing.cpu_count()
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['bar', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
             self.args.clusteroverview = True
+        # Load max threads available unless specified
+        if self.args.threads == 0:
+            try:
+                # This is a linux only function but is less likely to cause problems than multiprocessing.cpu_count()
+                self.args.threads = len(os.sched_getaffinity(0))
+            except:
+                self.args.threads = multiprocessing.cpu_count()
         # Load config file if specified
         if self.args.config:
             print('Loading config file: ' + self.args.config)
@@ -416,10 +418,13 @@ class anndataGrapher:
             print('Config file loaded.\n')
         else:
             self.d_config = {}
+
+    def main(self):
         # Generate graphs
-        print('Generating graphs with the following parameters:\n')
-        for i in self.args.__dict__: print(f'{i}: {self.args.__dict__[i]}')
-        print('')
+        if self.args.verbose:
+            print('Generating graphs with the following parameters:\n')
+            for i in self.args.__dict__: print(f'{i}: {self.args.__dict__[i]}')
+            print('')
         # Remove bar and coverage from self.args.graphtypes and add them to non_pooled_graphs if they are present
         # This is because the bar and coverage plots already implement multiprocessing
         non_pooled_graphs = []
@@ -442,7 +447,8 @@ class anndataGrapher:
             for gt in non_pooled_graphs:
                 self.plot(gt)
             for po in pool_output:
-                print(po + '\n')
+                if po:
+                    print(po + '\n')
         else:
             # Combine non_pooled_graphs with self.args.graphtypes
             self.args.graphtypes += non_pooled_graphs
@@ -855,6 +861,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_graph.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+    parser_graph.add_argument('-v', '--verbose', help='Print verbose output to stdout (optional)', action='store_true')
     # Bar options
     parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
@@ -883,17 +890,17 @@ if __name__ == '__main__':
     parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--heatrts', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+    parser_graph.add_argument('--heatrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
          'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
-            help='Specify readtypes to use for heatmap (default: whole_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
     parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
     # PCA options
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
-    parser_graph.add_argument('--pcareadtypes', choices=['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+    parser_graph.add_argument('--pcareadtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
          'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
             help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options

@@ -170,9 +170,9 @@ class visualizer():
                     # Add disclaimer to the legend
                     handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
                     labels.append('')
-                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
+                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='darkgray', markersize=5))
                     labels.append('* Data Partially Masked')
-                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=5))
+                    handles.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='darkgray', markersize=5))
                     labels.append('** Data Fully Masked')
                 axs.legend(handles, labels, bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
         # Add title

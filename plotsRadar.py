@@ -72,14 +72,14 @@ class visualizer:
             ax.set_ylim(0,100)
         # Set colormap if specified
         if self.colormap != None:
-            colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
+            self.colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in self.colormap.items()}
             for v in tdf.columns:
-                if v not in colormap:
+                if v not in self.colormap:
                     if self.threaded:
                         self.threaded += f'Color {v} not found in colormap. Using default colors instead.\n'
                     else:
                         print(f'Color {v} not found in colormap. Using default colors instead.')
-                    colormap = None
+                    self.colormap = None
                     break
         # Plot data
         for i in tdf.columns.values:
@@ -88,8 +88,8 @@ class visualizer:
             a = angles + angles[:1]
             # Plot data for each anticodon group
             if self.colormap != None:
-                ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=colormap[i])
-                ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=colormap[i])
+                ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=self.colormap[i])
+                ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=self.colormap[i])
             else:
                 pal = dict(zip(tdf.columns, sns.color_palette('husl', len(tdf.columns))))
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=pal[i])
