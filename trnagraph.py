@@ -380,6 +380,7 @@ class anndataGrapher:
     def __init__(self, args):
         self.args = args
         self.adata = ad.read_h5ad(self.args.anndata)
+        self.config_name = 'default'
         # Load cmap dict for each graph type
         self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.coveragegrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
@@ -401,6 +402,7 @@ class anndataGrapher:
                 self.args.config = json.load(f)
             if 'name' in self.args.config:
                 self.args.output += '/' + self.args.config['name']
+                self.config_name = self.args.config['name']
                 print(toolsTG.builder(self.args.output))
             else:
                 raise ValueError('Config file must contain a "name" field to specify the output directory')
@@ -435,6 +437,18 @@ class anndataGrapher:
             with open(self.args.colormap, 'r') as f:
                 self.args.colormap = json.load(f)
             print('Colormap loaded.\n')
+        # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
+        # This is done now to prevent saving issues later if multiprocessing is used
+        log2FC_dict = self.adata.uns['log2FC'].copy()
+        if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
+            for grp in list(set([self.args.heatgrp, self.args.volgrp])):
+                for readtype in [f'nreads_{i}_norm' for i in list(set(self.args.heatrts+self.args.volrts))]:
+                    print(readtype)
+                    for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
+                        toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name).main()
+        if log2FC_dict != self.adata.uns['log2FC']:
+            print('The log2FC uns dictionary has been updated by the graphing functions.\n')
+            self.adata.write(self.args.anndata)
 
     def main(self):
         # Generate graphs
@@ -536,7 +550,7 @@ class anndataGrapher:
                 print('Generating combined coverage plots...')
                 pcV.generate_combine()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.args.config['name'])
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name)
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
         if gt == 'pca':
@@ -548,7 +562,7 @@ class anndataGrapher:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrt, self.args.volcutoff, output, threaded=threaded, config_name=self.args.config['name'])
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrts, self.args.volcutoff, output, threaded=threaded, config_name=self.config_name)
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'
@@ -906,7 +920,7 @@ if __name__ == '__main__':
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
             help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
                 nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
@@ -916,7 +930,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
     parser_graph.add_argument('--pcareadtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts', 'all'], \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
             help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
@@ -933,7 +947,10 @@ if __name__ == '__main__':
     parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser_graph.add_argument('--volrt', help='Specify readtype to use for volcano plot', default='nreads_total_unique_norm', required=False)
+    parser_graph.add_argument('--volrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
+            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
 
     args = parser.parse_args()

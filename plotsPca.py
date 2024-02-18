@@ -23,8 +23,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
     #     raise ValueError('Specified pcacolor not found in AnnData object.')
     # Create a list of readtypes to iterate over if 'all' is specified
     if 'all' in pcareadtypes:
-        pcareadtypes = ['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 'wholecounts',
-                        'fiveprime', 'threeprime', 'other', 'total', 'antisense', 'wholeprecounts', 'partialprecounts', 'trailercounts']
+        pcareadtypes = ['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 'wholecounts', 'fiveprime', 'threeprime', 'other', 'total']
 
     for readtype in pcareadtypes:
         # Rename the readtype column to nreads_{readtype}_norm to match adata.obs
