@@ -264,12 +264,10 @@ The resulting table can be called using `adata.X`.
 
 ### Configuration Files
 
-A JSON file can be used for complicated filtering and grouping of the data as well as using custom colormaps. Any of these categories can be left blank, and they will be skipped.
+JSON files can be used for complicated filtering and grouping of the data as well as using custom colormaps. If a `config.json` is provided with the `--config` flag a `name` for filtering and output must be provided.
 
 - `name` - This is a name for the filtering configuration and will be saved as a subfolder in the output directory.
 - `obs` and `var` - These are conditions to filter on in the AnnData observation and variable categories, respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only those in the list. If no values are provided, the data will not be filtered on that category.
-- `colormap` - It is a dictionary of dictionaries that allows custom colormaps to be used for the observations. The first level of the dictionary is the observation category, and the second level is the value of color. The value can be a hex color code or an RGB tuple value. If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
-  - `group` - Some plots default to using this category for plotting making a colormap with this name will override the default colormap in those cases.
 
 ```json
 {
@@ -280,15 +278,52 @@ A JSON file can be used for complicated filtering and grouping of the data as we
     },
     "var": {
         "variable_1": ["value1", "value2"]
-    },
-    "colormap": {
-        "observation_1": {
-            "value1": "#000000",
-            "value2": "#FFFFFF"
-        }
     }
 }
 ```
+
+A custom `colormap.json` can also be provided with the `--colormap` flag. The values can be a hex color code, RGB tuple value or [matplotlib color names](https://matplotlib.org/stable/gallery/color/named_colors.html). If no colormap is provided, the default colormap will be used. The colormap will only be used if the observation for the colormap is selected, generating the plot. For example, if coverage plots are generated, the colormap will only be used if the `--coveragegrp` flag matches an existing colormap. The JSON file should be formatted as follows:
+
+```json
+{
+    "group": {
+        "A": "lightskyblue",
+        "B": "deepskyblue",
+        "C": "royalblue"
+    },
+    "amino": {
+        "Ala": "#1F77B4",
+        "Arg": "#AEC7E8",
+        "Asn": "#FF7F0E",
+        "Asp": "#FFBB78",
+        "Cys": "#6fe835",
+        "Gln": "#d0f2cb",
+        "Glu": "#D62728",
+        "Gly": "#FF9896",
+        "His": "#9258f5",
+        "Ile": "#deccfc",
+        "Leu": "#a65223",
+        "Lys": "#ffceb3",
+        "iMet": "#00d5e3",
+        "Met": "#b8fbff",
+        "Phe": "#edd500",
+        "Pro": "#ffff99",
+        "Ser": "#db56bc",
+        "Thr": "#F7B6D2",
+        "Trp": "#2CA02C",
+        "Tyr": "#98DF8A",
+        "Val": "#6a3d9a",
+        "SeC": "#C5B0D5",
+        "Sup": "#808080"
+    },
+    "obs_etc": {
+        "value1": "#1F77B4",
+        "value2": "#FF7F0E"
+    }
+}
+```
+
+Some plots default to using `group` as the default category for plotting making a colormap with this name will override the default colormap in those cases.
 
 ## Database Variables
 

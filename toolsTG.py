@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+import anndata as ad
 from scipy import stats
 import itertools
 import os
@@ -20,29 +21,31 @@ def builder(directory):
     return output
 
 class adataLog2FC():
-    def __init__(self, adata, compare, readtype, overwrite=False, readcount_cutoff=80):
+    def __init__(self, adata, compare, readtype, readcount_cutoff=80, config_name='default'):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
-        self.overwrite = overwrite
         self.readcount_cutoff = str(readcount_cutoff)
+        self.config_name = config_name
 
     def main(self):
         # Search nested adata.uns for log2FC for compare, readtype, the readcutoff
         self.log2fc_dict = self.adata.uns.get('log2FC', {})
-        self.log2fc_dict[self.compare] = self.log2fc_dict.get(self.compare, {})
-        self.log2fc_dict[self.compare][self.readtype] = self.log2fc_dict[self.compare].get(self.readtype, {})
-        self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff] = self.log2fc_dict[self.compare][self.readtype].get(self.readcount_cutoff, {})
-        df = self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
-        if df.empty or self.overwrite:
+        self.log2fc_dict[self.config_name] = self.log2fc_dict.get(self.config_name, {})
+        self.log2fc_dict[self.config_name][self.compare] = self.log2fc_dict[self.config_name].get(self.compare, {})
+        self.log2fc_dict[self.config_name][self.compare][self.readtype] = self.log2fc_dict[self.config_name][self.compare].get(self.readtype, {})
+        self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff] = self.log2fc_dict[self.config_name][self.compare][self.readtype].get(self.readcount_cutoff, {})
+        df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
+        if df.empty:
             df, pairs = self.log2fc_df()
-            self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff]['df'] = df
-            self.log2fc_dict[self.compare]['pairs'] = pairs
+            self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df'] = df
+            self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
             self.adata.uns['log2FC'] = self.log2fc_dict
         else:
-            df = self.log2fc_dict[self.compare][self.readtype][self.readcount_cutoff]['df']
-            pairs = self.log2fc_dict[self.compare]['pairs']
-        return df
+            df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df']
+            pairs = self.log2fc_dict[self.config_name][self.compare]['pairs']
+
+        return df, self.log2fc_dict
 
     def log2fc_df(self):
         df = pd.DataFrame(self.adata.obs, columns=['trna', self.compare, self.readtype])

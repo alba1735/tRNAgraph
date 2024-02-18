@@ -368,8 +368,8 @@ class trax2anndata():
         adata.uns['trnagraphruninfo'] = self.trnagraph_run_info
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
         for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i).main()
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i).main()
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default').main()
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default').main()
         
         return adata
 
@@ -378,8 +378,8 @@ class anndataGrapher:
     Class to generate graphs from an AnnData object by calling the appropriate graphing functions
     '''
     def __init__(self, args):
-        self.adata = ad.read_h5ad(args.anndata)
         self.args = args
+        self.adata = ad.read_h5ad(self.args.anndata)
         # Load cmap dict for each graph type
         self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.coveragegrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
@@ -398,15 +398,17 @@ class anndataGrapher:
         if self.args.config:
             print('Loading config file: ' + self.args.config)
             with open(self.args.config, 'r') as f:
-                self.d_config = json.load(f)
-            if 'name' in self.d_config:
-                self.args.output += '/' + self.d_config['name']
+                self.args.config = json.load(f)
+            if 'name' in self.args.config:
+                self.args.output += '/' + self.args.config['name']
                 print(toolsTG.builder(self.args.output))
-            if 'obs' in self.d_config:
+            else:
+                raise ValueError('Config file must contain a "name" field to specify the output directory')
+            if 'obs' in self.args.config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
                 obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
-                for k,v in self.d_config['obs'].items():
+                for k,v in self.args.config['obs'].items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
                     # Filter all uns columns by the observation and update the obs_dict
                     sub_obs_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
@@ -420,13 +422,19 @@ class anndataGrapher:
                     uns_value = self.adata.uns[uns_key].loc[:, [i for i in self.adata.uns[uns_key].columns.values if obs_dict[i]]].copy()
                     uns_dict[uns_key] = uns_value
                 self.adata.uns = uns_dict
-            if 'var' in self.d_config:
-                for k,v in self.d_config['var'].items():
+            if 'var' in self.args.config:
+                for k,v in self.args.config['var'].items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
                     self.adata = self.adata[:, self.adata.var[k].isin(v)]
             print('Config file loaded.\n')
         else:
-            self.d_config = {}
+            self.args.config = {}
+        # Load the colormap if specified
+        if self.args.colormap:
+            print('Loading colormap file: ' + self.args.colormap)
+            with open(self.args.colormap, 'r') as f:
+                self.args.colormap = json.load(f)
+            print('Colormap loaded.\n')
 
     def main(self):
         # Generate graphs
@@ -477,14 +485,14 @@ class anndataGrapher:
             if not self.args.coveragegrp:
                 cmapgrp = 'group'
         cmappar = self.cmap_dict.get(cmapgrp, None)
-        if 'colormap' in self.d_config:
-            if cmappar in self.d_config['colormap']:
-                colormap = self.d_config['colormap'][cmappar]
+        if self.args.colormap:
+            if cmappar in self.args.colormap:
+                colormap = self.args.colormap[cmappar]
             if gt == 'count':
-                if 'sample' in self.d_config['colormap']:
-                    colormap_bg = self.d_config['colormap']['sample']
-                if 'group' in self.d_config['colormap']:
-                    colormap_tc = self.d_config['colormap']['group']
+                if 'sample' in self.args.colormap:
+                    colormap_bg = self.args.colormap['sample']
+                if 'group' in self.args.colormap:
+                    colormap_tc = self.args.colormap['group']
         # Create the output directory
         output = self.args.output + '/' + gt + '/'
         if threaded:
@@ -528,7 +536,7 @@ class anndataGrapher:
                 print('Generating combined coverage plots...')
                 pcV.generate_combine()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output)
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.args.config['name'])
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
         if gt == 'pca':
@@ -540,7 +548,7 @@ class anndataGrapher:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrt, self.args.volcutoff, output, threaded=threaded)
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrt, self.args.volcutoff, output, threaded=threaded, config_name=self.args.config['name'])
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'
@@ -863,6 +871,7 @@ if __name__ == '__main__':
         help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
+    parser_graph.add_argument('--colormap', help='Specify a json file containing colormaps for the graphs (optional)', default=None)
     # Options to imporve speed or log output
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)

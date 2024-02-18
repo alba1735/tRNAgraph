@@ -13,7 +13,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False):
+def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default'):
     '''
     Generate heatmap visualizations for each group in an AnnData object.
     '''
@@ -29,8 +29,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
-        df = toolsTG.adataLog2FC(adata, grp, readtype, overwrite=False, readcount_cutoff=cutoff).main()
-
+        df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name).main()
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
