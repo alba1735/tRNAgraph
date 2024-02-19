@@ -109,6 +109,13 @@ class trax2anndata():
         # Split the strings and convert to dictionary
         runinfo = [x.rstrip().split('\t') for x in runinfo]
         self.trax_run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
+        if self.trax_run_info['git version'] == 'Cannot find git version':
+            print('WARNING: Could not find git version in trax runinfo file. This is likely because the version of trax was not from a git repository or downloaded directly.\n'+ \
+                  'Please make sure that the version of trax is at least v1.1.0-beta or later. Merging datasets may not work properly without matching git versions.\n')
+        # Search self.trax_run_info['command'] for '--nofrag' and raise a warning if present
+        if '--nofrag' in self.trax_run_info['command']:
+            raise ValueError('The --nofrag option was used in the trax run, please rerun trax without this flag. This option is not recommended for generating a database object for use with trnagraph.\n' + \
+                             'The --nofrag option combines fragment types into whole-reads and will not generate the necessary observations for a full database object.\n')
         # Add trnagraph version to trax run info bashed on github hash - Will be changed to git describe once the package is deployed
         trnagraphdir = os.path.dirname(os.path.abspath(__file__))
         self.trnagraph_run_info = {'expname': traxdir.split('/')[-1], 
@@ -871,6 +878,15 @@ if __name__ == '__main__':
         required=True
     )
 
+    # Tools parser
+    parser_tools = subparsers.add_parser("tools", help="Extra utilities for working with tRNAgraph objects")
+    tools_subparsers = parser_tools.add_subparsers(
+        title='Operating modes',
+        description='Extra utilities for working with tRNAgraph objects',
+        dest='mode',
+        required=True
+    )
+
     # Build parser
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
     parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
@@ -970,9 +986,8 @@ if __name__ == '__main__':
                              help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', 
-                              choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
-    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100% (optional)', action='store_true', default=False, required=False)
+    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
+    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100%% (optional)', action='store_true', default=False, required=False)
     # Seqlogo options
     parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
     parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
@@ -989,14 +1004,6 @@ if __name__ == '__main__':
                              nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
 
-    # Tools parser
-    parser_tools = subparsers.add_parser("tools", help="Extra utilities for working with tRNAgraph objects")
-    tools_subparsers = parser_tools.add_subparsers(
-        title='Operating modes',
-        description='Extra utilities for working with tRNAgraph objects',
-        dest='mode',
-        required=True
-    )
     # Log2fc parser
     parser_tools_log2fc = tools_subparsers.add_parser("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
     parser_tools_log2fc.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
@@ -1020,7 +1027,6 @@ if __name__ == '__main__':
 
     # Set log file if specified
     sys.stdout = open(args.log, 'w') if args.log else sys.stdout
-
     # Run main function
     if args.quiet:
         with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):

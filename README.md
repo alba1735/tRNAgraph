@@ -96,9 +96,10 @@ tRNAgraph can be used with `build`, `graph`, `cluster`, `merge` and `tools` comm
 
 ### Input files
 
-tRNAgraph will work a tRAX output directory and a samples file (tRAX input) alone, however, imputing the meta-data associated with the samples will increase the tool's utility.
+tRNAgraph will work a tRAX output directory and a metadatafile.
 
 - **tRAX output must be generated with the Python3 Version >= `v1.1.0-beta`, older versions will given incorrect results!**
+  - tRAX cannot use the `--nofrag` flag, as it will discard read associated information.
 
 #### Metadata
 
@@ -111,8 +112,8 @@ sample2 sampleGroup1 celltypeX treatmentA condition2
 sample3 sampleGroup2 celltypeY treatmentB condition1
 ```
 
-- If you wish to run the tool without providing a metadata file, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run and add the header row to the top of the file. The samples file should contain the `sample group fastq`.
-- If no list of observations is provided, then all observations will be annotated automatically as `obs_#` where `#` is the ordered observation.
+- If you wish to run the tool without providing any metadata, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run and add the header row to the top of the file. The samples file should contain the `sample group fastq` columns.
+- If no header column for each observations is provided, then all observations will be annotated automatically as `obs_#` where `#` is the ordered observation.
 
 ### Build
 
