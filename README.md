@@ -11,31 +11,70 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
 [tRAX](https://github.com/UCSC-LoweLab/tRAX) is a tool often used for analyzing tRNA-seq data. While it generates a comprehensive set of results, it does not provide a way to visualize specific meta-data associated with a particular experiment. tRNAgraph is a tool that can be used to create a database object from a tRAX coverage file containing various experimental conditions not captured by tRAX. The database object can then be used to generate a variety of visualizations, including heatmaps, coverage plots, PCA plots, and more that are more specific to the experimental conditions of interest.
 
 ```mermaid
+    %%{ init: { 'flowchart': { 'curve': 'basis' } } }%%
     flowchart TD
       subgraph sg1 [trnagraph.py build]
         I1([tRAX Output]) --> B[Build AnnData]
         M([metadata.tsv]) -->|optional| B
       end
-      sg1 --> I2([AnnData])
-      I2 <-->|Optional Downstream Analysis| R(Python, R, PyTorch, Julia, etc.)
-      I2 <--> sg3
+      B --> I2
+      B --> I2.1
+      subgraph O [Outputs]
+        G1
+        G2
+        G3
+        G4
+        D([CSVs of AnnData])
+      end
+      subgraph sgI1 [AnnData]
+        I2([Primary AnnData])
+        I2.1([Supplement AnnData])
+        I2.2([Updated AnnData])
+      end
+      I2 --> sg3
       subgraph sg3 [trnagraph.py cluster]
-        C1[Preprocessing] -->|UMAP| C2[Dimensionality Reduction] -->|HDBSCAN| C3[Clustering] 
+        C1[Preprocessing] -->|UMAP| C2[Dimensionality Reduction] -->|HDBSCAN| C3[Clustering]
       end
-      I2 <--> sg4
+      sg3 --> I2.2
+      I2.1([Supplement AnnData]) --> C
+      I2 --> C
       subgraph sg4 [trnagraph.py merge]
-        I3([AnnData]) --> C[Combine]
-        I4([AnnData]) --> C
+        C[Combine]
       end
-      I2 --> G{Plot Options}
+      C --> I2.2
+      I2 --> G{Graph Selection}
+      subgraph sg5 [trnagraph.py tools]
+        T --> L([log2fc])
+        T --> D1([csv]) --> D
+      end
+      I2 --> T{tools}
       subgraph sg2 [trnagraph.py graph]
-        G -->|default| G1([bar, correlation, count, coverage, heatmap, logo, pca, radar, volcano])
+        G -->|default| G1([bar, correlation, count, coverage, logo, pca, radar])
+        G -->|default| G4([heatmap, volcano]) --> L([log2fc]) --> I2.2
         G -->|requires config.json| G2([comparison])
         G -->|requires clustering| G3([cluster])
         J([config.json]) --> G 
       end
-      style I2 fill:#51BD38,stroke:#333
+      subgraph sg1.2 [Optional Downstream Analysis]
+        direction LR
+        R1(Python, PyTorch, R, Julia, etc.)
+      end
+      I2 --> sg1.2
+      I2.2 <--> sg1.2
+      style I1 fill:#51BD38,stroke:#333,stroke-width:2px,color:#000000
+      style M fill:#25EEFF,stroke:#333,stroke-width:2px,color:#000000
+      style J fill:#25EEFF,stroke:#333,stroke-width:2px,color:#000000
+      style D fill:#FF6AE6,stroke:#333,color:#000000
+      style G1 fill:#FF6AE6,stroke:#333,color:#000000
+      style G2 fill:#FF6AE6,stroke:#333,color:#000000
+      style G3 fill:#FF6AE6,stroke:#333,color:#000000
+      style G4 fill:#FF6AE6,stroke:#333,color:#000000
+      style I2 fill:#51BD38,stroke:#333,stroke-width:2px,color:#000000
+      style I2.1 fill:#25EEFF,stroke:#333,color:#000000
+      style I2.2 fill:#FF6AE6,stroke:#333,color:#000000
 ```
+
+$\color{#51BD38}{\textsf{Primary Inputs}}$ - $\color{#25EEFF}{\textsf{Optional Inputs}}$ - $\color{#FF6AE6}{\textsf{Outputs}}$
 
 ## Installation
 
@@ -45,13 +84,23 @@ Dependencies can be installed using conda:
 conda env create -f environment.yml
 ```
 
-## Input files
+## Usage
+
+### Activating the environment
+
+```bash
+conda activate trnagraph
+```
+
+tRNAgraph can be used with `build`, `graph`, `cluster`, `merge` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
+
+### Input files
 
 tRNAgraph will work a tRAX output directory and a samples file (tRAX input) alone, however, imputing the meta-data associated with the samples will increase the tool's utility.
 
 - **tRAX output must be generated with the Python3 Version >= `v1.1.0-beta`, older versions will given incorrect results!**
 
-### Metadata
+#### Metadata
 
 You must attribute the meta-data associated with the samples if you want to generate graphs based on specific experimental conditions. To do this, you can provide a .tsv/.csv file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. This file must also include a header row with, at minimum, `sample` and `group` columns. The meta-data file can contain any number of additional columns corresponding to the experimental conditions you want to visualize. An example meta-data file is shown below:
 
@@ -64,16 +113,6 @@ sample3 sampleGroup2 celltypeY treatmentB condition1
 
 - If you wish to run the tool without providing a metadata file, you can instead provide the [tRAX samples file](http://trna.ucsc.edu/tRAX/#step-3-analyze-sequencing-data-for-gene-expression) used to generate your tRAX run and add the header row to the top of the file. The samples file should contain the `sample group fastq`.
 - If no list of observations is provided, then all observations will be annotated automatically as `obs_#` where `#` is the ordered observation.
-
-## Usage
-
-### Activating the environment
-
-```bash
-conda activate trnagraph
-```
-
-tRNAgraph can be used with `build`, `graph`, `cluster`, and `merge` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
 
 ### Build
 
@@ -241,6 +280,13 @@ python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output
   - Different sequencing methods and the input GTF for tRAX can yield vastly different results. To minimize this, it is recommended to use the same GTF file and sequencing method for both input files.
 - `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
 - `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
+
+### Tools
+
+The `tools` function can be used to perform various operations on the database object.
+
+- `log2fc` - The log2 fold change of the database object can be calculated using the `log2fc` function. This same function is used in the `volcano` and `heatmap` plots. This can be useful if you want to export specific log2fc values for further analysis.
+- `csv` - The database object can be exported to a series of CSV files using the `csv` function. This can be useful if you want to perform further analysis in a different program.
 
 ## Downstream Analysis and Filtering
 

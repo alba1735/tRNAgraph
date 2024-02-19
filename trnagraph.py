@@ -405,7 +405,7 @@ class anndataGrapher:
                 self.config_name = self.args.config['name']
                 print(toolsTG.builder(self.args.output))
             else:
-                raise ValueError('Config file must contain a "name" field to specify the output directory')
+                raise ValueError('Config file must contain a "name" field')
             if 'obs' in self.args.config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
@@ -443,11 +443,10 @@ class anndataGrapher:
         if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
                 for readtype in [f'nreads_{i}_norm' for i in list(set(self.args.heatrts+self.args.volrts))]:
-                    print(readtype)
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
                         toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name).main()
         if log2FC_dict != self.adata.uns['log2FC']:
-            print('The log2FC uns dictionary has been updated by the graphing functions.\n')
+            print('The log2FC uns dictionary has been updated.\n')
             self.adata.write(self.args.anndata)
 
     def main(self):
@@ -813,6 +812,44 @@ def main(args):
         print('Graphing data from database object...\n')
         anndataGrapher(args).main()
         print('Done!\n')
+    elif args.mode == 'log2fc':
+        # Raise exception if h5ad file is empty or doesn't exist
+        if not os.path.isfile(args.anndata):
+            raise Exception('Error: h5ad file does not exist.')
+        # Load the AnnData object
+        adata = ad.read_h5ad(args.anndata)
+        # Load config file for name if specified
+        config_name = 'default'
+        if args.config:
+            with open(args.config, 'r') as f:
+                args.config = json.load(f)
+            if 'name' in args.config:
+                # self.args.output += '/' + self.args.config['name']
+                config_name = args.config['name']
+                # print(toolsTG.builder(self.args.output))
+            else:
+                raise ValueError('Config file must contain a "name" field')
+        print('Calculating log2FC for database object...\n')
+        adata_copy = adata.copy()
+        log2FC_dict = adata.uns['log2FC']
+        for readtype in [f'nreads_{i}_norm' for i in args.readtypes]:
+            for cutoff in args.cutoff:
+                toolsTG.adataLog2FC(adata_copy, args.group, readtype, readcount_cutoff=cutoff, config_name=config_name).main()
+        # if log2FC_dict.items() != adata_copy.uns['log2FC'].items(): # Can fix this to be more efficient later
+        print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + args.anndata)
+        adata_copy.write(args.anndata)
+        # else:
+        # print('The log2FC uns dictionary has not been updated.\n')
+        print('Done!\n')
+    elif args.mode == 'csv':
+        args.output = os.path.abspath(args.output)
+        # Add the name of the h5ad file to the output directory minus the extension account for periods in the name removing just .h5ad
+        args.output += '/' + '.'.join(os.path.basename(args.anndata).split('.')[:-1]) + '/'
+        print(toolsTG.builder(args.output))
+        adata = ad.read_h5ad(args.anndata)
+        print('Writing csv files to: ' + args.output)
+        adata.write_csvs(args.output, skip_data=False)
+        print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...')
         parser.print_help()
@@ -828,7 +865,8 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
-        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, and/or graphing data from an existing database object',
+        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, \
+            graphing data from an existing database object or using extra utilities to manipulate the database object.',
         dest='mode',
         required=True
     )
@@ -837,8 +875,6 @@ if __name__ == '__main__':
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
     parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
     parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
-    # parser_build.add_argument('-l', '--observationslist', help='Specify the observations of sample names in order (optional)', nargs='*', default=None)
-    # parser_build.add_argument('-f', '--observationsfile', help='Specify a file containing the observations of sample names in order as tab seperated file (optional)', default=None)
     parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.h5ad) (optional)', default='h5ad/trnagraph.h5ad')
     parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_build.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
@@ -882,7 +918,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
     parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='figures')
     parser_graph.add_argument('-g', '--graphtypes', choices=['all','bar','cluster','compare','correlation','count','coverage','heatmap','logo','pca','radar','volcano'], \
-        help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
+                              help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
     # Add argument to filter parameters from AnnData object
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
     parser_graph.add_argument('--colormap', help='Specify a json file containing colormaps for the graphs (optional)', default=None)
@@ -913,16 +949,16 @@ if __name__ == '__main__':
     parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
     parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
-        choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-            'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
+                              choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
+                                       'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
     parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+                                                    'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
+                             help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                             nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
     parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
@@ -930,8 +966,8 @@ if __name__ == '__main__':
     parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
     parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
     parser_graph.add_argument('--pcareadtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-            help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
+                                                         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
+                             help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
     parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', 
@@ -948,16 +984,43 @@ if __name__ == '__main__':
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
     parser_graph.add_argument('--volrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-            help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+                                                   'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
+                             help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                             nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
+
+    # Tools parser
+    parser_tools = subparsers.add_parser("tools", help="Extra utilities for working with tRNAgraph objects")
+    tools_subparsers = parser_tools.add_subparsers(
+        title='Operating modes',
+        description='Extra utilities for working with tRNAgraph objects',
+        dest='mode',
+        required=True
+    )
+    # Log2fc parser
+    parser_tools_log2fc = tools_subparsers.add_parser("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
+    parser_tools_log2fc.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_tools_log2fc.add_argument('-g', '--group', help='Specify group to use for log2fc from obs (default: group) (optional)', default='group', required=False)
+    parser_tools_log2fc.add_argument('-r', '--readtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+                                                                   'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
+                                    help='Specify readtypes to generate log2fc for (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                                    nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
+    parser_tools_log2fc.add_argument('-x', '--cutoff', help='Specify readcounts cutoff to use for log2fc (default: 80) (optional)', default=80, required=False, type=int, nargs='+')
+    parser_tools_log2fc.add_argument('-c', '--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
+    parser_tools_log2fc.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_tools_log2fc.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+    # CSV parser
+    parser_tools_csv = tools_subparsers.add_parser("csv", help="Output .h5ad to CSV")
+    parser_tools_csv.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
+    parser_tools_csv.add_argument('-o', '--output', help='Specify output directory (optional)', default='csv')
+    parser_tools_csv.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_tools_csv.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
 
     args = parser.parse_args()
 
     # Set log file if specified
     sys.stdout = open(args.log, 'w') if args.log else sys.stdout
-    
+
     # Run main function
     if args.quiet:
         with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
