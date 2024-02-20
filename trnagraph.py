@@ -390,7 +390,7 @@ class anndataGrapher:
         self.config_name = 'default'
         # Load cmap dict for each graph type
         self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
-                          'coverage':self.args.coveragegrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
+                          'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['bar', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
@@ -413,11 +413,16 @@ class anndataGrapher:
                 print(toolsTG.builder(self.args.output))
             else:
                 raise ValueError('Config file must contain a "name" field')
-            if 'obs' in self.args.config:
+            if 'obs' in self.args.config or 'obs_r' in self.args.config:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
                 obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
-                for k,v in self.args.config['obs'].items():
+                filter_dict = self.args.config['obs']
+                if 'obs_r' in self.args.config:
+                    # Add the inverse of the obs_r filter to the filter_dict
+                    for k,v in self.args.config['obs_r'].items():
+                        filter_dict[k] = [i for i in self.adata.obs[k].unique() if i not in v]
+                for k,v in filter_dict.items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
                     # Filter all uns columns by the observation and update the obs_dict
                     sub_obs_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
@@ -431,11 +436,17 @@ class anndataGrapher:
                     uns_value = self.adata.uns[uns_key].loc[:, [i for i in self.adata.uns[uns_key].columns.values if obs_dict[i]]].copy()
                     uns_dict[uns_key] = uns_value
                 self.adata.uns = uns_dict
-            if 'var' in self.args.config:
-                for k,v in self.args.config['var'].items():
+            if 'var' in self.args.config or 'var_r' in self.args.config:
+                filter_dict = self.args.config['var']
+                if 'var_r' in self.args.config:
+                    # Add the inverse of the var_r filter to the filter_dict
+                    for k,v in self.args.config['var_r'].items():
+                        filter_dict[k] = [i for i in self.adata.var[k].unique() if i not in v]
+                for k,v in filter_dict.items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
                     self.adata = self.adata[:, self.adata.var[k].isin(v)]
             print('Config file loaded.\n')
+
         else:
             self.args.config = {}
         # Load the colormap if specified
@@ -502,7 +513,7 @@ class anndataGrapher:
         colormap, colormap_tc, colormap_bg = None, None, None # For counts plot
         cmapgrp = gt
         if gt == 'coverage':
-            if not self.args.coveragegrp:
+            if not self.args.covgrp:
                 cmapgrp = 'group'
         cmappar = self.cmap_dict.get(cmapgrp, None)
         if self.args.colormap:
@@ -540,21 +551,16 @@ class anndataGrapher:
         if gt == 'count':
             threaded = plotsCount.visualizer(adata_c, colormap_tc, colormap_bg, output, threaded=threaded) # Need to add better threading to this
         if gt == 'coverage':
-            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.coveragegrp, self.args.coveragecombine, self.args.coveragetype, self.args.coveragegap, colormap, output)
-            if self.args.coveragecombine:
-                print('Generating combined coverage plots...')
-                pcV.generate_combine()
-            else:
-                print('Generating individual coverage plots...')
-                if self.args.coveragecombine:
-                    print(toolsTG.builder(output+'single/combined/'))
-                    print(toolsTG.builder(output+'single/combined/low_coverage/'))
-                else:
-                    print(toolsTG.builder(output+'single/'))
-                    print(toolsTG.builder(output+'single/low_coverage/'))
+            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, colormap, output)
+            # Generate folders/subfolders if coveragecombine is specified
+            print(toolsTG.builder(f'{output}{self.args.covobs}/single/'))
+            print(toolsTG.builder(f'{output}{self.args.covobs}/single/low_coverage/'))
+            # Generate coverage plots with combine or split pdfs
+            if not self.args.combinedpdfonly:
+                print('Generating individual coverage plots pdfs...')
                 pcV.generate_split()
-                print('Generating combined coverage plots...')
-                pcV.generate_combine()
+            print('Generating combined coverage plots pdf...')
+            pcV.generate_combine()
         if gt == 'heatmap':
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name)
         if gt == 'logo':
@@ -962,13 +968,13 @@ if __name__ == '__main__':
     parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
     parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
     # Coverage options
-    parser_graph.add_argument('--coveragegrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--coveragecombine', help='Specify a observation subsetting for coverage plots where the group will be averaged and plotted (optional)', default=None)
-    parser_graph.add_argument('--coveragetype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
+    parser_graph.add_argument('--covgrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group', required=False)
+    parser_graph.add_argument('--covobs', help='Specify the basis for each individual coverage plot (default: trna) (optional)', default='trna', required=False)
+    parser_graph.add_argument('--covtype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
                               choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
                                        'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
-    parser_graph.add_argument('--coveragegap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
-    parser_graph.add_argument('--combineonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
+    parser_graph.add_argument('--covgap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
+    parser_graph.add_argument('--combinedpdfonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
     parser_graph.add_argument('--heatrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \

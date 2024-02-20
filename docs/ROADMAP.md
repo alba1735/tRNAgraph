@@ -3,7 +3,6 @@
 ## General
 
 * Add options to compute with RAW counts and alternative normalization methods
-* Add combination PDF plots to each graph type as needed
 
 ## trnagraph.py
 
@@ -34,7 +33,15 @@
 
 * Fix the acceptor stems not being labeled in adata.var and other missing info with those positions
   * Shows up in CVS exports
-* Add CVS export save as a flag
-* Simnplify the obs entry on adata build to only be a file like with the metadata
 * Move all flag validation in adata obs or var into the trnagraph.py script from the graphing scripts
-* Add tRAX metadata/runinfo to the adata object so that only tRAX runs with the same github version can be used for merging
+* Prevent merging of adata objects with different trax/trnagraph runinfo
+
+
+<!-- # Verify adata is valid for chosen coverage group or obs
+#if adata.obs[self.coverage_grp].isna().any():
+#    raise ValueError('Coverage group contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
+#                     'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage group.')
+# if self.coverage_obs:
+#     if adata.obs[self.coverage_obs].isna().any().any():
+#         raise ValueError('Coverage obs contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
+#                         'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.') -->

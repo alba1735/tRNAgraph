@@ -17,8 +17,12 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
         I1([tRAX Output]) --> B[Build AnnData]
         M([metadata.tsv]) -->|optional| B
       end
+      subgraph sg1.1 [trnagraph.py build]
+        I1.1([tRAX Output]) --> B.1[Build AnnData]
+        M.1([metadata.tsv]) -->|optional| B.1
+      end
       B --> I2
-      B --> I2.1
+      B.1 --> I2.1
       subgraph O [Outputs]
         G1
         G2
@@ -62,7 +66,9 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
       I2 --> sg1.2
       I2.2 <--> sg1.2
       style I1 fill:#51BD38,stroke:#333,stroke-width:2px,color:#000000
+      style I1.1 fill:#51BD38,stroke:#333,stroke-width:2px,color:#000000
       style M fill:#25EEFF,stroke:#333,stroke-width:2px,color:#000000
+      style M.1 fill:#25EEFF,stroke:#333,stroke-width:2px,color:#000000
       style J fill:#25EEFF,stroke:#333,stroke-width:2px,color:#000000
       style D fill:#FF6AE6,stroke:#333,color:#000000
       style G1 fill:#FF6AE6,stroke:#333,color:#000000
@@ -72,6 +78,10 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
       style I2 fill:#51BD38,stroke:#333,stroke-width:2px,color:#000000
       style I2.1 fill:#25EEFF,stroke:#333,color:#000000
       style I2.2 fill:#FF6AE6,stroke:#333,color:#000000
+      style sg1.1 stroke:#25EEFF,stroke-width:6px
+      style O stroke:#FF6AE6,stroke-width:6px
+      style sg1 stroke:#51BD38,stroke-width:6px
+      style sgI1 stroke:#51BD38,stroke-width:6px
 ```
 
 $\color{#51BD38}{\textsf{Primary Inputs}}$ - $\color{#25EEFF}{\textsf{Optional Inputs}}$ - $\color{#FF6AE6}{\textsf{Outputs}}$
@@ -191,11 +201,12 @@ The following parameters are optional and can be used to customize the graphs:
 
 #### Coverage Plots
 
-- `--coveragegrp` is the observation for grouping the coverage plots. If no observation is provided, the coverage plots will be grouped by sample group.
-- `--coveragecombine` is whether to combine the coverage plots into a single plot of the mean for each observation within the group. Enabling this will disable the `--coveragegrp` flag, and the combined output will be given instead to the `combined` folder.
-- `--coveragetype` is the type of tRNA coverage to plot, by default, it will plot unique coverage. All possible coverage types match the [tRAX coverage types](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
-- `--coveragegap` is whether to include tRNA gaps in the coverage plots. By default, tRNA gaps will be skipped in the coverage plots.
-- `--combineonly` is whether only to plot the combined coverage plots. By default, the coverage plots will be plotted for each tRNA as well as the combined coverage plots.
+- `--covgrp` is the observation for grouping the coverage plots. If no observation is provided, the coverage plots will be grouped by sample group.
+- `--covobs` is the observation used as the basis for each individual coverage plot. If no observation is provided, the coverage plots will be created per `trna`.
+- `--covcombine` is whether to combine the coverage plots into a single plot of the mean for each observation within the group. Enabling this will disable the `--coveragegrp` flag, and the combined output will be given instead to the `combined` folder.
+- `--covtype` is the type of tRNA coverage to plot, by default, it will plot unique coverage. All possible coverage types match the [tRAX coverage types](http://trna.ucsc.edu/tRAX/outputs/#abundance-of-trna-tdrs-and-other-genes).
+- `--covgap` is whether to include tRNA gaps in the coverage plots. By default, tRNA gaps will be skipped in the coverage plots.
+- `--combinedpdfonly` is whether to only generate the combined PDFs for the coverage plots. By default, the coverage plots for every `--covobs` will be generated.
 
 #### Heatmap Plots
 
@@ -316,13 +327,18 @@ JSON files can be used for complicated filtering and grouping of the data as wel
 
 - `name` - This is a name for the filtering configuration and will be saved as a subfolder in the output directory.
 - `obs` and `var` - Are conditions to filter on in the AnnData observation and variable categories, respectively. The values can be a single value or a list of values. If a list of values is provided, the data will be filtered to include only those in the list. The data will not be filtered on that category if no values are provided.
+  - `obs_r` and `var_r` - Can also be used to filter the data to exclude the values in the list, rather than include them. This is useful if you want to exclude tRNA pseudogenes, for example.
 
 ```json
 {
     "name": "name",
     "obs": {
-        "observation_1": ["value1", "value2"],
-        "observation_2": ["value1"]
+        "treatment": ["treatment 1"],
+        "celltype": ["HEK293"],
+        "pseudogene": ["tRNA"]
+    },
+    "obs_r": {
+        "amino": ["Und"] 
     },
     "var": {
         "variable_1": ["value1", "value2"]

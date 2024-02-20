@@ -20,33 +20,21 @@ class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
     '''
-    def __init__(self, adata, threads, coverage_grp, coverage_combine, coverage_type, coverage_gap, colormap, output):
+    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, colormap, output):
         self.threads = threads
         if coverage_grp not in adata.obs.columns:
             raise ValueError(f'Specified coveragegrp: {coverage_grp} not found in AnnData object.')
+        self.coverage_obs = coverage_obs
         self.coverage_grp = coverage_grp
-        self.coverage_combine = coverage_combine
         self.coverage_type = coverage_type
         self.coverage_gap = coverage_gap
-        # Verify adata is valid for chosen coverage group or obs
-        #if adata.obs[self.coverage_grp].isna().any():
-        #    raise ValueError('Coverage group contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
-        #                     'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage group.')
-        # if self.coverage_obs:
-        #     if adata.obs[self.coverage_obs].isna().any().any():
-        #         raise ValueError('Coverage obs contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
-        #                         'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.')
         # Clean AnnData object for plotting
         self.adata, self.readstarts, self.readends = self.clean_adata(adata)
-        if colormap != None and self.coverage_combine == None:
+        if colormap != None: #and self.coverage_combine_all == False:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
-            if self.coverage_combine:
-                coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_combine].unique()))
-                self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_combine].unique()), coverage_pal))
-            else:
-                coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
-                self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
+            coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
+            self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
 
     def clean_adata(self, adata):
@@ -55,20 +43,6 @@ class visualizer():
         '''
         # Subset gaps from AnnData variables
         adata = adata[:,np.isin(adata.var.gap, self.coverage_gap)]
-        # If coverage combine is specified, take the mean of the coverage_combine obs column
-        if self.coverage_combine:
-            xdf = pd.DataFrame()
-            obs = pd.DataFrame()
-            for i in adata.obs[adata.obs[self.coverage_combine].notna()][self.coverage_combine].unique():
-                # Take the mean of the coverage_combine obs column and add as row to obs
-                obs = pd.concat([obs, adata[adata.obs[self.coverage_combine]==i,:].obs.iloc[0,:]], axis=1)
-                # Take the mean of the coverage_combine X column
-                xdf = pd.concat([xdf, pd.DataFrame(adata[adata.obs[self.coverage_combine]==i,:].X.mean(axis=0))], axis=1)
-            # Transpose the dataframes into a new AnnData object
-            xdf = xdf.T.reset_index(drop=True)
-            obs = obs.T.reset_index(drop=True)
-            obs.index = obs.index.astype(str) # Convert index to string to prevent error when creating AnnData object
-            adata = ad.AnnData(xdf, obs=obs, var=adata.var)
         # Subset just the readstarts and readends from AnnData variables
         readstarts = adata[:,np.isin(adata.var.coverage, ['readstarts'])].copy()
         readends = adata[:,np.isin(adata.var.coverage, ['readends'])].copy()
@@ -82,100 +56,63 @@ class visualizer():
         Generate combined coverage plots for all tRNAs using multiprocessing.
         '''
         # Generate list of tRNAs to plot sorting by name alphabetically and numerically with the copy number since sorting tRNAs is annoying
-        if self.coverage_combine:
-            ulist = sorted(self.adata.obs[self.coverage_combine].unique())
-        else:
-            ulist = self.adata.obs.trna.unique()
+        ulist = sorted(self.adata.obs[self.coverage_obs].unique())
+        # Sort by anticodon and then by copy number if tRNA
+        if self.coverage_obs == 'trna':
             ulist = sorted(ulist, key=lambda x: ('-'.join(x.split('-')[:-1]), int(x.split('-')[-1])))
         # Generate list of tRNAs to plot split by 16 for each page
-        ulist = [ulist[i*16:(i+1)*16] for i in range((len(ulist)+15)//16)]  # Split list into n sublists for pdfPages
+        ulist = [ulist[i*16:(i+1)*16] for i in range((len(ulist)+15)//16)]
         # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
         # Generate plots with confidence intervals
-        outend = f'{self.coverage_type}_by_{self.coverage_grp}_with_ci.pdf'
+        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci.pdf'
         with PdfPages(f'{self.output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='ci'), ulist)
             for page in pages:
                 pdf.savefig(page, bbox_inches='tight')
         # Generate plots with fill
-        outend = f'{self.coverage_type}_by_{self.coverage_grp}_with_fill.pdf'
+        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill.pdf'
         with PdfPages(f'{self.output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='fill'), ulist)
             for page in pages:
                 pdf.savefig(page, bbox_inches='tight')
 
-    def generate_combine_page(self, trna_list, coverage_fill):
+    def generate_combine_page(self, ulist, coverage_fill):
         '''
         Generate combined coverage plots page for PdfPages via multiprocessing.
         '''
         # Generate figure
         fig_pdf = plt.figure(figsize=(24,22))
-        for i, trna in enumerate(trna_list):
+        for i, covobs in enumerate(ulist):
             # Turn off xaxis for all but bottom row
-            xaxis = True if trna_list.index(trna) > 11 else False
+            xaxis = True if ulist.index(covobs) > 11 else False
             # Turn off legend for all but right column
-            lgnd = True if trna_list.index(trna) % 4 == 3 else False
+            lgnd = True if ulist.index(covobs) % 4 == 3 else False
             # Generate subplot
             ax = fig_pdf.add_subplot(4,4,i+1)
-            # Create df for single tRNA
-            if self.coverage_combine:
-                df = pd.DataFrame(self.adata[self.adata.obs[self.coverage_combine] == trna].X.T, columns=[trna])
-                lgnd = False
-            else:
-                df = pd.DataFrame(self.adata[self.adata.obs.trna == trna].X.T, columns=self.adata[self.adata.obs.trna == trna].obs[self.coverage_grp].values)
-            self.generate_plot(df, ax, trna, coverage_fill=coverage_fill, lgnd=lgnd, xaxis=xaxis)
+            df = pd.DataFrame(self.adata[self.adata.obs[self.coverage_obs] == covobs].X.T, columns=self.adata[self.adata.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)
+            self.generate_plot(df, ax, covobs, coverage_fill=coverage_fill, lgnd=lgnd, xaxis=xaxis)
         return fig_pdf
 
     def generate_split(self):
-        if self.coverage_combine:
-            ulist = self.adata.obs[self.coverage_combine].unique()
-        else:
-            ulist = self.adata.obs.trna.unique()
+        ulist = self.adata.obs[self.coverage_obs].unique()
         # Use multiprocessing to generate plots
         with Pool(self.threads) as p:
             p.map(self.generate_split_single, ulist)
 
-    def generate_split_single(self, trna):
+    def generate_split_single(self, covobs):
         # Create df for single tRNA
         lgnd = True
-        if self.coverage_combine:
-            df = pd.DataFrame(self.adata[self.adata.obs[self.coverage_combine] == trna].X.T, columns=[trna])
+        if self.coverage_grp == self.coverage_obs:
             lgnd = False
-        else:
-            df = pd.DataFrame(self.adata[self.adata.obs.trna == trna].X.T, columns=self.adata[self.adata.obs.trna == trna].obs[self.coverage_grp].values)
-        # Generate plot with confidence intervals
-        fig, ax = plt.subplots(figsize=(6,5.5))
-        self.generate_plot(df, ax, trna, coverage_fill='ci', lgnd=lgnd)
-        # Get max y value for plot
-        outend = f'{trna}_{self.coverage_type}_by_{self.coverage_grp}_with_ci.pdf'
-        if self.coverage_combine:
-            outend = f'{self.coverage_combine}_{trna}_with_ci.pdf'
-        if ax.get_ylim()[1] >= 20:
-            outstart = f'{self.output}/single/'
-            if self.coverage_combine:
-                outstart += 'combined/'
-            low_coverage = False
-        else:
-            outstart = f'{self.output}/single/low_coverage/'
-            if self.coverage_combine:
-                outstart = f'{self.output}/single/combined/low_coverage/'
-            low_coverage = True
-        plt.savefig(outstart+outend, bbox_inches='tight')
-        plt.close()
-        # Generate plot with fill
-        fig, ax = plt.subplots(figsize=(6,5.5))
-        self.generate_plot(df, ax, trna, coverage_fill='fill', lgnd=lgnd)
-        # Get max y value for plot
-        outend = f'{trna}_{self.coverage_type}_by_{self.coverage_grp}_with_fill.pdf'
-        if self.coverage_combine:
-            outend = f'{self.coverage_combine}_{trna}_with_fill.pdf'
-        plt.savefig(outstart+outend, bbox_inches='tight')
-        plt.close()
+        df = pd.DataFrame(self.adata[self.adata.obs[self.coverage_obs] == covobs].X.T, columns=self.adata[self.adata.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)
+        low_coverage, outstart = self._assemble_plot_(df,covobs,lgnd,'ci')
+        self._assemble_plot_(df,covobs,lgnd,'fill')
         # Generate plot with readstarts and readends
         rslist = self.adata.obs[self.coverage_grp].unique()
-        if self.coverage_combine:
-            rslist = [trna]
+        if self.coverage_grp == self.coverage_obs:
+            rslist = [covobs]
         for i in rslist:
             if not low_coverage:
                 # Generate plot with readstarts and readends
@@ -184,14 +121,10 @@ class visualizer():
                 df_grp = df[i]
                 if df_grp.sum().sum() != 0:
                     # Get the readstarts/ends for the current group and get the mean of each position
-                    if self.coverage_combine:
-                        df_readstarts = pd.DataFrame(self.readstarts[self.readstarts.obs[self.coverage_combine] == trna].X.T, columns=[trna])[i]
-                        df_readends = pd.DataFrame(self.readends[self.readends.obs[self.coverage_combine] == trna].X.T, columns=[trna])[i]
-                    else:
-                        df_readstarts = pd.DataFrame(self.readstarts[self.readstarts.obs.trna == trna].X.T, columns=self.readstarts[self.readstarts.obs.trna == trna].obs[self.coverage_grp].values)[i]
-                        df_readends = pd.DataFrame(self.readends[self.readends.obs.trna == trna].X.T, columns=self.readends[self.readends.obs.trna == trna].obs[self.coverage_grp].values)[i]
-                        df_readstarts = df_readstarts.mean(axis=1)
-                        df_readends = df_readends.mean(axis=1)
+                    df_readstarts = pd.DataFrame(self.readstarts[self.readstarts.obs[self.coverage_obs] == covobs].X.T, columns=self.readstarts[self.readstarts.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)[i]
+                    df_readends = pd.DataFrame(self.readends[self.readends.obs[self.coverage_obs] == covobs].X.T, columns=self.readends[self.readends.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)[i]
+                    df_readstarts = df_readstarts.mean(axis=1)
+                    df_readends = df_readends.mean(axis=1)
                     # Combine the readstarts and readends into a single df
                     df_readstartends = pd.concat([df_readstarts, df_readends], axis=1)
                     df_readstartends.columns = ['readstarts', 'readends']
@@ -201,26 +134,44 @@ class visualizer():
                     df_readstartends['position'] = df_readstartends.index
                     # Melt the df so that readstarts and readends are in the same column for plotting
                     df_readstartends = df_readstartends.melt(id_vars='position', value_vars=['readstarts', 'readends'])
-                    self.generate_plot(df_grp, ax, trna, coverage_fill='endstarts', rse=df_readstartends)
+                    self.generate_plot(df_grp, ax, covobs, coverage_fill='endstarts', rse=df_readstartends)
                     # Save the plot
-                    outend = f'{trna}_{self.coverage_type}_by_{self.coverage_grp}_{i}_with_endstarts.pdf'
-                    if self.coverage_combine:
-                        outend = f'{self.coverage_combine}_{trna}_with_endstarts.pdf'
+                    if self.coverage_grp == self.coverage_obs:
+                        outend = f'{covobs}_{self.coverage_type}_with_endstarts.pdf'
+                    else:
+                        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_{i}_with_endstarts.pdf'
                     plt.savefig(outstart+outend, bbox_inches='tight')
             plt.close()
+
+    def _assemble_plot_(self,df,covobs,lgnd,cov_fill):
+        # Generate plot with confidence intervals
+        fig, ax = plt.subplots(figsize=(6,5.5))
+        self.generate_plot(df, ax, covobs, coverage_fill=cov_fill, lgnd=lgnd)
+        # Get max y value for plot
+        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_with_{cov_fill}.pdf'
+        if self.coverage_grp == self.coverage_obs:
+            outend = f'{covobs}_{self.coverage_type}_with_{cov_fill}.pdf'
+        outstart = f'{self.output}{self.coverage_obs}/single/'
+        low_coverage = False
+        if ax.get_ylim()[1] < 20:
+            outstart += 'low_coverage/'
+            low_coverage = True
+        plt.savefig(outstart+outend, bbox_inches='tight')
+        plt.close()
+
+        return low_coverage, outstart
 
     def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True, rse=None):
         '''
         Generate coverage plots for a single tRNA.
         '''
         if coverage_fill == 'ci': 
-            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('ci'), zorder=2, ax=ax)
+            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',2), zorder=2, ax=ax)
         elif coverage_fill == 'fill':
-            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('ci', False), zorder=2, ax=ax)
+            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',False), zorder=2, ax=ax)
         elif coverage_fill == 'endstarts':
             # Get the mean of all the columns
-            if not self.coverage_combine:
-                df = df.mean(axis=1)
+            df = df.mean(axis=1)
             # Scale the df so that sum of all values is 1
             df = df/df.sum()
             sns.lineplot(data=df, linewidth=1.5, dashes=False, color='dimgrey', zorder=3, ax=ax)
@@ -228,8 +179,6 @@ class visualizer():
                          stat='probability', common_norm=False, linewidth=0, legend=True, ax=ax)
         # Fill the area under the curve with the mean by going in order of the column with the highest mean to the lowest if fill/both is specified
         if coverage_fill == 'fill':
-            # df_mean = df.groupby(df.columns, axis=1).mean() 
-            # The above is deprecated because it doesn't work with the new version of pandas use DataFrame.groupby with axis=1 is deprecated. Do `frame.T.groupby(...)` without axis instead.
             df_mean = df.T.groupby(level=0, observed=False).mean().T # This is the mean of the columns with the same name
             for i in df_mean.mean().sort_values(ascending=False).index:
                 ax.fill_between(df_mean.index, df_mean[i], color=self.coverage_pal.get(i), alpha=0.35, zorder=1)
