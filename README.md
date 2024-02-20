@@ -102,7 +102,7 @@ conda env create -f environment.yml
 conda activate trnagraph
 ```
 
-tRNAgraph can be used with `build`, `graph`, `cluster`, `merge` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
+tRNAgraph can be used with `build`, `cluster`, `merge`, `graph` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
 
 ### Input files
 
@@ -137,6 +137,56 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 - `-m` or `--metadata` is the path to the metadata file as described in the [metadata section](#metadata).
 - `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `h5ad/trnagraph.h5ad` if no path is provided.
 - `--log` is used to output a log of the shell commands that generate the AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
+
+### Cluster
+
+The database object can be clustered using the `cluster` function. The following code will cluster the database object using [UMAP](https://umap-learn.readthedocs.io/en/latest/index.html) and cluster using [HDBSCAN](https://hdbscan.readthedocs.io/en/latest/index.html). The default parameters used in tRNAgraph work well on ARMseq, DM-tRNAseq, and OTTRseq data; however, each dataset is different and may require fine-tuning of the parameters to yield the best results. The following code will cluster the database object and save the result to a new database object:
+
+```bash
+python trnagraph.py cluster -i <input_database> -o <output_database>
+```
+
+Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the AnnData object. When performing clustering, verifying that it is reproducible and that the results reflect the data is important. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples, every set of reads for every single tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2`, respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
+
+- `-i` or `--anndata` - The input database object.
+- `-o` or `--output` - The output database object, if clustering was already performed on the input database object, the output database object must also be run with the `--overwrite` flag.
+- `-w` or `--overwrite` - Whether to overwrite the output database object if it already contains clustering information.
+- `-r` or `--randomstate` - Specify the random state for UMAP if you want to have a static seed (default: None) (optional). UMAP clustering should give reproducible results regardless of the random state. However, you may want to use a static seed to reproduce the same results for a particular dataset. It is important to verify that the clustering is reproducible before using a static seed.
+- `-t` or `--readcutoff` - Specify read count cutoff for clustering (default: 15) (optional). This is the minimum number of reads required for a tRNA to be included in the clustering. This is useful for removing tRNAs not expressed in the dataset, as they can skew the clustering.
+- `-c1` or `--ncomponentsmp` - Specify the number of components to use for UMAP clustering of samples (default: 2) (optional). This is the number of components to use for the UMAP clustering of the samples. Since this is independent of the number of components used for the UMAP plotting, you can use more components for clustering to get better results. This will need to be tuned for each dataset and depends on the variability of the dataset.
+- `-c2` or `--ncomponentgrp` - Specify the number of components to use for UMAP clustering of groups (default: 2) (optional). See above.
+- `-l1` or `--neighborclusmp` - Specify the number of neighbors to use for UMAP clustering of samples (default: 150) (optional). This is the number of neighbors to use for the UMAP clustering of the samples. This will need to be tuned for each dataset and depends on the variability of the dataset. A higher number of neighbors will generally yield a wider dispersion of the clusters across the projection.
+- `-l2` or `--neighborclusgrp` - Specify the number of neighbors to use for UMAP clustering of groups (default: 40) (optional). See above.
+- `-n1` or `--neighborstdsmp` - Specify the number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional). See above.
+- `-n2` or `--neighborstdgrp` - Specify the number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional). See above.
+- `-d1` or `--hdbscanminsampsmp` - Specify minimum sample size to use for HDBSCAN clustering of samples (default: 5) (optional). This is the minimum number of samples required to be considered a cluster.
+- `-d2` or `--hdbscanminsampgrp` - Specify minsamples size for HDBSCAN group clustering (default: 3) (optional). See above.
+- `-b1` or `--hdbscanminclusmp` - Specify the minimum cluster size for HDBSCAN sample clustering (default: 30) (optional). This is the minimum number of samples required to be considered a cluster.
+- `-b2` or `--hdbscanminclugrp` - Specify the minimum cluster size for HDBSCAN group clustering (default: 10) (optional). See above.
+- `--clusterobsexperimental` - Whether to use observations for clustering by incorporating them into the adata.X and adata.var.
+  - NOTE!: This is an experimental test feature and should be used with caution. It is not recommended to use this feature unless you are familiar with the AnnData object and the clustering process and are certain that this is the desired behavior.
+- `--log` is used to output a log of the shell commands that generate the clustered AnnData object. By default, the log will not be output.
+- `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
+
+When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. Depending on your use case, you may want to filter these out before performing any analysis.
+
+### Merge
+
+Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
+
+```bash
+python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
+```
+
+- `-i1` or `--anndata1` - The first input database object.
+- `-i2` or `--anndata2` - The second input database object.
+- `-o` or `--output` The output database object.
+- `--dropno` - Whether to drop samples not found in both nontRNA_counts files. By default, samples not found in both nontRNA_counts files are kept and filled with zeros.
+  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. To minimize this, it is recommended to use the same GTF file and sequencing method for both input files.
+- `--droprna` - Whether to drop samples not found in both type_counts files. By default, samples not found in both type_counts files are kept and filled with zeros.
+  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. To minimize this, it is recommended to use the same GTF file and sequencing method for both input files.
+- `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
 - `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
 
 ### Graph
@@ -242,56 +292,6 @@ The following parameters are optional and can be used to customize the graphs:
 - `--volgrp` is the observation for grouping the volcano plots. If no observation is provided, the volcano plots will be grouped by sample group.
 - `--volrt` is the read type for the volcano plots. The volcano plots will be generated using the total unique normalized reads by default.
 - `--volcutoff` is the cutoff for reads to include in the volcano plots. The volcano plots will discard anything with less than 80 reads by default.
-
-### Cluster
-
-The database object can be clustered using the `cluster` function. The following code will cluster the database object using [UMAP](https://umap-learn.readthedocs.io/en/latest/index.html) and cluster using [HDBSCAN](https://hdbscan.readthedocs.io/en/latest/index.html). The default parameters used in tRNAgraph work well on ARMseq, DM-tRNAseq, and OTTRseq data; however, each dataset is different and may require fine-tuning of the parameters to yield the best results. The following code will cluster the database object and save the result to a new database object:
-
-```bash
-python trnagraph.py cluster -i <input_database> -o <output_database>
-```
-
-Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the AnnData object. When performing clustering, verifying that it is reproducible and that the results reflect the data is important. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples, every set of reads for every single tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2`, respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
-
-- `-i` or `--anndata` - The input database object.
-- `-o` or `--output` - The output database object, if clustering was already performed on the input database object, the output database object must also be run with the `--overwrite` flag.
-- `-w` or `--overwrite` - Whether to overwrite the output database object if it already contains clustering information.
-- `-r` or `--randomstate` - Specify the random state for UMAP if you want to have a static seed (default: None) (optional). UMAP clustering should give reproducible results regardless of the random state. However, you may want to use a static seed to reproduce the same results for a particular dataset. It is important to verify that the clustering is reproducible before using a static seed.
-- `-t` or `--readcutoff` - Specify read count cutoff for clustering (default: 15) (optional). This is the minimum number of reads required for a tRNA to be included in the clustering. This is useful for removing tRNAs not expressed in the dataset, as they can skew the clustering.
-- `-c1` or `--ncomponentsmp` - Specify the number of components to use for UMAP clustering of samples (default: 2) (optional). This is the number of components to use for the UMAP clustering of the samples. Since this is independent of the number of components used for the UMAP plotting, you can use more components for clustering to get better results. This will need to be tuned for each dataset and depends on the variability of the dataset.
-- `-c2` or `--ncomponentgrp` - Specify the number of components to use for UMAP clustering of groups (default: 2) (optional). See above.
-- `-l1` or `--neighborclusmp` - Specify the number of neighbors to use for UMAP clustering of samples (default: 150) (optional). This is the number of neighbors to use for the UMAP clustering of the samples. This will need to be tuned for each dataset and depends on the variability of the dataset. A higher number of neighbors will generally yield a wider dispersion of the clusters across the projection.
-- `-l2` or `--neighborclusgrp` - Specify the number of neighbors to use for UMAP clustering of groups (default: 40) (optional). See above.
-- `-n1` or `--neighborstdsmp` - Specify the number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional). See above.
-- `-n2` or `--neighborstdgrp` - Specify the number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional). See above.
-- `-d1` or `--hdbscanminsampsmp` - Specify minimum sample size to use for HDBSCAN clustering of samples (default: 5) (optional). This is the minimum number of samples required to be considered a cluster.
-- `-d2` or `--hdbscanminsampgrp` - Specify minsamples size for HDBSCAN group clustering (default: 3) (optional). See above.
-- `-b1` or `--hdbscanminclusmp` - Specify the minimum cluster size for HDBSCAN sample clustering (default: 30) (optional). This is the minimum number of samples required to be considered a cluster.
-- `-b2` or `--hdbscanminclugrp` - Specify the minimum cluster size for HDBSCAN group clustering (default: 10) (optional). See above.
-- `--clusterobsexperimental` - Whether to use observations for clustering by incorporating them into the adata.X and adata.var.
-  - NOTE!: This is an experimental test feature and should be used with caution. It is not recommended to use this feature unless you are familiar with the AnnData object and the clustering process and are certain that this is the desired behavior.
-- `--log` is used to output a log of the shell commands that generate the clustered AnnData object. By default, the log will not be output.
-- `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
-
-When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. Depending on your use case, you may want to filter these out before performing any analysis.
-
-### Merge
-
-Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
-
-```bash
-python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
-```
-
-- `-i1` or `--anndata1` - The first input database object.
-- `-i2` or `--anndata2` - The second input database object.
-- `-o` or `--output` The output database object.
-- `--dropno` - Whether to drop samples not found in both nontRNA_counts files. By default, samples not found in both nontRNA_counts files are kept and filled with zeros.
-  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. To minimize this, it is recommended to use the same GTF file and sequencing method for both input files.
-- `--droprna` - Whether to drop samples not found in both type_counts files. By default, samples not found in both type_counts files are kept and filled with zeros.
-  - Different sequencing methods and the input GTF for tRAX can yield vastly different results. To minimize this, it is recommended to use the same GTF file and sequencing method for both input files.
-- `--log` outputs a log of the shell commands used to generate the merged AnnData object. By default, the log will not be output.
-- `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
 
 ### Tools
 

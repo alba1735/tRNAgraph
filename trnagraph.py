@@ -992,7 +992,7 @@ if __name__ == '__main__':
                              help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
     # Radar options
     parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', choices=['mean','median','max','sum','all'], default='mean', nargs='+', required=False)
+    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', choices=['mean','median','max','sum','all'], default=['mean'], nargs='+', required=False)
     parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100%% (optional)', action='store_true', default=False, required=False)
     # Seqlogo options
     parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
