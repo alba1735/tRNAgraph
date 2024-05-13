@@ -20,7 +20,7 @@ class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
     '''
-    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, colormap, output):
+    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output):
         self.threads = threads
         if coverage_grp not in adata.obs.columns:
             raise ValueError(f'Specified coveragegrp: {coverage_grp} not found in AnnData object.')
@@ -28,6 +28,7 @@ class visualizer():
         self.coverage_grp = coverage_grp
         self.coverage_type = coverage_type
         self.coverage_gap = coverage_gap
+        self.coverage_method = coverage_method
         # Clean AnnData object for plotting
         self.adata, self.readstarts, self.readends = self.clean_adata(adata)
         if colormap != None: #and self.coverage_combine_all == False:
@@ -43,6 +44,8 @@ class visualizer():
         '''
         # Subset gaps from AnnData variables
         adata = adata[:,np.isin(adata.var.gap, self.coverage_gap)]
+        # Drop nan values from AnnData
+        adata = adata[~adata.obs[self.coverage_grp].isna()]
         # Subset just the readstarts and readends from AnnData variables
         readstarts = adata[:,np.isin(adata.var.coverage, ['readstarts'])].copy()
         readends = adata[:,np.isin(adata.var.coverage, ['readends'])].copy()
@@ -50,6 +53,41 @@ class visualizer():
         adata = adata[:,np.isin(adata.var.coverage, [self.coverage_type])]
 
         return adata, readstarts, readends
+    
+    def __coverage_transform__(self, df, singlecol=False):
+        '''
+        Transform coverage data for plotting.
+        '''
+        # If the coverage method is mean, median, max, or min, transform the df by using groupby on column names
+        if self.coverage_method == 'mean':
+            if singlecol:
+                df = df.mean(axis=1)
+            else:
+                df = df.T.groupby(level=0, observed=False).mean().T
+        elif self.coverage_method == 'median':
+            if singlecol:
+                df = df.median(axis=1)
+            else:
+                df = df.T.groupby(level=0, observed=False).median().T
+        elif self.coverage_method == 'max':
+            if singlecol:
+                df = df.max(axis=1)
+            else:
+                df = df.T.groupby(level=0, observed=False).max().T
+        elif self.coverage_method == 'min':
+            if singlecol:
+                df = df.min(axis=1)
+            else:
+                df = df.T.groupby(level=0, observed=False).min().T
+        elif self.coverage_method == 'sum':
+            if singlecol:
+                df = df.sum(axis=1)
+            else:
+                df = df.T.groupby(level=0, observed=False).sum().T
+        else:
+            raise ValueError(f'Invalid coverage method: {self.coverage_method}')
+        
+        return df
 
     def generate_combine(self):
         '''
@@ -64,14 +102,14 @@ class visualizer():
         ulist = [ulist[i*16:(i+1)*16] for i in range((len(ulist)+15)//16)]
         # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
         # Generate plots with confidence intervals
-        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci.pdf'
+        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci_{self.coverage_method}.pdf'
         with PdfPages(f'{self.output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='ci'), ulist)
             for page in pages:
                 pdf.savefig(page, bbox_inches='tight')
         # Generate plots with fill
-        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill.pdf'
+        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill_{self.coverage_method}.pdf'
         with PdfPages(f'{self.output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='fill'), ulist)
@@ -120,11 +158,11 @@ class visualizer():
                 # Subset the df to the current group
                 df_grp = df[i]
                 if df_grp.sum().sum() != 0:
-                    # Get the readstarts/ends for the current group and get the mean of each position
+                    # Get the readstarts/ends for the current group and get the method of each position
                     df_readstarts = pd.DataFrame(self.readstarts[self.readstarts.obs[self.coverage_obs] == covobs].X.T, columns=self.readstarts[self.readstarts.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)[i]
                     df_readends = pd.DataFrame(self.readends[self.readends.obs[self.coverage_obs] == covobs].X.T, columns=self.readends[self.readends.obs[self.coverage_obs] == covobs].obs[self.coverage_grp].values)[i]
-                    df_readstarts = df_readstarts.mean(axis=1)
-                    df_readends = df_readends.mean(axis=1)
+                    df_readstarts = self.__coverage_transform__(df_readstarts, singlecol=True)
+                    df_readends = self.__coverage_transform__(df_readends, singlecol=True)
                     # Combine the readstarts and readends into a single df
                     df_readstartends = pd.concat([df_readstarts, df_readends], axis=1)
                     df_readstartends.columns = ['readstarts', 'readends']
@@ -137,21 +175,23 @@ class visualizer():
                     self.generate_plot(df_grp, ax, covobs, coverage_fill='endstarts', rse=df_readstartends)
                     # Save the plot
                     if self.coverage_grp == self.coverage_obs:
-                        outend = f'{covobs}_{self.coverage_type}_with_endstarts.pdf'
+                        outend = f'{covobs}_{self.coverage_type}_with_endstarts_{self.coverage_method}.pdf'
                     else:
-                        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_{i}_with_endstarts.pdf'
+                        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_{i}_with_endstarts_{self.coverage_method}.pdf'
                     plt.savefig(outstart+outend, bbox_inches='tight')
             plt.close()
 
-    def _assemble_plot_(self,df,covobs,lgnd,cov_fill):
+    def _assemble_plot_(self, df, covobs, lgnd, cov_fill):
         # Generate plot with confidence intervals
         fig, ax = plt.subplots(figsize=(6,5.5))
         self.generate_plot(df, ax, covobs, coverage_fill=cov_fill, lgnd=lgnd)
         # Get max y value for plot
-        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_with_{cov_fill}.pdf'
+        outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_with_{cov_fill}_{self.coverage_method}.pdf'
         if self.coverage_grp == self.coverage_obs:
-            outend = f'{covobs}_{self.coverage_type}_with_{cov_fill}.pdf'
-        outstart = f'{self.output}{self.coverage_obs}/single/'
+            outend = f'{covobs}_{self.coverage_type}_with_{cov_fill}_{self.coverage_method}.pdf'
+        if cov_fill == 'ci':
+            outend = '_'.join(outend.split('_')[:-1]) + '.pdf'
+        outstart = f'{self.output}{self.coverage_obs}/'
         low_coverage = False
         if ax.get_ylim()[1] < 20:
             outstart += 'low_coverage/'
@@ -165,13 +205,15 @@ class visualizer():
         '''
         Generate coverage plots for a single tRNA.
         '''
+        # Get the cov method of all the columns
         if coverage_fill == 'ci': 
             sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',2), zorder=2, ax=ax)
         elif coverage_fill == 'fill':
+            df = self.__coverage_transform__(df)
             sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',False), zorder=2, ax=ax)
         elif coverage_fill == 'endstarts':
-            # Get the mean of all the columns
-            df = df.mean(axis=1)
+            # Get the cov method of all the columns
+            df = self.__coverage_transform__(df, singlecol=True)
             # Scale the df so that sum of all values is 1
             df = df/df.sum()
             sns.lineplot(data=df, linewidth=1.5, dashes=False, color='dimgrey', zorder=3, ax=ax)

@@ -11,14 +11,14 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtypes, cutoff, output, threaded=True, config_name='default'):
+def visualizer(adata, grp, readtypes, cutoff, output, threaded=True, config_name='default', overwrite=False):
     '''
     Generate volcano visualizations for each group in an AnnData object.
     '''
     for readtype in readtypes:
         readtype = f'nreads_{readtype}_norm'
         # Create a correlation matrix from reads stored in adata observations
-        df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name).main()
+        df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=overwrite).main()
 
         pairs = ['_'.join(i.split('_')[1:]) for i in df.columns]
         for pair in pairs:

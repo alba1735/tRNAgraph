@@ -13,7 +13,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 
-def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default'):
+def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False):
     '''
     Generate heatmap visualizations for each group in an AnnData object.
     '''
@@ -22,22 +22,21 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
 
     # Create an empty df to store the log2FC values for each group so a combined heatmap can be generated as well
     df_combine = pd.DataFrame()
-    
     # Create a heatmap for each group
     for readtype in readtypes:
         readtype = f'nreads_{readtype}_norm'
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
-        df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name).main()
+        df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=overwrite).main()
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
             df_combine = pd.concat([df_combine, df], axis=0)
         # save df to csv
-        df.to_csv(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.csv')
+        df.to_csv(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.csv')
         # Create a pdf with a heatmap for sorted by each group on each page
-        with PdfPages(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
+        with PdfPages(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.pdf') as pdf:
             for col in [i for i in df.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df, col, cmap, heatbound)
                 # Save figure
@@ -51,7 +50,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
                 plt.close()
     # Create a heatmap for the combined groups
     if not df_combine.empty:
-        with PdfPages(f'{output}{grp}_combine_{cutoff}_{heatbound}_sum_heatmap.pdf') as pdf:
+        with PdfPages(f'{output}{grp}_combine_{cutoff}_{heatbound}_heatmap.pdf') as pdf:
             for col in [i for i in df_combine.columns.tolist() if 'log2' in i]:
                 plt = heatmap_plot(df_combine, col, cmap, heatbound)
                 # Save figure
@@ -80,7 +79,7 @@ def heatmap_plot(df, col, cmap, heatbound):
 
     log_tdf = tdf[[i for i in tdf.columns if 'log2' in i]]
     pval_tdf = tdf[[i for i in tdf.columns if 'pval' in i]]
-    sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=2, vmin=-2, cbar=True, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
+    sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=4, vmin=-4, cbar=True, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
     sns.heatmap(-np.log10(pval_tdf), ax=axs[1], cmap='Greens', vmin=0, vmax=3, cbar=True, yticklabels=False, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
     axs[0].tick_params(axis='x', labelrotation=90)
     axs[1].tick_params(axis='x', labelrotation=90)
@@ -102,8 +101,10 @@ def heatmap_plot(df, col, cmap, heatbound):
     # axs[0].set_xticklabels(['']+tdf.columns.tolist(), fontsize=8)
 
     cbar = axs[0].collections[0].colorbar
-    cbar.set_ticks([-2, -1, 0, 1, 2])
-    cbar.set_ticklabels(['<=-2', '-1', '0', '1', '>=2'])
+    # cbar.set_ticks([-2, -1, 0, 1, 2])
+    # cbar.set_ticklabels(['<=-2', '-1', '0', '1', '>=2'])
+    cbar.set_ticks([-4,-3,-2,-1,0,1,2,3,4])
+    cbar.set_ticklabels(['<=-4','-3','-2','-1','0','1','2','3','>=4'])
     cbar.ax.tick_params(labelsize=8) 
     cbar = axs[1].collections[0].colorbar
     cbar.set_ticks([0, 1.3, 3])

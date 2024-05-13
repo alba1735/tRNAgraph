@@ -40,6 +40,7 @@ class visualizer():
         fig, axs = plt.subplots(figsize=(12,8))
         # Create a dictionary of colors for the bargrp
         if self.colormap == None:
+            print('not loading colormap')
             self.colormap = dict(zip(sorted(self.adata.obs[self.bargrp].unique()), sns.color_palette('hls', len(self.adata.obs[self.bargrp].unique()))))
         # Create a df for the bargrps
         df = self.gen_df(self.adata)
@@ -81,7 +82,7 @@ class visualizer():
     def gen_df(self, adata):
         df = adata.obs[[self.barcol,self.bargrp,'nreads_total_unique_norm']]
         # groupby the bargrp
-        df = df.groupby([self.barcol,self.bargrp], observed=True).agg({'nreads_total_unique_norm':['mean','median','max','sum']})
+        df = df.groupby([self.barcol,self.bargrp], observed=True).agg({'nreads_total_unique_norm':['mean','median','max','sum','count']})
         # remove the multiindex
         df = df.droplevel(0, axis=1)
         # reset the index
@@ -92,12 +93,12 @@ class visualizer():
             df.loc[df[self.barcol] == i, 'median'] = df.loc[df[self.barcol] == i, 'median'] / df.loc[df[self.barcol] == i, 'median'].sum()
             df.loc[df[self.barcol] == i, 'max'] = df.loc[df[self.barcol] == i, 'max'] / df.loc[df[self.barcol] == i, 'max'].sum()
             df.loc[df[self.barcol] == i, 'sum'] = df.loc[df[self.barcol] == i, 'sum'] / df.loc[df[self.barcol] == i, 'sum'].sum()
-            
+            df.loc[df[self.barcol] == i, 'count'] = df.loc[df[self.barcol] == i, 'count'] / df.loc[df[self.barcol] == i, 'count'].sum()
         # If the combo of df[colgrp].unique() and df[bargrp].unique() does not exist in the df, add it with a value of 0
         for i in df[self.barcol].unique():
             for j in df[self.bargrp].unique():
                 if len(df[(df[self.barcol] == i) & (df[self.bargrp] == j)]) == 0:
-                    df = pd.concat([df, pd.DataFrame([[i,j,0,0,0,0]], columns=[self.barcol,self.bargrp,'mean','median','max','sum'])], ignore_index=True)
+                    df = pd.concat([df, pd.DataFrame([[i,j,0,0,0,0,0]], columns=[self.barcol,self.bargrp,'mean','median','max','sum','count'])], ignore_index=True)
         # Reset the index
         df = df.reset_index(drop=True)
         # Enumerate the colgrp into a new column for positioning of the bars
@@ -105,7 +106,7 @@ class visualizer():
             # Get sort order start by dropping the NaN values
             sort_df = adata.obs[[self.barsort,self.barcol]].dropna().groupby(self.barcol)
             # Get the mean of the sort order
-            sort_df = sort_df.mean()
+            sort_df = sort_df.mean() # tRX values can show as zero, in theory all numbers should be the same otherwise
             # Create a dictionary of the sort order
             sort_df = sort_df.sort_values(by=self.barsort)
             # Create a dictionary of the sort order

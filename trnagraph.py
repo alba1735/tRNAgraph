@@ -63,6 +63,8 @@ class trax2anndata():
         # For adding type counts to coverage file
         typecounts = traxdir + '/' + traxdir.split('/')[-1] + '-typecounts.txt'
         self.type_counts = pd.read_csv(typecounts, sep='\t')
+        typerealcounts = traxdir + '/' + traxdir.split('/')[-1] + '-typerealcounts.txt'
+        self.type_real_counts = pd.read_csv(typerealcounts, sep='\t')
         # For adding amino acid counts to coverage file
         aminoacidcounts = traxdir + '/' + traxdir.split('/')[-1] + '-aminocounts.txt'
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
@@ -368,6 +370,7 @@ class trax2anndata():
         adata.uns['amino_counts'] = self.amino_counts
         # Add type counts as uns
         adata.uns['type_counts'] = self.type_counts
+        adata.uns['type_real_counts'] = self.type_real_counts
         # Add non tRNA counts as uns
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
@@ -375,8 +378,8 @@ class trax2anndata():
         adata.uns['trnagraphruninfo'] = self.trnagraph_run_info
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
         for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default').main()
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default').main()
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
+            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
         
         return adata
 
@@ -389,7 +392,7 @@ class anndataGrapher:
         self.adata = ad.read_h5ad(self.args.anndata)
         self.config_name = 'default'
         # Load cmap dict for each graph type
-        self.cmap_dict = {'bar:':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
+        self.cmap_dict = {'bar':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
@@ -460,10 +463,10 @@ class anndataGrapher:
         log2FC_dict = self.adata.uns['log2FC'].copy()
         if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
-                for readtype in [f'nreads_{i}_norm' for i in list(set(self.args.heatrts+self.args.volrts))]:
+                for readtype in [f'nreads_{i}_norm' for i in self.args.diffrts]: #list(set(self.args.heatrts+self.args.volrts))]:
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
-                        toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name).main()
-        if log2FC_dict != self.adata.uns['log2FC']:
+                        toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
+        if log2FC_dict != self.adata.uns['log2FC'] or self.args.regen_uns:
             print('The log2FC uns dictionary has been updated.\n')
             self.adata.write(self.args.anndata)
 
@@ -551,10 +554,10 @@ class anndataGrapher:
         if gt == 'count':
             threaded = plotsCount.visualizer(adata_c, colormap_tc, colormap_bg, output, threaded=threaded) # Need to add better threading to this
         if gt == 'coverage':
-            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, colormap, output)
+            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output)
             # Generate folders/subfolders if coveragecombine is specified
-            print(toolsTG.builder(f'{output}{self.args.covobs}/single/'))
-            print(toolsTG.builder(f'{output}{self.args.covobs}/single/low_coverage/'))
+            print(toolsTG.builder(f'{output}{self.args.covobs}/'))
+            print(toolsTG.builder(f'{output}{self.args.covobs}/low_coverage/'))
             # Generate coverage plots with combine or split pdfs
             if not self.args.combinedpdfonly:
                 print('Generating individual coverage plots pdfs...')
@@ -562,7 +565,7 @@ class anndataGrapher:
             print('Generating combined coverage plots pdf...')
             pcV.generate_combine()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.heatrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name)
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.diffrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
         if gt == 'pca':
@@ -574,7 +577,7 @@ class anndataGrapher:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.volrts, self.args.volcutoff, output, threaded=threaded, config_name=self.config_name)
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.diffrts, self.args.volcutoff, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'
@@ -847,7 +850,7 @@ def main(args):
         log2FC_dict = adata.uns['log2FC']
         for readtype in [f'nreads_{i}_norm' for i in args.readtypes]:
             for cutoff in args.cutoff:
-                toolsTG.adataLog2FC(adata_copy, args.group, readtype, readcount_cutoff=cutoff, config_name=config_name).main()
+                toolsTG.adataLog2FC(adata_copy, args.group, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=True).main()
         # if log2FC_dict.items() != adata_copy.uns['log2FC'].items(): # Can fix this to be more efficient later
         print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + args.anndata)
         adata_copy.write(args.anndata)
@@ -945,6 +948,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
     parser_graph.add_argument('--colormap', help='Specify a json file containing colormaps for the graphs (optional)', default=None)
     # Options to imporve speed or log output
+    parser_graph.add_argument('--regen_uns', help='Force regenerate uns log2fc data if it would be generated again (optional)', action='store_true', default=False)
     parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
     parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_graph.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
@@ -974,12 +978,13 @@ if __name__ == '__main__':
                               choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
                                        'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
     parser_graph.add_argument('--covgap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
+    parser_graph.add_argument('--covmethod', help='Specify method to use for coverage plots when combining multiple groups (default: mean) (optional)', choices=['mean','median','max','min','sum'], default='mean', required=False)
     parser_graph.add_argument('--combinedpdfonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
     # Heatmap options
     parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--heatrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
+    parser_graph.add_argument('--diffrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
                                                     'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-                             help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
+                             help='Specify readtypes to use for heatmap/volcano (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
                              nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
     parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
@@ -1004,12 +1009,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser_graph.add_argument('--volrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-                                                   'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-                             help='Specify readtypes to use for heatmap (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                             nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
-
     # Log2fc parser
     parser_tools_log2fc = tools_subparsers.add_parser("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
     parser_tools_log2fc.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)

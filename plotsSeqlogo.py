@@ -34,6 +34,8 @@ class visualizer():
         # Drop pseudogenes if specified, by dropping the rows where obs.pseudogene == 'tRX'
         if self.pseudogenes:
             self.adata = self.adata[self.adata.obs['pseudogene'] != 'tRX']
+        # Drop rows with nreads_total_norm < 20:
+        # self.adata = self.adata[self.adata.obs['nreads_total_norm'] >= 20]
         # Create a list of the positions from the adata
         adata_pos = self.adata.var[self.adata.var['coverage'] == 'coverage']
         if self.logosize == 'full' or self.logosize == 'noloop':
@@ -47,6 +49,34 @@ class visualizer():
             seq_adata = self.adata[self.adata.obs['trna'].isin(self.manual_grp)]
             # Create a df of the tRNA sequences for the map plot
             df_seqinfo, df_consensus, seq_df = self.build_seqdata(seq_adata)
+
+            ### TESTING ###
+            # shape = df_seqinfo.shape zeros df
+            df_seqinfo_alt = pd.DataFrame(np.zeros((df_seqinfo.shape[0], 4)), columns=['A','C','G','T'])
+            tdf = seq_df.iloc[:,1:-1].T
+            # For each row in the df check the tRNA against the adata normalized reads and drop if less than 20
+            drop_list = []
+            for trna in tdf.index:
+                if self.adata[self.adata.obs['trna'] == trna].obs['nreads_total_unique_norm'].mean() < 20:
+                    drop_list.append(trna)
+            tdf = tdf.drop(drop_list).T
+            # Get the value counts for each base in each row then map to the seq_df_alt
+            for trna in tdf.columns:
+                base_mean = self.adata[self.adata.obs['trna'] == trna].obs['nreads_total_unique_norm'].mean()
+                for pos in tdf.index:
+                    # multiply the value counts by the base mean then add to the df_seqinfo_alt
+                    if tdf.loc[int(pos),trna] != '-':
+                        df_seqinfo_alt.loc[int(pos),tdf.loc[int(pos),trna]] += base_mean
+            # Fill nan values with 0
+            df_seqinfo_alt = df_seqinfo_alt.fillna(0)
+            # Add a pseudocount to the matrix
+            df_seqinfo_alt += self.pseudocount
+            # Add index name
+            df_seqinfo_alt.index.name = 'pos'
+            df_seqinfo_alt = logomaker.transform_matrix(df_seqinfo_alt, from_type='counts', to_type='information')
+            df_seqinfo = df_seqinfo_alt
+            ### END of TESTING ###
+
             # Create the plots
             outputgrp = 'manual_{}'.format(time.strftime("%Y%m%d-%H%M%S"))
             if self.manual_name:
@@ -234,10 +264,10 @@ class visualizer():
         # Add a title to the figure and save the figure
         if self.manual_grp:
             fig.suptitle(f'Consensus Logo {unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/consensus_{unit}.pdf', bbox_inches='tight')
+            plt.savefig(f'{self.output}/consensus_{unit}_{self.logosize}.pdf', bbox_inches='tight')
         else:
             fig.suptitle(f'Consensus Logo {self.coverage_grp}_{unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
+            plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}_{self.logosize}.pdf', bbox_inches='tight')
         plt.close()
 
     def map_plot(self, seq_df, unit):
@@ -269,10 +299,10 @@ class visualizer():
         # Add a title to the figure and save the figure
         if self.manual_grp:
             # fig.suptitle(f'Map {unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/map_{unit}.pdf', bbox_inches='tight')
+            plt.savefig(f'{self.output}/map_{unit}_{self.logosize}.pdf', bbox_inches='tight')
         else:
             # fig.suptitle(f'Map {self.coverage_grp}_{unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/map_{self.coverage_grp}_{unit}.pdf', bbox_inches='tight')
+            plt.savefig(f'{self.output}/map_{self.coverage_grp}_{unit}_{self.logosize}.pdf', bbox_inches='tight')
         plt.close()
 
     def position_swap(self, df, pos):
