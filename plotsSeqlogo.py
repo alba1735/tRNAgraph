@@ -15,7 +15,7 @@ plt.rcParams['ps.fonttype'] = 42
 import time
 
 class visualizer():
-    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, output):
+    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output):
         self.adata = adata
         self.adata = self.adata[:,self.adata.var['positions'] != '-1']
         self.output = output
@@ -26,7 +26,8 @@ class visualizer():
         self.logosize = logosize
         self.ccatail = ccatail
         self.pseudogenes = pseudogenes
-        self.pal_dict = {'T':'#ea4335','A':'#34a853','C':'#4285f4', 'G':'#fbbc05', '-':'#ffffff'}
+        self.rnamode = rnamode
+        self.pal_dict = {'T':'#ea4335', 'U':'#ea4335', 'A':'#34a853', 'C':'#4285f4', 'G':'#fbbc05', '-':'#ffffff'}
         # Drop CCA tail if specified
         if self.ccatail:
             for i in ['74','75','76']:
@@ -52,7 +53,10 @@ class visualizer():
 
             ### TESTING ###
             # shape = df_seqinfo.shape zeros df
-            df_seqinfo_alt = pd.DataFrame(np.zeros((df_seqinfo.shape[0], 4)), columns=['A','C','G','T'])
+            if not self.rnamode:
+                df_seqinfo_alt = pd.DataFrame(np.zeros((df_seqinfo.shape[0], 4)), columns=['A','C','G','T'])
+            else:
+                df_seqinfo_alt = pd.DataFrame(np.zeros((df_seqinfo.shape[0], 4)), columns=['A','C','G','U'])
             tdf = seq_df.iloc[:,1:-1].T
             # For each row in the df check the tRNA against the adata normalized reads and drop if less than 20
             drop_list = []
@@ -166,6 +170,12 @@ class visualizer():
         df_consensus['plotposition'] = df_consensus.index
         # Convert the counts to information
         df_seqinfo = logomaker.transform_matrix(df_seqreads, from_type='counts', to_type='information')
+
+        if self.rnamode: # Convert T to U
+            df_seqinfo = df_seqinfo.rename(columns={'T':'U'})
+            df_consensus['ref_base'] = df_consensus['ref_base'].replace('T','U')
+            df_consensus['actual_base'] = df_consensus['actual_base'].replace('T','U')
+            seq_df[seq_df.columns[1:-1]] = seq_df[seq_df.columns[1:-1]].replace('T','U')
     
         return df_seqinfo, df_consensus, seq_df
 

@@ -212,7 +212,7 @@ python trnagraph.py graph -i <input_database> -o <output_directory> -g <graph_ty
   - `radar` - Generates radar plots of the tRNA coverage.
   - `volcano` - Generates volcano plots of differential tRNA expression.
   - `all` - Generates all of the above plots. Exclude `compare` and `cluster` as they require additional parameters.
-- `--config` is an optional flag to the path to a JSON file containing additional graph parameters. [See the configuration section below for more details.](#configuration)
+- `--config` is an optional flag to the path to a JSON file containing additional graph parameters. [See the configuration section below for more details.](#Configuration Files)
 - `-n` or `--threads` is the number of threads to use for generating the graphs. By default, the number of threads will be set to the CPU_MAX. This is primarily useful for generating coverage plots and seqlogos as they can take a long time to generate. It will, however, run all non-threaded plots in parallel.
 - `--log` is used to output a log of the shell commands used to generate the graphs. By default, the log will not be output.
 - `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
@@ -274,6 +274,7 @@ The following parameters are optional and can be used to customize the graphs:
 - `--logosize` is the size of the sequences (sprinzl, noloop, or full) for the logo plots. By default, the logo plots will use the non-extension loop sequences. But you can also use the full sequences or the numerical sprinzl positions without gaps.
 - `--ccatail` is whether or not to include the CCA tail in the logo plots. By default, the logo plots will discard the CCA tail.
 - `--pseudogenes` is whether or not to include pseudogenes in the logo plots. By default, the logo plots will discard pseudogenes (tRX).
+- `--logornamode` is wether to print the output as RNA (U) rather than DNA (T). By default, the output will be DNA.
 
 #### PCA Plots
 

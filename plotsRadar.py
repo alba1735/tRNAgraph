@@ -33,6 +33,11 @@ class visualizer:
             # Convert the df to a pivot table and use the specified stats method to aggregate the data
             df = pd.pivot_table(df, values=readtype, index=['iso'], columns=[self.radargrp], aggfunc=self.radarmethod, observed=True)
             # Only create radar plots for amino acids with at least 3 isoforms
+
+            # Drop ACT if in the dataframe -- issue with non-standard anticodon
+            if 'ACT' in df.index:
+                df = df.drop('ACT')
+
             for aa, codons, in amino_dict.items():
                 if len(codons) >= 3:
                     # Subset dataframe to only include codons for the current amino acid

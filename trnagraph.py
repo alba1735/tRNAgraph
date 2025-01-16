@@ -567,7 +567,7 @@ class anndataGrapher:
         if gt == 'heatmap':
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.diffrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         if gt == 'logo':
-            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, output).generate_plots()
+            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output).generate_plots()
         if gt == 'pca':
             threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded)
         if gt == 'radar':
@@ -1007,6 +1007,7 @@ if __name__ == '__main__':
     parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
     parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)
     parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
+    parser_graph.add_argument('--logornamode', help='Specify wether to print the output as RNA rather than DNA (optional)', action='store_true', default=False, required=False)
     # Volcano options
     parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
     parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
