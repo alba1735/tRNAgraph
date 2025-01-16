@@ -30,11 +30,16 @@ class visualizer():
             self.clusterPlot(self.adata, 'sample', 'amino', self.output)
             self.clusterPlot(self.adata, 'sample', 'iso', self.output)
             self.clusterPlot(self.adata, 'sample', 'nreads_total_unique_norm', self.output, numeric=True)
+            self.clusterPlot(self.adata, 'sample', 'fragment', self.output)
+            self.clusterPlot(self.adata, 'sample', 'sample', self.output)
+            self.clusterPlot(self.adata, 'sample', 'group', self.output)
             self.clusterPlot(self.adata, 'sample', 'sample_cluster', self.output)
             self.overviewPlot(self.adata, 'group', self.output)
             self.clusterPlot(self.adata, 'group', 'amino', self.output)
             self.clusterPlot(self.adata, 'group', 'iso', self.output)
             self.clusterPlot(self.adata, 'group', 'nreads_total_unique_norm', self.output, numeric=True)
+            self.clusterPlot(self.adata, 'group', 'fragment', self.output)
+            self.clusterPlot(self.adata, 'group', 'group', self.output)
             self.clusterPlot(self.adata, 'group', 'group_cluster', self.output)
         # Generate cluster plots if overview is not selected
         else:
@@ -59,11 +64,12 @@ class visualizer():
         # Create a list of clusters greater than or equal to 0 in size to filter out non-clustered reads
         hdbscan_annotated = adata.obs[cluster] >= 0
         # Create a 3 x 3 subplot with the umap projection and the cluster labels as the last subplot
-        fig, axs = plt.subplots(2, 2, figsize=(16,16))
+        fig, axs = plt.subplots(2, 3, figsize=(24,16))
         # Plot first through ninth subplots
-        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), ('Total Number of Unique Reads','nreads_total_unique_norm',1,0), ('HDBScan',cluster,1,1)]
+        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), ('Total Number of Unique Reads','nreads_total_unique_norm',0,2),
+                     ('Fragment','fragment',1,0), (f'{umapgroup.capitalize()}',f'{umapgroup}',1,1), ('HDBScan',cluster,1,2)]
         for i in plot_list:
-            if i[2] == 1 and i[3] == 0:
+            if i[2] == 0 and i[3] == 2:
                 pal = dict(zip(sorted(pd.unique(adata.obs[i[1]])), sns.color_palette("mako", len(pd.unique(adata.obs[i[1]])))))
             else:
                 if i[1] == cluster:
@@ -90,7 +96,7 @@ class visualizer():
         if self.threaded:
             self.threaded += f'Saving figure: {output}umap_{umapgroup}_overview.pdf\n'
         else:
-            print(f'Saving figure: {output}umap_{umapgroup}_overview.pdf')
+            print(f'Saving figure: {output}overview_{umapgroup}_overview.pdf')
         plt.savefig(f'{output}overview_{umapgroup}.pdf', bbox_inches='tight')
         plt.close()
 

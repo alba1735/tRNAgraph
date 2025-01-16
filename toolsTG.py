@@ -21,12 +21,13 @@ def builder(directory):
     return output
 
 class adataLog2FC():
-    def __init__(self, adata, compare, readtype, readcount_cutoff=80, config_name='default'):
+    def __init__(self, adata, compare, readtype, readcount_cutoff=80, config_name='default', overwrite=False):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
         self.readcount_cutoff = str(readcount_cutoff)
         self.config_name = config_name
+        self.overwrite = overwrite
 
     def main(self):
         # Search nested adata.uns for log2FC for compare, readtype, the readcutoff
@@ -36,7 +37,7 @@ class adataLog2FC():
         self.log2fc_dict[self.config_name][self.compare][self.readtype] = self.log2fc_dict[self.config_name][self.compare].get(self.readtype, {})
         self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff] = self.log2fc_dict[self.config_name][self.compare][self.readtype].get(self.readcount_cutoff, {})
         df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
-        if df.empty:
+        if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
             self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df'] = df
             self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
@@ -54,7 +55,8 @@ class adataLog2FC():
         mdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
         cdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='count', observed=True)
         # For rows in df if a value is less than readcount_cutoff, drop the row from df
-        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
+        # mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
+        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.max(axis=1)] # Makes more sense for heatmap to use max rather than mean, however might be an issue for the uns tables
         sdf = sdf[mean_drop_list]
         mdf = mdf[mean_drop_list]
         cdf = cdf[mean_drop_list]

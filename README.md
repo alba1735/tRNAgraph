@@ -261,7 +261,7 @@ The following parameters are optional and can be used to customize the graphs:
 #### Heatmap Plots
 
 - `--heatgrp` is the observation for grouping the heatmap plots. If no observation is provided, the heatmap plots will be grouped by sample group.
-- `--heatrts` is the read type for the heatmap plots. The heatmap plots will be generated using the total unique normalized reads by default.
+- `--diffrts` is the read type for the heatmap/volcano plots. The heatmap/volcano plots will be generated using the unique wholecounts, fiveprime, threeprime, other and total normalized reads by default.
 - `--heatcutoff` is the cutoff for reads to include in the heatmap plots. The heatmap plots will discard anything with less than 80 reads by default.
 - `--heatbound` is the range to bound the heatmap plots. By default, the heatmap plots will be bounded by the data's top 25 and the bottom 25 values for each comparative column.
 
@@ -290,7 +290,7 @@ The following parameters are optional and can be used to customize the graphs:
 #### Volcano Plots
 
 - `--volgrp` is the observation for grouping the volcano plots. If no observation is provided, the volcano plots will be grouped by sample group.
-- `--volrt` is the read type for the volcano plots. The volcano plots will be generated using the total unique normalized reads by default.
+- `--diffrts` see above under [Heatmap Plots](#heatmap-plots).
 - `--volcutoff` is the cutoff for reads to include in the volcano plots. The volcano plots will discard anything with less than 80 reads by default.
 
 ### Tools
