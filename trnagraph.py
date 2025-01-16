@@ -25,6 +25,7 @@ import plotsVolcano
 # Cluster functions
 import umap
 from sklearn.preprocessing import RobustScaler
+from sklearn.feature_selection import VarianceThreshold
 # from sklearn.preprocessing import Normalizer
 import hdbscan
 
@@ -632,6 +633,10 @@ class anndataMerger():
         self.adata2.uns['type_counts'] = type_counts
         # Merge AnnData objects
         self.adata = ad.concat([self.adata1, self.adata2], merge='unique', uns_merge='same')
+        # Recompute the 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later and needs to exist for some plots
+        for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
+            toolsTG.adataLog2FC(self.adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
+            toolsTG.adataLog2FC(self.adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
         # Save merged AnnData object
         self.adata.write(f'{self.args.output}')
         print(f'Writing h5ad database object to {self.args.output}')
@@ -658,6 +663,10 @@ class anndataCluster():
         self.sample_hdbscan_min_samples = args.hdbscanminsampsmp
         self.sample_hdbscan_min_cluster_size = args.hdbscanminclusmp
         self.cluster_obs = args.clusterobsexperimental
+        self.variance_threshold = args.variancethreshold
+        self.stats_metrics_umap = args.umapstatsmetrics
+        self.stats_metrics_hdbscan = args.hdbstatsmetrics
+        self.mindist = args.mindist
 
     def main(self):
         # Check if the output file already exists
@@ -747,11 +756,13 @@ class anndataCluster():
         return adata
     
     def adataCluster(self, adata, neighbors_plot, neighbors_cluster, min_samples, min_cluster_size, n_components):
+        # Remove low variance features
+        sel = VarianceThreshold(threshold=(self.variance_threshold))
         # Apply a standardscaler to the data and reduce dimensions
-        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot).fit_transform(adata.X)
-        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components).fit_transform(adata.X)
+        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot, min_dist=self.mindist, metric=self.stats_metrics_umap).fit_transform(sel.fit_transform(adata.X))
+        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components, metric=self.stats_metrics_umap).fit_transform(sel.fit_transform(adata.X))
         # Perform clustering with HDBSCAN
-        hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size).fit_predict(cluster_embedding)
+        hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size, metric=self.stats_metrics_hdbscan).fit_predict(cluster_embedding)
         # Create a dataframe of the cluster information
         df = pd.DataFrame(standard_embedding, index=adata.obs.index, columns=['standard_umap1','standard_umap2'])
         df_c = pd.DataFrame(cluster_embedding, index=adata.obs.index, columns=['cluster_umap'+str(i) for i in range(1,n_components+1)])
@@ -932,6 +943,14 @@ if __name__ == '__main__':
     parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
     parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
     parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
+    parser_cluster.add_argument('-m', '--mindist', help='Specify minimum distance to use for UMAP clustering (default: 0.1) (optional)', default=0.1, type=float)
+    parser_cluster.add_argument('-e', '--variancethreshold', help='Specify variance threshold to use for feature selection (default: 0.1) (optional)', default=0.1, type=float)
+    parser_cluster.add_argument('-us', '--umapstatsmetrics', help='Specify UMAP statistics metrics to use for feature selection, (default: Eucledian) (optional)', \
+                                choices=['euclidean', 'manhattan', 'chebyshev', 'minkowski', 'canberra', 'braycurtis', 'haversine', 'mahalanobis', 'wminkowski', 'seuclidean', 'cosine', \
+                                         'correlation', 'hamming', 'jaccard', 'dice', 'russellrao', 'kulsinski', 'rogerstanimoto', 'sokalmichener', 'sokalsneath', 'yule'], default='euclidean')
+    parser_cluster.add_argument('-uh', '--hdbstatsmetrics', help='Specify hdbscan statistics metrics to use for feature selection with UMAP, (default: Eucledian) (optional)', \
+                                choices=['euclidean', 'manhattan', 'chebyshev', 'minkowski', 'canberra', 'braycurtis', 'haversine', 'mahalanobis', 'wminkowski', 'seuclidean', 'cosine', \
+                                         'correlation', 'hamming', 'jaccard', 'dice', 'russellrao', 'kulsinski', 'rogerstanimoto', 'sokalmichener', 'sokalsneath', 'yule'], default='euclidean')
     parser_cluster.add_argument('--clusterobsexperimental', help='This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering (optional)', nargs='+', default=[])
     parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
     parser_cluster.add_argument('-o', '--output', help='Specify output directory (default: h5ad/trnagraph.cluster.h5ad) (optional)', default='h5ad/trnagraph.cluster.h5ad')

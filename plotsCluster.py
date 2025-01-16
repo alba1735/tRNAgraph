@@ -20,6 +20,7 @@ class visualizer():
         self.clusterlabels = clusterlabels
         self.masking = masking
         self.colormap = colormap
+        self.numericcolormap =  'mako_r' # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
         self.point_size = 20
 
     def generate_plots(self):
@@ -112,7 +113,7 @@ class visualizer():
         mask = ~adata.obs[clustgrp].isna()
         # Create a palette for the categorical variable
         if numeric:
-            pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette("mako_r", len(pd.unique(adata.obs[clustgrp])))))
+            pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette(self.numericcolormap, len(pd.unique(adata.obs[clustgrp])))))
         else:
             pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp][mask])))))
         # Check if the user has defined a colormap
@@ -120,7 +121,7 @@ class visualizer():
             # Replace the palette values with the user defined ones if available
             pal = {k:self.colormap.get(k,v) for k,v in pal.items()}
         # Determine wether to mask NaN values after making pal and mask this helps with NaN problems
-        if adata.obs[clustgrp].isna().any() or clustgrp == cluster or self.masking:
+        if (adata.obs[clustgrp].isna().any() or clustgrp == cluster or self.masking) and not numeric:
             masking = True
             mask = adata.obs[cluster] >= 0
             mask = mask & ~adata.obs[clustgrp].isna()
@@ -132,7 +133,7 @@ class visualizer():
             sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=self.point_size, linewidth=0.25, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
             sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=self.point_size, linewidth=0.25, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)
         else:
-            sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=self.point_size, ax=axs, hue=adata.obs[clustgrp], palette=pal)
+            sns.scatterplot(x=adata.obs[umap1], y=adata.obs[umap2], s=self.point_size, linewidth=0.25, ax=axs, hue=adata.obs[clustgrp], palette=pal) #sns.diverging_palette(255, 85, s=255, l=70, sep=64, as_cmap=True))
         # Add cluster labels
         if self.clusterlabels:
             for j in adata.obs[cluster][mask].unique():
@@ -152,11 +153,13 @@ class visualizer():
         # Create legend from pal adding outside of plot and also reduce the size of the legend
         if numeric:
             norm = plt.Normalize(adata.obs[clustgrp].min(), adata.obs[clustgrp].max())
-            sm = plt.cm.ScalarMappable(cmap="mako_r", norm=norm)
+            # sm = plt.cm.ScalarMappable(cmap=self.numericcolormap, norm=norm)
+            sm = plt.cm.ScalarMappable(cmap=sns.diverging_palette(255, 85, s=255, l=70, sep=64, as_cmap=True), norm=norm)
             sm.set_array([])
             # Remove the legend and add a colorbar
-            axs.get_legend().remove()
-            plt.colorbar(sm, ax=axs, pad=0.02)
+            if axs.get_legend():
+                axs.get_legend().remove()
+            fig.colorbar(sm, cax=fig.add_axes([1, 0.125, 0.03, 0.725]), label=clustgrp)
         else:
             plt.legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
             # Add an astrix to the legend to indicate the masked data in addition to the legend
@@ -182,7 +185,10 @@ class visualizer():
                     labels.append('** Data Fully Masked')
                 axs.legend(handles, labels, bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
         # Add title
-        plt.title(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
+        if numeric:
+            plt.suptitle(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
+        else:
+            plt.title(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
         # Set layout to equal with gca
         # plt.gca().set_aspect('equal', adjustable='box')
         # Save figure

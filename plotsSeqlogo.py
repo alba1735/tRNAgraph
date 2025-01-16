@@ -80,7 +80,7 @@ class visualizer():
             df_seqinfo_alt = logomaker.transform_matrix(df_seqinfo_alt, from_type='counts', to_type='information')
             df_seqinfo = df_seqinfo_alt
             ### END of TESTING ###
-
+            
             # Create the plots
             outputgrp = 'manual_{}'.format(time.strftime("%Y%m%d-%H%M%S"))
             if self.manual_name:

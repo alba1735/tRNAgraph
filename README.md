@@ -116,7 +116,7 @@ tRNAgraph will work a tRAX output directory and a metadatafile.
 You must attribute the meta-data associated with the samples if you want to generate graphs based on specific experimental conditions. To do this, you can provide a .tsv/.csv file (`-m/--metadatafile`) containing the sample names, sample groups, and any meta-data associated with the samples. This file must also include a header row with, at minimum, `sample` and `group` columns. The meta-data file can contain any number of additional columns corresponding to the experimental conditions you want to visualize. An example meta-data file is shown below:
 
 ```tsv
-sample  group	celltype	treatment	condition
+sample  group celltype  treatment condition
 sample1 sampleGroup1 celltypeX treatmentA condition1
 sample2 sampleGroup1 celltypeX treatmentA condition2
 sample3 sampleGroup2 celltypeY treatmentB condition1
