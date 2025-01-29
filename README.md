@@ -92,7 +92,7 @@ $\color{#51BD38}{\textsf{Primary Inputs}}$ - $\color{#25EEFF}{\textsf{Optional I
 Dependencies can be installed using conda:
 
 ```bash
-conda env create -f environment.yml
+conda env create -f requirements.yaml
 ```
 
 ## Usage
