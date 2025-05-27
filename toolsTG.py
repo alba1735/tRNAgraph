@@ -55,8 +55,8 @@ class adataLog2FC():
         mdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
         cdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='count', observed=True)
         # For rows in df if a value is less than readcount_cutoff, drop the row from df
-        # mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
-        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.max(axis=1)] # Makes more sense for heatmap to use max rather than mean, however might be an issue for the uns tables
+        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
+        # mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.max(axis=1)] # Makes more sense for heatmap to use max rather than mean, however might be an issue for the uns tables
         sdf = sdf[mean_drop_list]
         mdf = mdf[mean_drop_list]
         cdf = cdf[mean_drop_list]

@@ -3,6 +3,7 @@
 ![tRNAgraph Logo](docs/images/logo.png)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![DOI](https://zenodo.org/badge/590619343.svg)](https://doi.org/10.5281/zenodo.14669314)
 
 tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an [AnnData](https://anndata.readthedocs.io/en/latest/index.html) object from a tRAX coverage file or to analyze an existing database object and generate expanded visualizations. The database object can also be used to perform further analysis beyond the scope of what tRAX can do.
 
@@ -91,7 +92,7 @@ $\color{#51BD38}{\textsf{Primary Inputs}}$ - $\color{#25EEFF}{\textsf{Optional I
 Dependencies can be installed using conda:
 
 ```bash
-conda env create -f environment.yml
+conda env create -f requirements.yaml
 ```
 
 ## Usage
@@ -99,7 +100,7 @@ conda env create -f environment.yml
 ### Activating the environment
 
 ```bash
-conda activate trnagraph
+conda activate tRNAgraph
 ```
 
 tRNAgraph can be used with `build`, `cluster`, `merge`, `graph` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
