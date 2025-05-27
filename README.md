@@ -100,7 +100,7 @@ conda env create -f requirements.yaml
 ### Activating the environment
 
 ```bash
-conda activate trnagraph
+conda activate tRNAgraph
 ```
 
 tRNAgraph can be used with `build`, `cluster`, `merge`, `graph` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
