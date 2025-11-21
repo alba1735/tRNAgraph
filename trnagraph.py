@@ -14,6 +14,7 @@ import toolsTDatabase
 import toolsTG
 import toolsTrim
 import toolsMap
+import toolsTestSuite
 import plotsBar
 import plotsCount
 import plotsCluster
@@ -901,6 +902,9 @@ def main(args):
         print('Writing csv files to: ' + args.output)
         adata.write_csvs(args.output, skip_data=False)
         print('Done!\n')
+    elif args.mode == 'test':
+        toolsTestSuite.preflightTests(args).main()
+        print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...')
         parser.print_help()
@@ -1137,6 +1141,18 @@ if __name__ == '__main__':
     parser_tools_csv.add_argument('-o', '--output', help='Specify output directory (optional)', default='csv')
     parser_tools_csv.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_tools_csv.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+    # Test parser
+    parser_tools_test = tools_subparsers.add_parser("test", help="Run preflight tests")
+    parser_tools_test.add_argument('--metadata', help='Run metadata download test', action='store_true')
+    parser_tools_test.add_argument('--fastq', help='Run fastq download test', action='store_true')
+    parser_tools_test.add_argument('--trna', help='Run tRNA download test', action='store_true')
+    parser_tools_test.add_argument('--genome', help='Run genome download test', action='store_true')
+    parser_tools_test.add_argument('--trim', help='Run trim test', action='store_true')
+    parser_tools_test.add_argument('--makedb', help='Run makedb test', action='store_true')
+    parser_tools_test.add_argument('--map', help='Run map test', action='store_true')
+    parser_tools_test.add_argument('--all', help='Run all tests (default)', action='store_true')
+    parser_tools_test.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_tools_test.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
 
     args = parser.parse_args()
 

@@ -462,11 +462,14 @@ class MapSamples:
             counts_df.T.to_csv(self.expinfo.normalizedcounts, sep='\t')
         
         # Save size factors
-        if 'size_factors' in dds.obsm:
+        if 'size_factors' in dds.obs:
+            size_factors = dds.obs['size_factors']
+            pd.DataFrame(size_factors.values, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
+        elif 'size_factors' in dds.obsm:
             size_factors = dds.obsm['size_factors']
-            pd.DataFrame(size_factors, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
+            pd.DataFrame(size_factors.values, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
         else:
-             print("Warning: 'size_factors' not found in dds.obsm. Using 1.0.", file=sys.stderr)
+             print("Warning: 'size_factors' not found in dds.obs or dds.obsm. Using 1.0.", file=sys.stderr)
              pd.DataFrame(1.0, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
 
     def counttypes(self):

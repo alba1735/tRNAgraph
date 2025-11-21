@@ -25,3 +25,6 @@ dependencies:
   - "samtools"
   - "pysam"
   - "infernal"
+  - "ucsc-bedgraphtobigwig"
+  - "ucsc-twobittofa"
+  - "bedtools"

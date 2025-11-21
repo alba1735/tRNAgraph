@@ -1289,6 +1289,9 @@ class extraseqfile:
         self.seqfasta: Dict[str, str] = {}
         self.seqbed: Dict[str, str] = {}
         
+        if extraseqfilename is None or not os.path.exists(extraseqfilename):
+            return
+
         try:
             with open(extraseqfilename, 'r') as extrafile:
                 directory = os.path.dirname(extraseqfilename)
