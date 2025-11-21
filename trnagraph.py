@@ -10,40 +10,16 @@ import json
 import contextlib
 import multiprocessing
 # Custom functions
-import toolsTDatabase
-import toolsTG
-import toolsTrim
-import toolsMap
 import toolsTestSuite
-import plotsBar
-import plotsCount
-import plotsCluster
-import plotsCompare
-import plotsCorrelation
-import plotsCoverage
-import plotsHeatmap
-import plotsSeqlogo
-import plotsPca
-import plotsRadar
-import plotsVolcano
-import plotsLegacyReadLength
-import plotsLegacyMismatch
-import plotsTrimmingStats
-import plotsLegacyLocusCoverage
-import plotsLegacyMismatchBoxplot
-import plotsLegacyGeneFeatures
-import plotsLegacyFeatureTypes
-import plotsLegacyPCA
-import plotsLegacyScatter
-import plotsLegacyCCA
-import plotsLegacyVolcano
-import plotsLegacyCoverage
-# Cluster functions
-import umap
-from sklearn.preprocessing import RobustScaler
-from sklearn.feature_selection import VarianceThreshold
-# from sklearn.preprocessing import Normalizer
-import hdbscan
+from lazy_imports import (
+    plotsBar, plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
+    plotsCoverage, plotsHeatmap, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano,
+    plotsLegacyReadLength, plotsLegacyMismatch, plotsTrimmingStats,
+    plotsLegacyLocusCoverage, plotsLegacyMismatchBoxplot, plotsLegacyGeneFeatures,
+    plotsLegacyFeatureTypes, plotsLegacyPCA, plotsLegacyScatter, plotsLegacyCCA,
+    plotsLegacyVolcano, plotsLegacyCoverage, umap, hdbscan,
+    toolsMap, toolsTDatabase, toolsTrim, toolsTG
+)
 
 class trax2anndata():
     '''
@@ -726,6 +702,7 @@ class anndataCluster():
         '''
         Preprocess AnnData object for clustering
         '''
+        from sklearn.preprocessing import RobustScaler
         # Clean up the data by removing gaps from var and subsetting the var to uniquecoverage, readstarts, readends, mismatchedbases, and deletions
         adata = adata[:, ~adata.var['gap']]
         adata = adata[:, adata.var['coverage'].isin(self.coveragetype)]
@@ -772,6 +749,7 @@ class anndataCluster():
         return adata
     
     def adataCluster(self, adata, neighbors_plot, neighbors_cluster, min_samples, min_cluster_size, n_components):
+        from sklearn.feature_selection import VarianceThreshold
         # Remove low variance features
         sel = VarianceThreshold(threshold=(self.variance_threshold))
         # Apply a standardscaler to the data and reduce dimensions

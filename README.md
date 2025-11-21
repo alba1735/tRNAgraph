@@ -109,7 +109,59 @@ conda env update -f env/requirements.yaml
 conda activate tRNAgraph
 ```
 
-tRNAgraph can be used with `build`, `cluster`, `merge`, `graph` and `tools` commands. The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
+tRNAgraph can be used with `preprocess`, `build`, `cluster`, `merge`, `graph` and `tools` commands. The `preprocess` command is used to run the tRAX pipeline steps (trim, makedb, map). The `build` command generates an AnnData object from a tRAX coverage file. The `graph` command creates visualizations from the database object. The `cluster` command is used to cluster the database object. The `merge` command is used to merge two database objects. The following sections will describe how to use each command.
+
+### Preprocess
+
+The `preprocess` command integrates an updated tRAX pipeline directly into tRNAgraph, allowing users to process raw FASTQ files into the coverage files required for the `build` step. It consists of three subcommands: `trim`, `makedb`, and `map`.
+
+#### Trim
+
+Trims adapters from FASTQ files using `fastp`.
+
+```bash
+python trnagraph.py preprocess trim -r <runname> -i <manifest> [options]
+```
+
+- `-r` or `--runname`: Name of the run (used for output filenames).
+- `-i` or `--manifest`: Tab-delimited file: `SampleName <tab> R1_Path [<tab> R2_Path]`.
+- `-a1` or `--adapter1`: Adapter sequence for R1 (optional, fastp auto-detects).
+- `-a2` or `--adapter2`: Adapter sequence for R2 (optional, fastp auto-detects).
+- `-l` or `--length`: Minimum length of sequence after trimming (default: 15).
+- `-u` or `--umilength`: Length of UMI (0 to disable).
+- `--umi3`: UMI is at the 3-prime end (Default is 5-prime).
+- `-n` or `--threads`: Total number of threads to use (0 = all available).
+
+#### MakeDB
+
+Creates a Bowtie2 index for the tRNA database.
+
+```bash
+python trnagraph.py preprocess makedb -g <genome> -t <trnascan> -r <gtrnafa> -m <namemap> -s <orgmode> -o <output>
+```
+
+- `-g` or `--genome`: Genome FASTA file.
+- `-t` or `--trnascan`: tRNAscan-SE output file.
+- `-r` or `--gtrnafa`: gtRNAdb FASTA file.
+- `-m` or `--namemap`: Name map file.
+- `-s` or `--orgmode`: Organism mode (`euk`, `bact`, `arch`).
+- `-o` or `--output`: Output prefix for the database.
+
+#### Map
+
+Maps reads to the tRNA database and generates coverage files.
+
+```bash
+python trnagraph.py preprocess map -e <experiment> -d <database> -s <samples> [options]
+```
+
+- `-e` or `--experiment`: Experiment name.
+- `-d` or `--database`: Name of the tRNA database (created with `makedb`).
+- `-s` or `--samples`: Sample file.
+- `--gtf`: The Ensembl gene list for that species.
+- `--pairs`: List of sample pairs to compare.
+- `--traxmode`: Run in tRAX compatibility mode, generating legacy plots.
+- `-n` or `--threads`: Number of threads to use (default: 8).
 
 ### Input files
 
@@ -490,7 +542,7 @@ A test suite is included with tRNAgraph to ensure that the code is functioning c
 To run the test suite, you can use the following command:
 
 ```bash
-python toolsTestSuite.py
+python trnagraph.py tools test
 ```
 
 More information about the test suite can be found in [docs/testSuite.md](docs/testSuite.md).
