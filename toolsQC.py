@@ -6,14 +6,8 @@ import itertools
 from time import localtime, strftime
 from typing import List, Dict, Optional, Tuple, Any
 from collections import defaultdict
+import toolsTG
 
-# Import toolsTG instead of trnasequtils
-try:
-    import toolsTG
-except ImportError:
-    # Fallback if running from a different directory structure
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    import toolsTG
 
 # Constants
 RED_RGB = "rgb(255, 0, 0)"

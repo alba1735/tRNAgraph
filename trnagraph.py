@@ -3,12 +3,14 @@
 import numpy as np
 import pandas as pd
 import anndata as ad
-import argparse
 import os
 import sys
 import json
 import contextlib
 import multiprocessing
+import typer
+from typing import Optional, List
+from types import SimpleNamespace
 # Custom functions
 import toolsTestSuite
 from lazy_imports import (
@@ -781,9 +783,9 @@ class anndataCluster():
         
         return adata
 
-def main(args):
+def _main_logic(args):
     '''
-    Main function for running argparse and calling the appropriate class
+    Main function for running the logic and calling the appropriate class
     '''
     if args.mode == 'makedb':
         if not os.path.isfile(args.genome):
@@ -922,273 +924,305 @@ def main(args):
     elif args.mode == 'test':
         toolsTestSuite.demoPipeline(args).main()
         print('Done!\n')
-    else:
-        print('Invalid operating mode. Exiting...')
-        parser.print_help()
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='tRNAgraph',
-        description='tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
+
+
+app = typer.Typer(
+    help="tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
             a trax output folder, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
-            perform further multivariate analysis such as clustering and classification of readcoverages.',
-        allow_abbrev=False
-    )
+            perform further multivariate analysis such as clustering and classification of readcoverages.",
+    add_completion=False,
+    no_args_is_help=True
+)
 
-    subparsers = parser.add_subparsers(
-        title='Operating modes',
-        description='Choose between preprocessing your fastq/fasta files, building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, \
-            graphing data from an existing database object or using extra utilities to manipulate the database object.',
-        dest='mode',
-        required=True
-    )
+preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
+app.add_typer(preprocess_app, name="preprocess")
 
-    # Preprocess parser
-    parser_preprocess = subparsers.add_parser("preprocess", help="Preprocess raw fastq/fasta files for tRNA analysis")
-    preprocess_subparsers = parser_preprocess.add_subparsers(
-        title='Operating modes',
-        description='Preprocess raw fastq/fasta files for tRNA analysis',
-        dest='mode',
-        required=True
-    )
+tools_app = typer.Typer(help="Extra utilities for working with tRNAgraph objects", no_args_is_help=True)
+app.add_typer(tools_app, name="tools")
 
-    # Tools parser
-    parser_tools = subparsers.add_parser("tools", help="Extra utilities for working with tRNAgraph objects")
-    tools_subparsers = parser_tools.add_subparsers(
-        title='Operating modes',
-        description='Extra utilities for working with tRNAgraph objects',
-        dest='mode',
-        required=True
-    )
-
-    # Index builder parser
-    parser_index = preprocess_subparsers.add_parser("makedb", help="Build bowtie2 index from gtRNAdb/tRNAScan-SE output and reference genome")
-    parser_index.add_argument('-g', '--genome', help='Specify location of the reference genome fasta file (required)', required=True)
-    parser_index.add_argument('-t', '--trnaout', help='Specify location of the tRNAScan-SE out file (required)', required=True)
-    parser_index.add_argument('-r', '--trnafa', help='Specify location of the tRNA reference fasta file (required)', required=True)
-    parser_index.add_argument('-m', '--namemap', help='Specify location of the tRNA name mapping file (required)', required=True)
-    parser_index.add_argument('--addtrna', help='Specify location of additional tRNA sequences file (optional)', default=None)
-    parser_index.add_argument('--addseqs', help='Specify location of additional sequences file (optional)', default=None)
-    parser_index.add_argument('-s', '--orgmode', help='Specify organism mode used for tRNAScan-SE (default: euk) (required)', choices=['euk', 'bact', 'arch', 'mito'])
-    parser_index.add_argument('--forcecca', help='Force addition of CCA tail (optional)', action='store_true', default=False)
-    parser_index.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
-    parser_index.add_argument('-o', '--output', help='Specify output directory/name for bowtie2 index files (default: db) (optional)', default='db')
-    parser_index.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_index.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Trim parser
-    parser_trim = preprocess_subparsers.add_parser("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
-    parser_trim.add_argument('-r', '--runname', required=True, help='Name of the run (used for output filenames)')
-    parser_trim.add_argument('-i', '--manifest', required=True, help='Tab-delimited file: SampleName <tab> R1_Path [<tab> R2_Path]')
-    parser_trim.add_argument('-a1', '--adapter1', default=None, help='Adapter sequence for R1 (optional, fastp auto-detects)')
-    parser_trim.add_argument('-a2', '--adapter2', default=None, help='Adapter sequence for R2 (optional, fastp auto-detects)')
-    parser_trim.add_argument('-l', '--length', default=15, type=int, help='Minimum length of sequence after trimming (default: 15)')
-    parser_trim.add_argument('-u', '--umilength', default=0, type=int, help='Length of UMI (0 to disable)')
-    parser_trim.add_argument('--umi3', action='store_true', help='UMI is at the 3-prime end (Default is 5-prime)')
-    parser_trim.add_argument('-n', '--threads', default=0, type=int, help='Total number of threads to use (0 = all available)')
-    parser_trim.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_trim.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-    parser_trim.add_argument('-v', '--verbose', action='store_true', help='Print detailed command execution')
-
-    # Map parser
-    parser_map = preprocess_subparsers.add_parser("map", help="Map reads to tRNA database")
-    parser_map.add_argument('-e', '--experiment', required=True, help='Experiment name to be used (required)')
-    parser_map.add_argument('-d', '--database', required=True, help='Name of the tRNA database (required)')
-    parser_map.add_argument('-s', '--samples', required=True, help='Sample file (required)')
-    parser_map.add_argument('--gtf', help='The ensembl gene list for that species (optional)', default=None)
-    parser_map.add_argument('--pairs', help='List of sample pairs to compare (optional)', default=None)
-    parser_map.add_argument('--bed', nargs='*', help='Additional bed files for feature list (optional)', default=None)
-    parser_map.add_argument('--lazy', action="store_true", default=False, help='Skip mapping reads if bam files exist (optional)')
-    parser_map.add_argument('--nofrag', action="store_true", default=False, help='Omit fragment determination (Used for TGIRT mapping) (optional)')
-    parser_map.add_argument('--nosizefactors', action="store_true", default=False, help='Don\'t use Deseq size factors in plotting (optional)')
-    parser_map.add_argument('--maxmismatches', help='Maximum allowed mismatches (optional)', default=None)
-    parser_map.add_argument('--mincoverage', help='Minimum read count for coverage plots (optional)', default=None)
-    parser_map.add_argument('--minnontrnasize', type=int, default=20, help='Minimum read length for non-tRNAs (default: 20) (optional)')
-    parser_map.add_argument('--paironly', action="store_true", default=False, help='Generate only pair files (for adding a pair file after initial processing) (optional)')
-    parser_map.add_argument('--hub', action="store_true", default=False, help='Make a track hub (optional)')
-    parser_map.add_argument('--hubonly', action="store_true", default=False, help='Only make the track hub (optional)')
-    parser_map.add_argument('--maponly', action="store_true", default=False, help='Only do the mapping step (optional)')
-    parser_map.add_argument('--dumpother', action="store_true", default=False, help='Dump "other" features when counting gene types (optional)')
-    parser_map.add_argument('--local', action="store_true", default=False, help='Use local bam mapping (optional)')
-    parser_map.add_argument('-n', '--threads', help='Number of threads to use (default: 8) (optional)', default=8, type=int)
-    parser_map.add_argument('--skipcheck', action="store_true", default=False, help='Skips the check that the fq files match bam files (optional)')
-    parser_map.add_argument('--bamdir', help='Directory for placing bam files (default: current working directory) (optional)', default=None)
-    parser_map.add_argument('--uniqueonly', action="store_true", default=False, help='Show only unique coverage (optional)')
-    parser_map.add_argument('--traxmode', action="store_true", default=False, help='Run in tRAX compatibility mode, generating legacy plots (optional)')
-    parser_map.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_map.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Build parser
-    parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
-    parser_build.add_argument('-i', '--traxdir', help='Specify location of trax directory (required)', required=True)
-    parser_build.add_argument('-m', '--metadata', help='Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB (required)', required=True)
-    parser_build.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.h5ad) (optional)', default='h5ad/trnagraph.h5ad')
-    parser_build.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_build.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Merge parser
-    parser_merge = subparsers.add_parser("merge", help="Merge data from two existing h5ad AnnData objects")
-    parser_merge.add_argument('-i1', '--anndata1', help='Specify location of first h5ad object (required)', required=True)
-    parser_merge.add_argument('-i2', '--anndata2', help='Specify location of second h5ad object (required)', required=True)
-    parser_merge.add_argument('--dropno', help='Drop non tRNAs genes that are not present in both AnnData objects (optional)', action='store_true')
-    parser_merge.add_argument('--droprna', help='Drop RNA categories that are not present in both AnnData objects (optional)', action='store_true')
-    parser_merge.add_argument('-o', '--output', help='Specify output h5ad file (default: h5ad/trnagraph.merge.h5ad) (optional)', default='h5ad/trnagraph.merge.h5ad')
-    parser_merge.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_merge.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Cluster parser
-    parser_cluster = subparsers.add_parser("cluster", help="Cluster data from an existing h5ad AnnData object")
-    parser_cluster.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_cluster.add_argument('-r', '--randomstate', help='Specify random state for UMAP if you want to have a static seed (default: None) (optional)', default=None, type=int)
-    parser_cluster.add_argument('-t', '--readcutoff', help='Specify readcount cutoff to use for clustering (default: 20) (optional)', default=20, type=int)
-    parser_cluster.add_argument('-v', '--coveragetype', help='Specify coverage types for umap clustering treated as features (default: uniquecoverage, readstarts, readends, mismatchedbases, deletions) (optional)', \
-                                choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-                                         'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], nargs='+', default=['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'])
-    parser_cluster.add_argument('-c1', '--ncomponentsmp', help='Specify number of components to use for UMAP clustering of samples (default: 2) (optional)', default=2, type=int)
-    parser_cluster.add_argument('-c2', '--ncomponentgrp', help='Specify number of components to use for UMAP clustering of groups (default: 2) (optional)', default=2, type=int)
-    parser_cluster.add_argument('-l1', '--neighborclusmp', help='Specify number of neighbors to use for UMAP clustering of samples (default: 150) (optional)', default=150, type=int)
-    parser_cluster.add_argument('-l2', '--neighborclusgrp', help='Specify number of neighbors to use for UMAP clustering of groups (default: 40) (optional)', default=40, type=int)
-    parser_cluster.add_argument('-n1', '--neighborstdsmp', help='Specify number of neighbors to use for UMAP projection plotting of samples (default: 75) (optional)', default=75, type=int)
-    parser_cluster.add_argument('-n2', '--neighborstdgrp', help='Specify number of neighbors to use for UMAP projection plotting of groups (default: 20) (optional)', default=20, type=int)
-    parser_cluster.add_argument('-d1', '--hdbscanminsampsmp', help='Specify minsamples size to use for HDBSCAN clustering of samples (default: 6) (optional)', default=6, type=int)
-    parser_cluster.add_argument('-d2', '--hdbscanminsampgrp', help='Specify minsamples size to use for HDBSCAN clustering of groups (default: 3) (optional)', default=3, type=int)
-    parser_cluster.add_argument('-b1', '--hdbscanminclusmp', help='Specify min cluster size to use for HDBSCAN clustering of samples (default: 30) (optional)', default=30, type=int)
-    parser_cluster.add_argument('-b2', '--hdbscanminclugrp', help='Specify min cluster size to use for HDBSCAN clustering of groups (default: 10) (optional)', default=10, type=int)
-    parser_cluster.add_argument('-m', '--mindist', help='Specify minimum distance to use for UMAP clustering (default: 0.1) (optional)', default=0.1, type=float)
-    parser_cluster.add_argument('-e', '--variancethreshold', help='Specify variance threshold to use for feature selection (default: 0.1) (optional)', default=0.1, type=float)
-    parser_cluster.add_argument('-us', '--umapstatsmetrics', help='Specify UMAP statistics metrics to use for feature selection, (default: Eucledian) (optional)', \
-                                choices=['euclidean', 'manhattan', 'chebyshev', 'minkowski', 'canberra', 'braycurtis', 'haversine', 'mahalanobis', 'wminkowski', 'seuclidean', 'cosine', \
-                                         'correlation', 'hamming', 'jaccard', 'dice', 'russellrao', 'kulsinski', 'rogerstanimoto', 'sokalmichener', 'sokalsneath', 'yule'], default='euclidean')
-    parser_cluster.add_argument('-uh', '--hdbstatsmetrics', help='Specify hdbscan statistics metrics to use for feature selection with UMAP, (default: Eucledian) (optional)', \
-                                choices=['euclidean', 'manhattan', 'chebyshev', 'minkowski', 'canberra', 'braycurtis', 'haversine', 'mahalanobis', 'wminkowski', 'seuclidean', 'cosine', \
-                                         'correlation', 'hamming', 'jaccard', 'dice', 'russellrao', 'kulsinski', 'rogerstanimoto', 'sokalmichener', 'sokalsneath', 'yule'], default='euclidean')
-    parser_cluster.add_argument('--clusterobsexperimental', help='This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering (optional)', nargs='+', default=[])
-    parser_cluster.add_argument('-w', '--overwrite', help='Overwrite existing cluster information in AnnData object (optional)', action='store_true')
-    parser_cluster.add_argument('-o', '--output', help='Specify output directory (default: h5ad/trnagraph.cluster.h5ad) (optional)', default='h5ad/trnagraph.cluster.h5ad')
-    parser_cluster.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_cluster.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Graph parser
-    parser_graph = subparsers.add_parser("graph", help="Graph data from an existing h5ad AnnData object")
-    parser_graph.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_graph.add_argument('-o', '--output', help='Specify output directory (optional)', default='figures')
-    parser_graph.add_argument('-g', '--graphtypes', choices=['all','bar','cluster','compare','correlation','count','coverage','heatmap','logo','pca','radar','volcano'], \
-                              help='Specify graphs to create, if not specified it will default to "all" (optional)', nargs='+', default='all')
-    # Add argument to filter parameters from AnnData object
-    parser_graph.add_argument('--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
-    parser_graph.add_argument('--colormap', help='Specify a json file containing colormaps for the graphs (optional)', default=None)
-    # Options to imporve speed or log output
-    parser_graph.add_argument('--regen_uns', help='Force regenerate uns log2fc data if it would be generated again (optional)', action='store_true', default=False)
-    parser_graph.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
-    parser_graph.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_graph.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-    parser_graph.add_argument('-v', '--verbose', help='Print verbose output to stdout (optional)', action='store_true')
-    # Bar options
-    parser_graph.add_argument('--barcol', help='Specify AnnData column to of what the individal stacks of bars will be (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--bargrp', help='Specify AnnData column to of what will stack in bar columns (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--barsubgrp', help='Specify AnnData column for secondary spliting of bars into subplots (default: None) (optional)', default=None, required=False)
-    parser_graph.add_argument('--barsort', help='Specify AnnData column to sort the bars by (default: None) (optional)', default=None, required=False)
-    parser_graph.add_argument('--barlabel', help='Specify wether to label the bars using a different AnnData column (default: None) (optional)', default=None, required=False)
-    # Cluster options
-    parser_graph.add_argument('--clustergrp', help='Specify AnnData column to group by (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--clusterlabels', help='Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot (optional)', default=None, required=False)
-    parser_graph.add_argument('--clusteroverview', help='Specify wether to generate an overview of the clusters (default: False) (optional)', default=False, action='store_true', required=False)
-    parser_graph.add_argument('--clusternumeric', help='Specify wether to the cluster category is numeric (default: False) (optional)', default=False, action='store_true', required=False)
-    parser_graph.add_argument('--clustermask', help='Specify wether to mask the cluster plots to annotated HDBSCAN clusters (default: False) (optional)', default=False, action='store_true', required=False)
-    # Compare options
-    parser_graph.add_argument('--comparegrp1', help='Specify AnnData column as main comparative group (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--comparegrp2', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    # Correlation options
-    parser_graph.add_argument('--corrmethod', choices=['pearson', 'spearman', 'kendall'], help='Specify correlation method (default: pearson) (optional)', default='pearson', required=False)
-    parser_graph.add_argument('--corrgroup', help='Specify a grouping variable to generate correlation matrices for (default: sample) (optional)', default='sample', required=False)
-    # Coverage options
-    parser_graph.add_argument('--covgrp', help='Specify a grouping variable to generate coverage plots for (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--covobs', help='Specify the basis for each individual coverage plot (default: trna) (optional)', default='trna', required=False)
-    parser_graph.add_argument('--covtype', help='Specify a coverage type for coverage plots corresponding to trax coverage file outputs (default: uniquecoverage) (optional)', \
-                              choices=['coverage', 'readstarts', 'readends', 'uniquecoverage', 'multitrnacoverage', 'multianticodoncoverage', 'multiaminocoverage','tRNAreadstotal', 'mismatchedbases', \
-                                       'deletedbases', 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions'], default='uniquecoverage')
-    parser_graph.add_argument('--covgap', help='Specify wether to include gaps in coverage plots (default: False) (optional)', default=False)
-    parser_graph.add_argument('--covmethod', help='Specify method to use for coverage plots when combining multiple groups (default: mean) (optional)', choices=['mean','median','max','min','sum'], default='mean', required=False)
-    parser_graph.add_argument('--combinedpdfonly', help='Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output (optional)', action='store_true', required=False)
-    # Heatmap options
-    parser_graph.add_argument('--heatgrp', help='Specify group to use for heatmap', default='group', required=False)
-    parser_graph.add_argument('--diffrts', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-                                                    'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-                             help='Specify readtypes to use for heatmap/volcano (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                             nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    parser_graph.add_argument('--heatcutoff', help='Specify readcount cutoff to use for heatmap', default=80, required=False, type=int)
-    parser_graph.add_argument('--heatbound', help='Specify range to use for bounding the heatmap to top and bottom counts', default=25, required=False)
-    parser_graph.add_argument('--heatsubplots', help='Specify wether to generate subplots for each comparasion in addition to the sum (default: False)', action='store_true', default=False, required=False)
-    # PCA options
-    parser_graph.add_argument('--pcamarkers', help='Specify AnnData column to use for PCA markers (default: sample) (optional)', default='sample')
-    parser_graph.add_argument('--pcacolors', help='Specify AnnData column to color PCA markers by (default: group) (optional)', default='group')
-    parser_graph.add_argument('--pcareadtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-                                                         'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-                             help='Specify read types to use for PCA markers (default: total_unique, total) (optional)', nargs='+', default=['total_unique', 'total'])
-    # Radar options
-    parser_graph.add_argument('--radargrp', help='Specify AnnData column to group by (default: group) (optional)', default='group', required=False)
-    parser_graph.add_argument('--radarmethod', help='Specify method to use for radar plots (default: mean) (optional)', choices=['mean','median','max','sum','all'], default=['mean'], nargs='+', required=False)
-    parser_graph.add_argument('--radarscaled', help='Specify wether to scale the radar plots to 100%% (optional)', action='store_true', default=False, required=False)
-    # Seqlogo options
-    parser_graph.add_argument('--logogrp', help='Specify AnnData column to group sequences by (default: amino) (optional)', default='amino', required=False)
-    parser_graph.add_argument('--logomanualgrp', help='Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column (optional)', nargs='+', default=None)
-    parser_graph.add_argument('--logomanualname', help='Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified (optional)', default=None)
-    parser_graph.add_argument('--logopseudocount', help='Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs (default: 20) (optional)', default=20, required=False, type=int)
-    parser_graph.add_argument('--logosize', help='Specify the sequence size to use for the logo plots from presets (default: noloop)', choices=['sprinzl', 'noloop', 'full'], default='noloop', required=False)
-    parser_graph.add_argument('--ccatail', help='Specify wether to keep the CCA tail from the sequences (optional)', action='store_false', default=True, required=False)
-    parser_graph.add_argument('--pseudogenes', help='Specify wether to keep the pseudo-tRNAs (tRX) (optional)', action='store_false', default=True, required=False)
-    parser_graph.add_argument('--logornamode', help='Specify wether to print the output as RNA rather than DNA (optional)', action='store_true', default=False, required=False)
-    # Volcano options
-    parser_graph.add_argument('--volgrp', help='Specify group to use for volcano plot', default='group', required=False)
-    parser_graph.add_argument('--volcutoff', help='Specify readcount cutoff to use for volcano plot', default=80, required=False)
-    # Log2fc parser
-    parser_tools_log2fc = tools_subparsers.add_parser("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
-    parser_tools_log2fc.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_tools_log2fc.add_argument('-g', '--group', help='Specify group to use for log2fc from obs (default: group) (optional)', default='group', required=False)
-    parser_tools_log2fc.add_argument('-r', '--readtypes', choices=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', \
-                                                                   'wholecounts', 'fiveprime', 'threeprime', 'other', 'total', 'all'], \
-                                    help='Specify readtypes to generate log2fc for (default: wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique) (optional)', \
-                                    nargs='+', default=['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], required=False)
-    parser_tools_log2fc.add_argument('-x', '--cutoff', help='Specify readcounts cutoff to use for log2fc (default: 80) (optional)', default=80, required=False, type=int, nargs='+')
-    parser_tools_log2fc.add_argument('-c', '--config', help='Specify a json file containing observations/variables to filter out and other config options (optional)', default=None)
-    parser_tools_log2fc.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_tools_log2fc.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-    # CSV parser
-    parser_tools_csv = tools_subparsers.add_parser("csv", help="Output .h5ad to CSV")
-    parser_tools_csv.add_argument('-i', '--anndata', help='Specify location of h5ad object (required)', required=True)
-    parser_tools_csv.add_argument('-o', '--output', help='Specify output directory (optional)', default='csv')
-    parser_tools_csv.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_tools_csv.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Legacy parser
-    parser_tools_legacy = tools_subparsers.add_parser("legacy", help="Generate legacy tRAX plots")
-    parser_tools_legacy.add_argument('-p', '--plot', required=True, choices=['readlength', 'mismatch', 'featuretypes', 'trimmingstats', 'locuscoverage', 'mismatchboxplot', 'coverage', 'genefeatures', 'pca', 'scatter', 'cca', 'volcano'], help='Type of plot to generate')
-    parser_tools_legacy.add_argument('-i', '--input', required=True, help='Input file path')
-    parser_tools_legacy.add_argument('-o', '--output', required=True, help='Output file path')
-    parser_tools_legacy.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_tools_legacy.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    # Test parser
-    parser_tools_test = tools_subparsers.add_parser("test", help="Run preflight tests")
-    parser_tools_test.add_argument('--metadata', help='Run metadata download test', action='store_true')
-    parser_tools_test.add_argument('--fastq', help='Run fastq download test', action='store_true')
-    parser_tools_test.add_argument('--trna', help='Run tRNA download test', action='store_true')
-    parser_tools_test.add_argument('--genome', help='Run genome download test', action='store_true')
-    parser_tools_test.add_argument('--trim', help='Run trim test', action='store_true')
-    parser_tools_test.add_argument('--makedb', help='Run makedb test', action='store_true')
-    parser_tools_test.add_argument('--map', help='Run map test', action='store_true')
-    parser_tools_test.add_argument('--all', help='Run all tests (default)', action='store_true')
-    parser_tools_test.add_argument('--cleanrun', help='Clean up test files after running tests', action='store_true')
-    parser_tools_test.add_argument('--log', help='Log output to file (optional)', default=None)
-    parser_tools_test.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
-
-    args = parser.parse_args()
-
+def run_logic(args):
     # Set log file if specified
-    sys.stdout = open(args.log, 'w') if args.log else sys.stdout
+    if args.log:
+        sys.stdout = open(args.log, 'w')
     # Run main function
     if args.quiet:
         with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
-            main(args)
+            _main_logic(args)
     else:
-        main(args)
+        _main_logic(args)
+
+@preprocess_app.command("makedb", help="Build bowtie2 index from gtRNAdb/tRNAScan-SE output and reference genome")
+def makedb(
+    genome: str = typer.Option(..., "-g", "--genome", help="Specify location of the reference genome fasta file"),
+    trnaout: str = typer.Option(..., "-t", "--trnaout", help="Specify location of the tRNAScan-SE out file"),
+    trnafa: str = typer.Option(..., "-r", "--trnafa", help="Specify location of the tRNA reference fasta file"),
+    namemap: str = typer.Option(..., "-m", "--namemap", help="Specify location of the tRNA name mapping file"),
+    addtrna: Optional[str] = typer.Option(None, "--addtrna", help="Specify location of additional tRNA sequences file"),
+    addseqs: Optional[str] = typer.Option(None, "--addseqs", help="Specify location of additional sequences file"),
+    orgmode: str = typer.Option("euk", "-s", "--orgmode", help="Specify organism mode used for tRNAScan-SE"),
+    forcecca: bool = typer.Option(False, "--forcecca", help="Force addition of CCA tail"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
+    output: str = typer.Option("db", "-o", "--output", help="Specify output directory/name for bowtie2 index files"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='makedb', genome=genome, trnaout=trnaout, trnafa=trnafa, namemap=namemap,
+        addtrna=addtrna, addseqs=addseqs, orgmode=orgmode, forcecca=forcecca,
+        threads=threads, output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
+def trim(
+    runname: str = typer.Option(..., "-r", "--runname", help="Name of the run (used for output filenames)"),
+    manifest: str = typer.Option(..., "-i", "--manifest", help="Tab-delimited file: SampleName <tab> R1_Path [<tab> R2_Path]"),
+    adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
+    adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
+    length: int = typer.Option(15, "-l", "--length", help="Minimum length of sequence after trimming"),
+    umilength: int = typer.Option(0, "-u", "--umilength", help="Length of UMI (0 to disable)"),
+    umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
+):
+    args = SimpleNamespace(
+        mode='trim', runname=runname, manifest=manifest, adapter1=adapter1, adapter2=adapter2,
+        length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
+    )
+    run_logic(args)
+
+@preprocess_app.command("map", help="Map reads to tRNA database")
+def map_cmd(
+    experiment: str = typer.Option(..., "-e", "--experiment", help="Experiment name to be used"),
+    database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
+    samples: str = typer.Option(..., "-s", "--samples", help="Sample file"),
+    gtf: Optional[str] = typer.Option(None, "--gtf", help="The ensembl gene list for that species"),
+    pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
+    bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
+    lazy: bool = typer.Option(False, "--lazy", help="Skip mapping reads if bam files exist"),
+    nofrag: bool = typer.Option(False, "--nofrag", help="Omit fragment determination (Used for TGIRT mapping)"),
+    nosizefactors: bool = typer.Option(False, "--nosizefactors", help="Don't use Deseq size factors in plotting"),
+    maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum allowed mismatches"),
+    mincoverage: Optional[str] = typer.Option(None, "--mincoverage", help="Minimum read count for coverage plots"),
+    minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
+    paironly: bool = typer.Option(False, "--paironly", help="Generate only pair files (for adding a pair file after initial processing)"),
+    hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
+    hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
+    maponly: bool = typer.Option(False, "--maponly", help="Only do the mapping step"),
+    dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
+    local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
+    threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use"),
+    skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files"),
+    uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
+    traxmode: bool = typer.Option(False, "--traxmode", help="Run in tRAX compatibility mode, generating legacy plots"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='map', experiment=experiment, database=database, samples=samples, gtf=gtf, pairs=pairs,
+        bed=bed, lazy=lazy, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
+        mincoverage=mincoverage, minnontrnasize=minnontrnasize, paironly=paironly, hub=hub, hubonly=hubonly,
+        maponly=maponly, dumpother=dumpother, local=local, threads=threads, skipcheck=skipcheck,
+        bamdir=bamdir, uniqueonly=uniqueonly, traxmode=traxmode, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@app.command("build", help="Build a h5ad AnnData object from a tRAX run")
+def build(
+    traxdir: str = typer.Option(..., "-i", "--traxdir", help="Specify location of trax directory"),
+    metadata: str = typer.Option(..., "-m", "--metadata", help="Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB"),
+    output: str = typer.Option("h5ad/trnagraph.h5ad", "-o", "--output", help="Specify output h5ad file"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='build', traxdir=traxdir, metadata=metadata, output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@app.command("merge", help="Merge data from two existing h5ad AnnData objects")
+def merge(
+    anndata1: str = typer.Option(..., "-i1", "--anndata1", help="Specify location of first h5ad object"),
+    anndata2: str = typer.Option(..., "-i2", "--anndata2", help="Specify location of second h5ad object"),
+    dropno: bool = typer.Option(False, "--dropno", help="Drop non tRNAs genes that are not present in both AnnData objects"),
+    droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
+    output: str = typer.Option("h5ad/trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
+        output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
+def cluster(
+    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    randomstate: Optional[int] = typer.Option(None, "-r", "--randomstate", help="Specify random state for UMAP if you want to have a static seed"),
+    readcutoff: int = typer.Option(20, "-t", "--readcutoff", help="Specify readcount cutoff to use for clustering"),
+    coveragetype: List[str] = typer.Option(['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions'], "-v", "--coveragetype", help="Specify coverage types for umap clustering treated as features"),
+    ncomponentsmp: int = typer.Option(2, "-c1", "--ncomponentsmp", help="Specify number of components to use for UMAP clustering of samples"),
+    ncomponentgrp: int = typer.Option(2, "-c2", "--ncomponentgrp", help="Specify number of components to use for UMAP clustering of groups"),
+    neighborclusmp: int = typer.Option(150, "-l1", "--neighborclusmp", help="Specify number of neighbors to use for UMAP clustering of samples"),
+    neighborclusgrp: int = typer.Option(40, "-l2", "--neighborclusgrp", help="Specify number of neighbors to use for UMAP clustering of groups"),
+    neighborstdsmp: int = typer.Option(75, "-n1", "--neighborstdsmp", help="Specify number of neighbors to use for UMAP projection plotting of samples"),
+    neighborstdgrp: int = typer.Option(20, "-n2", "--neighborstdgrp", help="Specify number of neighbors to use for UMAP projection plotting of groups"),
+    hdbscanminsampsmp: int = typer.Option(6, "-d1", "--hdbscanminsampsmp", help="Specify minsamples size to use for HDBSCAN clustering of samples"),
+    hdbscanminsampgrp: int = typer.Option(3, "-d2", "--hdbscanminsampgrp", help="Specify minsamples size to use for HDBSCAN clustering of groups"),
+    hdbscanminclusmp: int = typer.Option(30, "-b1", "--hdbscanminclusmp", help="Specify min cluster size to use for HDBSCAN clustering of samples"),
+    hdbscanminclugrp: int = typer.Option(10, "-b2", "--hdbscanminclugrp", help="Specify min cluster size to use for HDBSCAN clustering of groups"),
+    mindist: float = typer.Option(0.1, "-m", "--mindist", help="Specify minimum distance to use for UMAP clustering"),
+    variancethreshold: float = typer.Option(0.1, "-e", "--variancethreshold", help="Specify variance threshold to use for feature selection"),
+    umapstatsmetrics: str = typer.Option("euclidean", "-us", "--umapstatsmetrics", help="Specify UMAP statistics metrics to use for feature selection"),
+    hdbstatsmetrics: str = typer.Option("euclidean", "-uh", "--hdbstatsmetrics", help="Specify hdbscan statistics metrics to use for feature selection with UMAP"),
+    clusterobsexperimental: List[str] = typer.Option([], "--clusterobsexperimental", help="This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering"),
+    overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
+    output: str = typer.Option("h5ad/trnagraph.cluster.h5ad", "-o", "--output", help="Specify output directory"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='cluster', anndata=anndata, randomstate=randomstate, readcutoff=readcutoff, coveragetype=coveragetype,
+        ncomponentsmp=ncomponentsmp, ncomponentgrp=ncomponentgrp, neighborclusmp=neighborclusmp, neighborclusgrp=neighborclusgrp,
+        neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
+        hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
+        umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
+        overwrite=overwrite, output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@app.command("graph", help="Graph data from an existing h5ad AnnData object")
+def graph(
+    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
+    graphtypes: List[str] = typer.Option(["all"], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
+    colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the graphs"),
+    regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Print verbose output to stdout"),
+    barcol: str = typer.Option("group", "--barcol", help="Specify AnnData column to of what the individal stacks of bars will be"),
+    bargrp: str = typer.Option("amino", "--bargrp", help="Specify AnnData column to of what will stack in bar columns"),
+    barsubgrp: Optional[str] = typer.Option(None, "--barsubgrp", help="Specify AnnData column for secondary spliting of bars into subplots"),
+    barsort: Optional[str] = typer.Option(None, "--barsort", help="Specify AnnData column to sort the bars by"),
+    barlabel: Optional[str] = typer.Option(None, "--barlabel", help="Specify wether to label the bars using a different AnnData column"),
+    clustergrp: str = typer.Option("amino", "--clustergrp", help="Specify AnnData column to group by"),
+    clusterlabels: Optional[str] = typer.Option(None, "--clusterlabels", help="Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot"),
+    clusteroverview: bool = typer.Option(False, "--clusteroverview", help="Specify wether to generate an overview of the clusters"),
+    clusternumeric: bool = typer.Option(False, "--clusternumeric", help="Specify wether to the cluster category is numeric"),
+    clustermask: bool = typer.Option(False, "--clustermask", help="Specify wether to mask the cluster plots to annotated HDBSCAN clusters"),
+    comparegrp1: str = typer.Option("group", "--comparegrp1", help="Specify AnnData column as main comparative group"),
+    comparegrp2: str = typer.Option("group", "--comparegrp2", help="Specify AnnData column to group by"),
+    corrmethod: str = typer.Option("pearson", "--corrmethod", help="Specify correlation method"),
+    corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
+    covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),
+    covobs: str = typer.Option("trna", "--covobs", help="Specify the basis for each individual coverage plot"),
+    covtype: str = typer.Option("uniquecoverage", "--covtype", help="Specify a coverage type for coverage plots corresponding to trax coverage file outputs"),
+    covgap: bool = typer.Option(False, "--covgap", help="Specify wether to include gaps in coverage plots"),
+    covmethod: str = typer.Option("mean", "--covmethod", help="Specify method to use for coverage plots when combining multiple groups"),
+    combinedpdfonly: bool = typer.Option(False, "--combinedpdfonly", help="Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output"),
+    heatgrp: str = typer.Option("group", "--heatgrp", help="Specify group to use for heatmap"),
+    diffrts: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "--diffrts", help="Specify readtypes to use for heatmap/volcano"),
+    heatcutoff: int = typer.Option(80, "--heatcutoff", help="Specify readcount cutoff to use for heatmap"),
+    heatbound: int = typer.Option(25, "--heatbound", help="Specify range to use for bounding the heatmap to top and bottom counts"),
+    heatsubplots: bool = typer.Option(False, "--heatsubplots", help="Specify wether to generate subplots for each comparasion in addition to the sum"),
+    pcamarkers: str = typer.Option("sample", "--pcamarkers", help="Specify AnnData column to use for PCA markers"),
+    pcacolors: str = typer.Option("group", "--pcacolors", help="Specify AnnData column to color PCA markers by"),
+    pcareadtypes: List[str] = typer.Option(['total_unique', 'total'], "--pcareadtypes", help="Specify read types to use for PCA markers"),
+    radargrp: str = typer.Option("group", "--radargrp", help="Specify AnnData column to group by"),
+    radarmethod: List[str] = typer.Option(['mean'], "--radarmethod", help="Specify method to use for radar plots"),
+    radarscaled: bool = typer.Option(False, "--radarscaled", help="Specify wether to scale the radar plots to 100%% (optional)"),
+    logogrp: str = typer.Option("amino", "--logogrp", help="Specify AnnData column to group sequences by"),
+    logomanualgrp: Optional[List[str]] = typer.Option(None, "--logomanualgrp", help="Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column"),
+    logomanualname: Optional[str] = typer.Option(None, "--logomanualname", help="Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified"),
+    logopseudocount: int = typer.Option(20, "--logopseudocount", help="Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs"),
+    logosize: str = typer.Option("noloop", "--logosize", help="Specify the sequence size to use for the logo plots from presets"),
+    ccatail: bool = typer.Option(True, "--ccatail", flag_value=False, help="Specify wether to keep the CCA tail from the sequences"),
+    pseudogenes: bool = typer.Option(True, "--pseudogenes", flag_value=False, help="Specify wether to keep the pseudo-tRNAs (tRX)"),
+    logornamode: bool = typer.Option(False, "--logornamode", help="Specify wether to print the output as RNA rather than DNA"),
+    volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
+    volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
+):
+    args = SimpleNamespace(
+        mode='graph', anndata=anndata, output=output, graphtypes=graphtypes, config=config, colormap=colormap,
+        regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, barcol=barcol, bargrp=bargrp,
+        barsubgrp=barsubgrp, barsort=barsort, barlabel=barlabel, clustergrp=clustergrp, clusterlabels=clusterlabels,
+        clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
+        comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
+        covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
+        heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, pcamarkers=pcamarkers, pcacolors=pcacolors,
+        pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
+        logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
+        ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, volgrp=volgrp, volcutoff=volcutoff
+    )
+    run_logic(args)
+
+@tools_app.command("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
+def log2fc(
+    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    group: str = typer.Option("group", "-g", "--group", help="Specify group to use for log2fc from obs"),
+    readtypes: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "-r", "--readtypes", help="Specify readtypes to generate log2fc for"),
+    cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
+    config: Optional[str] = typer.Option(None, "-c", "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='log2fc', anndata=anndata, group=group, readtypes=readtypes, cutoff=cutoff, config=config, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@tools_app.command("csv", help="Output .h5ad to CSV")
+def csv_cmd(
+    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    output: str = typer.Option("csv", "-o", "--output", help="Specify output directory"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='csv', anndata=anndata, output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@tools_app.command("legacy", help="Generate legacy tRAX plots")
+def legacy(
+    plot: str = typer.Option(..., "-p", "--plot", help="Type of plot to generate"),
+    input: str = typer.Option(..., "-i", "--input", help="Input file path"),
+    output: str = typer.Option(..., "-o", "--output", help="Output file path"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='legacy', plot=plot, input=input, output=output, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+@tools_app.command("test", help="Run preflight tests")
+def test(
+    metadata: bool = typer.Option(False, "--metadata", help="Run metadata download test"),
+    fastq: bool = typer.Option(False, "--fastq", help="Run fastq download test"),
+    trna: bool = typer.Option(False, "--trna", help="Run tRNA download test"),
+    genome: bool = typer.Option(False, "--genome", help="Run genome download test"),
+    trim: bool = typer.Option(False, "--trim", help="Run trim test"),
+    makedb: bool = typer.Option(False, "--makedb", help="Run makedb test"),
+    map: bool = typer.Option(False, "--map", help="Run map test"),
+    all: bool = typer.Option(False, "--all", help="Run all tests (default)"),
+    cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
+        makedb=makedb, map=map, all=all, cleanrun=cleanrun, log=log, quiet=quiet
+    )
+    run_logic(args)
+
+if __name__ == '__main__':
+    app()
