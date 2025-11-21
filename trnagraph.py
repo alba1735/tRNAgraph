@@ -26,6 +26,18 @@ import plotsSeqlogo
 import plotsPca
 import plotsRadar
 import plotsVolcano
+import plotsLegacyReadLength
+import plotsLegacyMismatch
+import plotsTrimmingStats
+import plotsLegacyLocusCoverage
+import plotsLegacyMismatchBoxplot
+import plotsLegacyGeneFeatures
+import plotsLegacyFeatureTypes
+import plotsLegacyPCA
+import plotsLegacyScatter
+import plotsLegacyCCA
+import plotsLegacyVolcano
+import plotsLegacyCoverage
 # Cluster functions
 import umap
 from sklearn.preprocessing import RobustScaler
@@ -902,8 +914,35 @@ def main(args):
         print('Writing csv files to: ' + args.output)
         adata.write_csvs(args.output, skip_data=False)
         print('Done!\n')
+    elif args.mode == 'legacy':
+        print(f'Generating legacy plot: {args.plot}...')
+        if args.plot == 'readlength':
+            plotsLegacyReadLength.visualizer(args.input, args.output).plot()
+        elif args.plot == 'mismatch':
+            plotsLegacyMismatch.visualizer(args.input, args.output).plot()
+        elif args.plot == 'trimmingstats':
+            plotsTrimmingStats.visualizer(args.input, args.output).plot()
+        elif args.plot == 'locuscoverage':
+            plotsLegacyLocusCoverage.visualizer(args.input, args.output).plot()
+        elif args.plot == 'mismatchboxplot':
+            plotsLegacyMismatchBoxplot.visualizer(args.input, args.output).plot()
+        elif args.plot == 'coverage':
+            plotsLegacyCoverage.visualizer(args.input, args.output).plot()
+        elif args.plot == 'genefeatures':
+            plotsLegacyGeneFeatures.visualizer(args.input, args.output).plot()
+        elif args.plot == 'featuretypes':
+            plotsLegacyFeatureTypes.visualizer(args.input, args.output).plot()
+        elif args.plot == 'pca':
+            plotsLegacyPCA.visualizer(args.input, args.output).plot()
+        elif args.plot == 'scatter':
+            plotsLegacyScatter.visualizer(args.input, args.output).plot()
+        elif args.plot == 'cca':
+            plotsLegacyCCA.visualizer(args.input, args.output).plot()
+        elif args.plot == 'volcano':
+            plotsLegacyVolcano.visualizer(args.input, args.output).plot()
+        print('Done!\n')
     elif args.mode == 'test':
-        toolsTestSuite.preflightTests(args).main()
+        toolsTestSuite.demoPipeline(args).main()
         print('Done!\n')
     else:
         print('Invalid operating mode. Exiting...')
@@ -997,6 +1036,7 @@ if __name__ == '__main__':
     parser_map.add_argument('--skipcheck', action="store_true", default=False, help='Skips the check that the fq files match bam files (optional)')
     parser_map.add_argument('--bamdir', help='Directory for placing bam files (default: current working directory) (optional)', default=None)
     parser_map.add_argument('--uniqueonly', action="store_true", default=False, help='Show only unique coverage (optional)')
+    parser_map.add_argument('--traxmode', action="store_true", default=False, help='Run in tRAX compatibility mode, generating legacy plots (optional)')
     parser_map.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_map.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
 
@@ -1141,6 +1181,15 @@ if __name__ == '__main__':
     parser_tools_csv.add_argument('-o', '--output', help='Specify output directory (optional)', default='csv')
     parser_tools_csv.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_tools_csv.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
+    # Legacy parser
+    parser_tools_legacy = tools_subparsers.add_parser("legacy", help="Generate legacy tRAX plots")
+    parser_tools_legacy.add_argument('-p', '--plot', required=True, choices=['readlength', 'mismatch', 'featuretypes', 'trimmingstats', 'locuscoverage', 'mismatchboxplot', 'coverage', 'genefeatures', 'pca', 'scatter', 'cca', 'volcano'], help='Type of plot to generate')
+    parser_tools_legacy.add_argument('-i', '--input', required=True, help='Input file path')
+    parser_tools_legacy.add_argument('-o', '--output', required=True, help='Output file path')
+    parser_tools_legacy.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_tools_legacy.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
     # Test parser
     parser_tools_test = tools_subparsers.add_parser("test", help="Run preflight tests")
     parser_tools_test.add_argument('--metadata', help='Run metadata download test', action='store_true')
@@ -1151,6 +1200,7 @@ if __name__ == '__main__':
     parser_tools_test.add_argument('--makedb', help='Run makedb test', action='store_true')
     parser_tools_test.add_argument('--map', help='Run map test', action='store_true')
     parser_tools_test.add_argument('--all', help='Run all tests (default)', action='store_true')
+    parser_tools_test.add_argument('--cleanrun', help='Clean up test files after running tests', action='store_true')
     parser_tools_test.add_argument('--log', help='Log output to file (optional)', default=None)
     parser_tools_test.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
 

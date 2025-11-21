@@ -25,6 +25,18 @@ import toolsCountReads
 import toolsGetCoverage
 import toolsTrackHub
 
+import plotsLegacyPCA
+import plotsLegacyGeneFeatures
+import plotsLegacyFeatureTypes
+import plotsLegacyCoverage
+import plotsLegacyReadLength
+import plotsLegacyMismatch
+import plotsLegacyLocusCoverage
+import plotsLegacyMismatchBoxplot
+import plotsLegacyCCA
+import plotsLegacyScatter
+import plotsLegacyVolcano
+
 class TRNAMapInfo:
     def __init__(self, multtrans, multac, multamino, trna, singlenon, multiplenon):
         self.multtrans = int(multtrans)
@@ -280,6 +292,7 @@ class MapSamples:
         self.makehubs = args.hub
         self.maponly = args.maponly
         self.dumpother = args.dumpother
+        self.traxmode = args.traxmode
         
         self.trnainfo = trnadatabase(self.dbname)
         self.expinfo = expdatabase(self.expname)
@@ -377,18 +390,37 @@ class MapSamples:
                 print("unmap\t" + "\t".join(str(mapresults[s].unmaps) if s in mapresults else "0" for s in samples), file=mapinfo)
                 print("single\t" + "\t".join(str(mapresults[s].singlemaps) if s in mapresults else "0" for s in samples), file=mapinfo)
                 print("multi\t" + "\t".join(str(mapresults[s].multimaps) if s in mapresults else "0" for s in samples), file=mapinfo)
-
-        # Write trnamapinfo
-        if self.expinfo.trnamapfile:
+                print("total\t" + "\t".join(str(mapresults[s].totalreads) if s in mapresults else "0" for s in samples), file=mapinfo)
+                print("bowtiecommand\t" + "\t".join(str(mapresults[s].bowtiecommand) if s in mapresults else "" for s in samples), file=mapinfo)
+        
+        # Write trna mapinfo
+        if self.expinfo.trnamapfile and self.expinfo.mapinfo:
             with open(self.expinfo.trnamapfile, 'w') as trnamapinfo:
                 print("\t".join(samples), file=trnamapinfo)
-                print("multi_nontRNA\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-                print("unique_nontRNA\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-                print("multi_amino\t" + "\t".join(str(mapresults[s].trnamapinfo.multamino) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-                print("unique_amino\t" + "\t".join(str(mapresults[s].trnamapinfo.multac) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-                print("unique_anticodon\t" + "\t".join(str(mapresults[s].trnamapinfo.multtrans) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-                print("unique_tRNA\t" + "\t".join(str(mapresults[s].trnamapinfo.singletrna) if s in mapresults and mapresults[s].trnamapinfo else "0" for s in samples), file=trnamapinfo)
-
+                print("multtrans\t" + "\t".join(str(mapresults[s].trnamapinfo.multtrans) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("multac\t" + "\t".join(str(mapresults[s].trnamapinfo.multac) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("multamino\t" + "\t".join(str(mapresults[s].trnamapinfo.multamino) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("trna\t" + "\t".join(str(mapresults[s].trnamapinfo.trna) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("singlenon\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+        
+        if self.traxmode:
+            print("Generating legacy PCA plots...", file=sys.stderr)
+            plotsLegacyPCA.visualizer(self.expinfo.normalizedcounts, self.expinfo.pcaplot).plot()
+            plotsLegacyPCA.visualizer(self.expinfo.trnacounts, self.expinfo.pcatrnaplot).plot()
+            print("Generating legacy feature plots...", file=sys.stderr)
+            plotsLegacyGeneFeatures.visualizer(self.expinfo.genetypecounts, self.expinfo.genetypeplot).plot()
+            plotsLegacyFeatureTypes.visualizer(self.expinfo.trnaaminofile, self.expinfo.trnaaminoplot).plot()
+            plotsLegacyReadLength.visualizer(self.expinfo.trnalengthfile, self.expinfo.trnalengthplot).plot()
+            plotsLegacyMismatch.visualizer(self.expinfo.mismatchcountfile, self.expinfo.mismatchcountplot).plot()
+            # CCA plot usually runs on trnaendcounts
+            if os.path.exists(self.expinfo.trnaendfile):
+                 plotsLegacyCCA.visualizer(self.expinfo.trnaendfile, self.expinfo.trnaendfile.replace('.txt', '.pdf')).plot()
+            print("Generating legacy coverage plots...", file=sys.stderr)
+            plotsLegacyCoverage.visualizer(self.expinfo.trnacoveragefile, self.expinfo.trnacoverageplot).plot()
+            plotsLegacyLocusCoverage.visualizer(self.expinfo.locicoveragefile, self.expinfo.locicoverageplot).plot()
+            plotsLegacyMismatchBoxplot.visualizer(self.expinfo.trnacoveragefile, self.expinfo.expname+"/mismatch/mismatch_boxplot.pdf").plot()
 
     def makefeaturebed(self):
         allfeatfile = open(self.expinfo.allfeats, "w")
@@ -414,9 +446,12 @@ class MapSamples:
                             bedfile=self.bedfiles if self.bedfiles else [], trnacounts=self.expinfo.trnacounts,
                             trnaends=self.expinfo.trnaendfile, trnauniquecounts=self.expinfo.trnauniquefile,
                             nofrag=self.nofrag, cores=self.cores, maxmismatches=self.maxmismatches)
-        # R plotting commented out
-        # runrscript(scriptdir+"/pcareadcounts.R",expinfo.normalizedcounts,samplefile,expinfo.pcaplot)
-        # runrscript(scriptdir+"/pcareadcounts.R",expinfo.trnacounts,samplefile,expinfo.pcatrnaplot)
+        
+        if self.traxmode:
+            print("Generating legacy PCA plots...", file=sys.stderr)
+            plotsLegacyPCA.visualizer(self.expinfo.normalizedcounts, self.expinfo.pcaplot).plot()
+            plotsLegacyPCA.visualizer(self.expinfo.trnacounts, self.expinfo.pcatrnaplot).plot()
+            plotsLegacyScatter.visualizer(self.expinfo.normalizedcounts, self.expinfo.expname+"/scatter.pdf").plot()
 
     def run_deseq2(self):
         # Load counts
@@ -425,8 +460,13 @@ class MapSamples:
         counts_df = counts_df.T
         
         # Load sample info
-        sample_df = pd.read_csv(self.samplefilename, sep='\t', header=None, names=['sample', 'condition', 'replicate'])
-        sample_df.set_index('sample', inplace=True)
+        try:
+            # Use sep=None to auto-detect delimiter (handles tabs or spaces)
+            sample_df = pd.read_csv(self.samplefilename, sep=None, engine='python', header=None, names=['sample', 'condition', 'replicate'])
+            sample_df.set_index('sample', inplace=True)
+        except Exception as e:
+            print(f"Error reading sample file {self.samplefilename}: {e}", file=sys.stderr)
+            return
         
         # Filter samples that are in counts
         sample_df = sample_df.loc[counts_df.index]
@@ -472,6 +512,69 @@ class MapSamples:
              print("Warning: 'size_factors' not found in dds.obs or dds.obsm. Using 1.0.", file=sys.stderr)
              pd.DataFrame(1.0, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
 
+        # Run pairwise comparisons if pairs file is provided
+        if self.pairfile:
+            self.run_pairwise_de(dds, sample_df)
+
+    def run_pairwise_de(self, dds, sample_df):
+        try:
+            # Use sep='\s+' to handle any whitespace
+            pairs_df = pd.read_csv(self.pairfile, sep=r'\s+', engine='python', header=None, names=['Sample1', 'Sample2'])
+        except Exception as e:
+            print(f"Error reading pairs file: {e}", file=sys.stderr)
+            return
+
+        # Ensure output directory exists
+        os.makedirs(os.path.join(self.expinfo.expname, "de_results"), exist_ok=True)
+
+        for index, row in pairs_df.iterrows():
+            sample1 = row['Sample1']
+            sample2 = row['Sample2']
+            
+            # Check if samples exist in metadata or are valid conditions
+            is_sample1 = sample1 in sample_df.index
+            is_sample2 = sample2 in sample_df.index
+            
+            is_cond1 = sample1 in sample_df['condition'].values
+            is_cond2 = sample2 in sample_df['condition'].values
+            
+            if not (is_sample1 or is_cond1) or not (is_sample2 or is_cond2):
+                print(f"Warning: {sample1} or {sample2} not found in metadata (as sample or condition). Skipping pair.", file=sys.stderr)
+                continue
+
+            if is_sample1:
+                cond1 = sample_df.loc[sample1, 'condition']
+            else:
+                cond1 = sample1
+                
+            if is_sample2:
+                cond2 = sample_df.loc[sample2, 'condition']
+            else:
+                cond2 = sample2
+            
+            if cond1 == cond2:
+                print(f"Warning: Comparison between same condition {cond1}. Skipping DE.", file=sys.stderr)
+                continue
+
+            print(f"Running DE for {cond1} vs {cond2}...", file=sys.stderr)
+            
+            try:
+                stat_res = DeseqStats(dds, contrast=["condition", cond1, cond2])
+                stat_res.summary()
+                res_df = stat_res.results_df
+                
+                # Save results
+                out_file = os.path.join(self.expinfo.expname, "de_results", f"{cond1}_vs_{cond2}.txt")
+                res_df.to_csv(out_file, sep='\t')
+                print(f"Saved DE results to {out_file}", file=sys.stderr)
+                
+                if self.traxmode:
+                    volcano_out = os.path.join(self.expinfo.expname, "de_results", f"{cond1}_vs_{cond2}_volcano.pdf")
+                    plotsLegacyVolcano.visualizer(out_file, volcano_out).plot()
+                
+            except Exception as e:
+                print(f"Error running DE for {cond1} vs {cond2}: {e}", file=sys.stderr)
+
     def counttypes(self):
         if not self.nosizefactors:
             toolsCountReads.main(sizefactors=self.expinfo.sizefactors, combinereps=True,
@@ -494,10 +597,14 @@ class MapSamples:
                                     bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
                                     countfrags=False, uniquename=self.expinfo.uniquename, cores=self.cores)
         
-        # R plotting commented out
-        # runrscript(scriptdir+"/genefeatures.R",expinfo.genetypecounts,expinfo.genetypeplot)
-        # runrscript(scriptdir+"/featuretypes.R",expinfo.trnaaminofile,expinfo.trnaaminoplot, "all")
-        # ...
+        if self.traxmode:
+            print("Generating legacy feature plots...", file=sys.stderr)
+            plotsLegacyGeneFeatures.visualizer(self.expinfo.genetypecounts, self.expinfo.genetypeplot).plot()
+            plotsLegacyFeatureTypes.visualizer(self.expinfo.trnaaminofile, self.expinfo.trnaaminoplot).plot()
+            plotsLegacyReadLength.visualizer(self.expinfo.trnalengthfile, self.expinfo.trnalengthplot).plot()
+            plotsLegacyMismatch.visualizer(self.expinfo.mismatchcountfile, self.expinfo.mismatchcountplot).plot()
+            if os.path.exists(self.expinfo.trnaendfile):
+                 plotsLegacyCCA.visualizer(self.expinfo.trnaendfile, self.expinfo.trnaendfile.replace('.txt', '.pdf')).plot()
 
     def gettrnacoverage(self, orgtype):
         if not self.nosizefactors:
@@ -516,10 +623,13 @@ class MapSamples:
                                  orgtype=orgtype, bamdir=self.bamdir, allcoverage=self.expinfo.trnacoveragefile,
                                  trnafasta=self.trnainfo.trnafasta, cores=self.cores,
                                  uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
-                                 uniqueonly=self.uniqueonlycov, locibed=[], locistk=self.trnainfo.locialign) # Added missing required args with defaults/empty if needed
+                                 uniqueonly=self.uniqueonlycov, locibed=[], locistk=self.trnainfo.locialign)
         
-        # R plotting commented out
-        # runrscript(scriptdir+"/newcoverageplots.R", ...)
+        if self.traxmode:
+            print("Generating legacy coverage plots...", file=sys.stderr)
+            plotsLegacyCoverage.visualizer(self.expinfo.trnacoveragefile, self.expinfo.trnacoverageplot).plot()
+            plotsLegacyLocusCoverage.visualizer(self.expinfo.locicoveragefile, self.expinfo.locicoverageplot).plot()
+            plotsLegacyMismatchBoxplot.visualizer(self.expinfo.trnacoveragefile, self.expinfo.expname+"/mismatch/mismatch_boxplot.pdf").plot()
 
     def gettraxqc(self):
         toolsQC.main(samplefile=self.samplefilename, databasename=self.trnainfo.dbname,

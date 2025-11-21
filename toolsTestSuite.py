@@ -5,20 +5,19 @@ import subprocess
 import logging
 import zipfile
 
-# def log_subprocess_output(process):
-#     stdout, stderr = process.communicate()
-#     if stdout:
-#         logger.info("Subprocess output:\n%s", stdout.decode())
-#     if stderr:
-#         logger.error("Subprocess error output:\n%s", stderr.decode())
-
-class preflightTests:
+class demoPipeline:
     def __init__(self, args):
         self.args = args
         repo_root = os.path.abspath(os.path.dirname(__file__))
         os.chdir(repo_root)
         os.makedirs(os.path.dirname("tests/"), exist_ok=True)
         os.chdir(repo_root+"/tests/")
+        # If all flag is set to all then empty the test directory first
+        if self.args.all:
+            subprocess.run("rm -rf fastq_raw fastq_trim trnadb vibrChol1 vibrChol1-tRNAs vibrChol1-tRAX", shell=True, check=True)
+            subprocess.run("rm -f accessions.tsv mismatchcompare.txt vibrChol1-tRNAs.tar.gz vibrChol1.*.txt VC_*.bam VC_*.bai", shell=True, check=True)
+        # copy files from ../assets/ to tests/ if they don't exist
+        subprocess.run("cp -n ../assets/* .", shell=True, check=True)
 
         logging.basicConfig(filename='toolsTestSuite.log', filemode='w', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
@@ -131,7 +130,7 @@ class preflightTests:
         # Map reads to tRNA genes
         logger.info("Mapping reads to tRNA genes...")
         print("Mapping reads to tRNA genes...")
-        result = subprocess.run("python3 ../trnagraph.py preprocess map -e vibrChol1-map -d trnadb/vibrChol1_db -s vibrChol1.metadata.txt --lazy", shell=True, check=True, capture_output=True, text=True)
+        result = subprocess.run("python3 ../trnagraph.py preprocess map -e vibrChol1-tRAX -d trnadb/vibrChol1_db -s vibrChol1.metadata.txt --pairs vibrChol1.pair.txt --gtf vibrChol1/genes.gtf --traxmode", shell=True, check=True, capture_output=True, text=True)
         logger.info(f"Mapping output:\n{result.stdout}\n{result.stderr}")
         logger.info("Done.")
         print("Done.")
@@ -158,6 +157,11 @@ class preflightTests:
                 self.create_index()
             if run_all or self.args.map:
                 self.map_reads()
+            if self.args.cleanrun:
+                logger.info("Cleaning up test files...")
+                print("Cleaning up test files...")
+                # delete the entire test folder except the log file
+                subprocess.run("rm -rf fastq_raw fastq_trim trnadb vibrChol1 vibrChol1-tRNAs accessions.tsv", shell=True, check=True)
 
             logger.info("All tests completed.")
             print("All tests completed.")

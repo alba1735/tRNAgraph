@@ -6,7 +6,7 @@ import json
 import subprocess
 import pandas as pd
 import multiprocessing
-import plotsFeatureTypesReal
+import plotsTrimmingStats
 
 class FastpTrimmer:
     '''
@@ -259,7 +259,7 @@ class FastpTrimmer:
             # Generate Plot
             plot_out = os.path.join(output_dir, f"{self.args.runname}_trim_feature_types.pdf")
             print("Generating feature types plot...")
-            plotsFeatureTypesReal.visualizer(stats_out, plot_out).plot()
+            plotsTrimmingStats.visualizer(stats_out, plot_out).plot()
         else:
             print("No JSON reports found to summarize.")
 
