@@ -58,7 +58,7 @@ tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be u
         G -->|default| G4([heatmap, volcano]) --> L([log2fc]) --> I2.2
         G -->|requires config.json| G2([comparison])
         G -->|requires clustering| G3([cluster])
-        J([config.json]) --> G 
+        J([config.json]) --> G
       end
       subgraph sg1.2 [Optional Downstream Analysis]
         direction LR
@@ -92,7 +92,13 @@ $\color{#51BD38}{\textsf{Primary Inputs}}$ - $\color{#25EEFF}{\textsf{Optional I
 Dependencies can be installed using conda:
 
 ```bash
-conda env create -f requirements.yaml
+conda env create -f env/requirements.yaml
+```
+
+or update an existing environment with:
+
+```bash
+conda env update -f env/requirements.yaml
 ```
 
 ## Usage
@@ -177,7 +183,7 @@ When working with downstream analysis of the cluster groups, it is important to 
 Two database objects can be merged using the `merge` function. The following code will merge two database objects and save the result to a new database object:
 
 ```bash
-python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database> 
+python trnagraph.py merge -i1 <input_database1> -i2 <input_database2> -o <output_database>
 ```
 
 - `-i1` or `--anndata1` - The first input database object.
@@ -333,18 +339,18 @@ JSON files can be used for complicated filtering and grouping of the data as wel
 
 ```json
 {
-    "name": "name",
-    "obs": {
-        "treatment": ["treatment 1"],
-        "celltype": ["HEK293"],
-        "pseudogene": ["tRNA"]
-    },
-    "obs_r": {
-        "amino": ["Und"] 
-    },
-    "var": {
-        "variable_1": ["value1", "value2"]
-    }
+  "name": "name",
+  "obs": {
+    "treatment": ["treatment 1"],
+    "celltype": ["HEK293"],
+    "pseudogene": ["tRNA"]
+  },
+  "obs_r": {
+    "amino": ["Und"]
+  },
+  "var": {
+    "variable_1": ["value1", "value2"]
+  }
 }
 ```
 
@@ -352,40 +358,40 @@ A custom `colormap.json` can also be provided with the `--colormap` flag. The va
 
 ```json
 {
-    "group": {
-        "A": "lightskyblue",
-        "B": "deepskyblue",
-        "C": "royalblue"
-    },
-    "amino": {
-        "Ala": "#1F77B4",
-        "Arg": "#AEC7E8",
-        "Asn": "#FF7F0E",
-        "Asp": "#FFBB78",
-        "Cys": "#6fe835",
-        "Gln": "#d0f2cb",
-        "Glu": "#D62728",
-        "Gly": "#FF9896",
-        "His": "#9258f5",
-        "Ile": "#deccfc",
-        "Leu": "#a65223",
-        "Lys": "#ffceb3",
-        "iMet": "#00d5e3",
-        "Met": "#b8fbff",
-        "Phe": "#edd500",
-        "Pro": "#ffff99",
-        "Ser": "#db56bc",
-        "Thr": "#F7B6D2",
-        "Trp": "#2CA02C",
-        "Tyr": "#98DF8A",
-        "Val": "#6a3d9a",
-        "SeC": "#C5B0D5",
-        "Sup": "#808080"
-    },
-    "obs_etc": {
-        "value1": "#1F77B4",
-        "value2": "#FF7F0E"
-    }
+  "group": {
+    "A": "lightskyblue",
+    "B": "deepskyblue",
+    "C": "royalblue"
+  },
+  "amino": {
+    "Ala": "#1F77B4",
+    "Arg": "#AEC7E8",
+    "Asn": "#FF7F0E",
+    "Asp": "#FFBB78",
+    "Cys": "#6fe835",
+    "Gln": "#d0f2cb",
+    "Glu": "#D62728",
+    "Gly": "#FF9896",
+    "His": "#9258f5",
+    "Ile": "#deccfc",
+    "Leu": "#a65223",
+    "Lys": "#ffceb3",
+    "iMet": "#00d5e3",
+    "Met": "#b8fbff",
+    "Phe": "#edd500",
+    "Pro": "#ffff99",
+    "Ser": "#db56bc",
+    "Thr": "#F7B6D2",
+    "Trp": "#2CA02C",
+    "Tyr": "#98DF8A",
+    "Val": "#6a3d9a",
+    "SeC": "#C5B0D5",
+    "Sup": "#808080"
+  },
+  "obs_etc": {
+    "value1": "#1F77B4",
+    "value2": "#FF7F0E"
+  }
 }
 ```
 
@@ -476,6 +482,18 @@ The uns attribute of the database object is used to store information that is no
   - This is automatically calculated for `nreads_total_unique_norm` and `nreads_total_norm` for between groups with common read-cutoffs.
 - `traxruninfo` - The information from the tRAX run is based on the runinfo file.
 - `trnagraphruninfo` - The information from the tRNAgraph when the database object was generated.
+
+## Testing
+
+A test suite is included with tRNAgraph to ensure that the code is functioning correctly. This tool will download test data, preprocess it, and run it through the tRNAgraph pipeline to ensure that everything is working correctly. The test suite can be found in the `toolsTestSuite.py` file.
+
+To run the test suite, you can use the following command:
+
+```bash
+python toolsTestSuite.py
+```
+
+More information about the test suite can be found in [docs/testSuite.md](docs/testSuite.md).
 
 ## License
 

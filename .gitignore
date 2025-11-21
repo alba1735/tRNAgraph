@@ -145,3 +145,4 @@ config.json
 /config
 /figures
 /csv
+/tests

@@ -6,78 +6,102 @@ import anndata as ad
 from scipy import stats
 import itertools
 import os
+import sys
+import gzip
+import re
+import tempfile
+import subprocess
+import pysam
+from shutil import which
+from typing import Generator, Iterable, Tuple, Union, TextIO, Dict, Optional, List, Any
+from collections import defaultdict
+from pathlib import Path
+from dataclasses import dataclass, field
 
-def builder(directory):
+def builder(directory: Union[str, Path]) -> str:
     '''
     Function to create output directory if it does not already exist
     '''
-    if '/' not in directory: # fix for dumb pathing
-        directory = './' + directory
-    if not os.path.exists(directory):
-        output = f'Creating output directory: {os.path.dirname(directory)}'
-        os.makedirs(os.path.dirname(directory), exist_ok=True)
+    dir_path = Path(directory)
+    # Fix for potential relative path issues if needed, though Path handles most
+    if not dir_path.is_absolute() and not str(dir_path).startswith('.'):
+         dir_path = Path('./') / dir_path
+
+    if not dir_path.exists():
+        output = f'Creating output directory: {dir_path.parent}'
+        dir_path.parent.mkdir(parents=True, exist_ok=True)
     else:
-        output = f'Output directory already exists: {os.path.dirname(directory)}'
+        output = f'Output directory already exists: {dir_path.parent}'
     return output
 
-class adataLog2FC():
-    def __init__(self, adata, compare, readtype, readcount_cutoff=80, config_name='default', overwrite=False):
+class adataLog2FC:
+    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
         self.readcount_cutoff = str(readcount_cutoff)
         self.config_name = config_name
         self.overwrite = overwrite
+        self.log2fc_dict: Dict[str, Any] = {}
 
-    def main(self):
+    def main(self) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         # Search nested adata.uns for log2FC for compare, readtype, the readcutoff
         self.log2fc_dict = self.adata.uns.get('log2FC', {})
-        self.log2fc_dict[self.config_name] = self.log2fc_dict.get(self.config_name, {})
-        self.log2fc_dict[self.config_name][self.compare] = self.log2fc_dict[self.config_name].get(self.compare, {})
-        self.log2fc_dict[self.config_name][self.compare][self.readtype] = self.log2fc_dict[self.config_name][self.compare].get(self.readtype, {})
-        self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff] = self.log2fc_dict[self.config_name][self.compare][self.readtype].get(self.readcount_cutoff, {})
+        
+        # Ensure nested structure exists
+        self.log2fc_dict.setdefault(self.config_name, {}) \
+                        .setdefault(self.compare, {}) \
+                        .setdefault(self.readtype, {}) \
+                        .setdefault(self.readcount_cutoff, {})
+        
         df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
+        
         if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
             self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df'] = df
             self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
             self.adata.uns['log2FC'] = self.log2fc_dict
         else:
-            df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df']
             pairs = self.log2fc_dict[self.config_name][self.compare]['pairs']
 
         return df, self.log2fc_dict
 
-    def log2fc_df(self):
+    def log2fc_df(self) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
         df = pd.DataFrame(self.adata.obs, columns=['trna', self.compare, self.readtype])
         # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
         sdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='std', observed=True)
         mdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
         cdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='count', observed=True)
+        
         # For rows in df if a value is less than readcount_cutoff, drop the row from df
-        mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.mean(axis=1)]
-        # mean_drop_list = [True if i >= int(self.readcount_cutoff) else False for i in mdf.max(axis=1)] # Makes more sense for heatmap to use max rather than mean, however might be an issue for the uns tables
-        sdf = sdf[mean_drop_list]
-        mdf = mdf[mean_drop_list]
-        cdf = cdf[mean_drop_list]
-        # Drop rows with NaN values
-        sdf = sdf.dropna()
-        mdf = mdf.dropna()
-        cdf = cdf.dropna()
-        # Replace 0 with 0.00000000000000000001 to avoid log2(0) = -inf
-        mdf = mdf.replace(0, 0.00000000000000000001)
+        mean_drop_list = mdf.mean(axis=1) >= int(self.readcount_cutoff)
+        
+        sdf = sdf[mean_drop_list].dropna()
+        mdf = mdf[mean_drop_list].dropna()
+        cdf = cdf[mean_drop_list].dropna()
+        
+        # Replace 0 with small epsilon to avoid log2(0) = -inf
+        mdf = mdf.replace(0, 1e-20)
+        
         # Create permutations of pairings of groups for heatmap
         pairs = list(itertools.combinations(mdf.columns, 2))
+        
         # Create df of log2FC values for each pair from adata.obs nreads_total_raw
         df_pairs = pd.DataFrame()
         for pair in pairs:
-            df_pairs[f'log2_{pair[0]}-{pair[1]}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
-            df_pairs[f'pval_{pair[0]}-{pair[1]}'] = stats.ttest_ind_from_stats(mdf[pair[0]], sdf[pair[0]], cdf[pair[0]], mdf[pair[1]], sdf[pair[1]], cdf[pair[1]])[1]
+            col_name = f'{pair[0]}-{pair[1]}'
+            df_pairs[f'log2_{col_name}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
+            _, pval = stats.ttest_ind_from_stats(
+                mdf[pair[0]], sdf[pair[0]], cdf[pair[0]], 
+                mdf[pair[1]], sdf[pair[1]], cdf[pair[1]]
+            )
+            df_pairs[f'pval_{col_name}'] = pval
+            
         # sort the columns alphabetically so log2FC are followed by pvals
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
         return df_pairs, pairs
 
-def log2fc_compare_df(adata, countgrp, comparison_groups, readtype, readcount_cutoff):
+def log2fc_compare_df(adata: ad.AnnData, countgrp: str, comparison_groups: List[str], readtype: str, readcount_cutoff: int) -> pd.DataFrame:
     '''
     Calculate log2FC of tRNA read counts between multiple groups.
     '''
@@ -86,40 +110,1405 @@ def log2fc_compare_df(adata, countgrp, comparison_groups, readtype, readcount_cu
     sdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='std', observed=True)
     mdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='mean', observed=True)
     cdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='count', observed=True)
+    
     # For rows in df if a value is less than readcount_cutoff, drop the row from df
-    mean_drop_list = [True if i >= readcount_cutoff else False for i in mdf.mean(axis=1)]
-    sdf = sdf[mean_drop_list]
-    mdf = mdf[mean_drop_list]
-    cdf = cdf[mean_drop_list]
-    # Drop rows with NaN values
-    sdf = sdf.dropna()
-    mdf = mdf.dropna()
-    cdf = cdf.dropna()
+    mean_drop_list = mdf.mean(axis=1) >= readcount_cutoff
+    
+    sdf = sdf[mean_drop_list].dropna()
+    mdf = mdf[mean_drop_list].dropna()
+    cdf = cdf[mean_drop_list].dropna()
+    
     # Make sure all indexs of sdf, mdf, and cdf are the same dropping any that are not
-    sdf = sdf[sdf.index.isin(mdf.index)]
-    sdf = sdf[sdf.index.isin(cdf.index)]
-    mdf = mdf[mdf.index.isin(sdf.index)]
-    mdf = mdf[mdf.index.isin(cdf.index)]
-    cdf = cdf[cdf.index.isin(sdf.index)]
-    cdf = cdf[cdf.index.isin(mdf.index)]
-    # Replace 0 with 0.00000000000000000001 to avoid log2(0) = -inf
-    mdf = mdf.replace(0, 0.00000000000000000001)
+    common_index = sdf.index.intersection(mdf.index).intersection(cdf.index)
+    sdf = sdf.loc[common_index]
+    mdf = mdf.loc[common_index]
+    cdf = cdf.loc[common_index]
+    
+    # Replace 0 with small epsilon to avoid log2(0) = -inf
+    mdf = mdf.replace(0, 1e-20)
+    
     # Create a dict where the keys are the first level of the multiindex and the values are the second level
     pairs = {i: list(mdf.columns.get_level_values(1)[mdf.columns.get_level_values(0) == i]) for i in mdf.columns.get_level_values(0).unique()}
+    
     # Subset the value lists in each key-value pair to only include values found in all key-pair values
     ppairs = list(itertools.combinations(set.intersection(*map(set,pairs.values())), 2))
-    pairs = list(pairs.keys())
+    pairs_keys = list(pairs.keys())
+    
     # Sort the tuples in ppairs so the first element is always alphabetical
     ppairs = [tuple(sorted(i)) for i in ppairs]
+    
     # Print combinations of comparison groups as a tuple for multiindex columns
-    pppairs = list(itertools.product(pairs,ppairs))
-    pppairs = [tuple(['log2',i[0],i[1][0]+'-'+i[1][1]]) for i in pppairs] + [tuple(['pval',i[0],i[1][0]+'-'+i[1][1]]) for i in pppairs]
+    pppairs = list(itertools.product(pairs_keys, ppairs))
+    
+    columns_tuples = []
+    for i in pppairs:
+        pair_name = f"{i[1][0]}-{i[1][1]}"
+        columns_tuples.append(('log2', i[0], pair_name))
+        columns_tuples.append(('pval', i[0], pair_name))
+        
     # Create empty df of log2FC values for each pair with a multiindex column
-    df_pairs = pd.DataFrame(0, index=mdf.index, columns=pd.MultiIndex.from_tuples(pppairs, names=['stats', 'cgrp1', 'cgrp2']))
-    for cgrp1 in pairs:
+    df_pairs = pd.DataFrame(0.0, index=mdf.index, columns=pd.MultiIndex.from_tuples(columns_tuples, names=['stats', 'cgrp1', 'cgrp2']))
+    
+    for cgrp1 in pairs_keys:
         for cgrp2 in ppairs:
-            df_pairs.loc[:, ('log2', cgrp1, cgrp2[0]+'-'+cgrp2[1])] = np.log2(mdf[cgrp1][cgrp2[1]]) - np.log2(mdf[cgrp1][cgrp2[0]])
-            df_pairs.loc[:, ('pval', cgrp1, cgrp2[0]+'-'+cgrp2[1])] = stats.ttest_ind_from_stats(mdf[cgrp1][cgrp2[0]], sdf[cgrp1][cgrp2[0]], cdf[cgrp1][cgrp2[0]], 
-                                                                                                 mdf[cgrp1][cgrp2[1]], sdf[cgrp1][cgrp2[1]], cdf[cgrp1][cgrp2[1]])[1]
+            pair_name = f"{cgrp2[0]}-{cgrp2[1]}"
+            df_pairs.loc[:, ('log2', cgrp1, pair_name)] = np.log2(mdf[cgrp1][cgrp2[1]]) - np.log2(mdf[cgrp1][cgrp2[0]])
+            _, pval = stats.ttest_ind_from_stats(
+                mdf[cgrp1][cgrp2[0]], sdf[cgrp1][cgrp2[0]], cdf[cgrp1][cgrp2[0]], 
+                mdf[cgrp1][cgrp2[1]], sdf[cgrp1][cgrp2[1]], cdf[cgrp1][cgrp2[1]]
+            )
+            df_pairs.loc[:, ('pval', cgrp1, pair_name)] = pval
 
     return df_pairs
+
+def read_multi_fasta(fa_file: str) -> Generator[Tuple[str, str], None, None]:
+    """
+    Iterates over a FASTA file and yields (header, sequence) tuples.
+    
+    Handles:
+    - Standard text files
+    - Gzipped files (.gz)
+    - Standard Input ('stdin')
+    
+    Args:
+        fa_file (str): Path to the fasta file or 'stdin'.
+
+    Yields:
+        Tuple[str, str]: A tuple containing (sequence_id, sequence_string).
+    """
+    
+    # Internal helper to handle file opening context
+    def get_file_handle(filename: str) -> TextIO:
+        if filename == "stdin":
+            return sys.stdin
+        elif filename.endswith(".gz"):
+            return gzip.open(filename, "rt", encoding='utf-8')
+        else:
+            return open(filename, "r", encoding='utf-8')
+
+    # Main parsing logic
+    # Using a context manager ensures file handles (except stdin) are closed properly
+    file_handle = get_file_handle(fa_file)
+    
+    try:
+        current_header = None
+        seq_buffer = []
+
+        for line in file_handle:
+            line = line.strip()
+            if not line:
+                continue
+
+            if line.startswith(">"):
+                # If we have a previous record, yield it
+                if current_header is not None:
+                    # Join buffer list for performance (faster than string += string)
+                    yield current_header, "".join(seq_buffer)
+                
+                # Parse new header
+                # Logic matches original regex: r"\>([^\s\,]+)"
+                # Splits at first space, then splits at first comma, removing '>'
+                current_header = line[1:].split()[0].split(',')[0]
+                seq_buffer = []
+            else:
+                seq_buffer.append(line)
+
+        # Yield the final sequence after loop finishes
+        if current_header is not None and seq_buffer:
+            yield current_header, "".join(seq_buffer)
+
+    finally:
+        # Close file unless it is stdin
+        if fa_file != "stdin" and file_handle is not sys.stdin:
+            file_handle.close()
+
+def read_rna_stk(stk_file: Iterable[str]) -> Generator['RnaAlignment', None, None]:
+    """
+    Parses a Stockholm formatted RNA alignment file.
+
+    Args:
+        stk_file (Iterable[str]): An iterable yielding lines (e.g., open file handle).
+
+    Yields:
+        RnaAlignment: An object containing parsed sequences, structure, and consensus.
+    """
+    
+    sequences: Dict[str, List[str]] = defaultdict(list)
+    structure_buffer: List[str] = []
+    consensus_buffer: List[str] = []
+
+    for line in stk_file:
+        line = line.strip()
+        
+        # Skip empty lines
+        if not line:
+            continue
+
+        if line.startswith("//"):
+            # End of a record: Process buffers and yield
+            
+            # Join lists into final strings
+            final_consensus = "".join(consensus_buffer) if consensus_buffer else None
+            final_structure = "".join(structure_buffer)
+            
+            # Convert sequence buffers to strings
+            final_sequences = {k: "".join(v) for k, v in sequences.items()}
+
+            yield RnaAlignment(final_sequences, final_structure, consensus=final_consensus)
+
+            # Reset buffers for the next record
+            sequences = defaultdict(list)
+            structure_buffer = []
+            consensus_buffer = []
+
+        elif line.startswith("#=GC SS_cons"):
+            # Parse Secondary Structure Consensus
+            # Format: #=GC SS_cons <structure>
+            parts = line.split()
+            if len(parts) >= 3:
+                structure_buffer.append(parts[2])
+
+        elif line.startswith("#=GC RF"):
+            # Parse Reference / Consensus Sequence
+            # Format: #=GC RF <sequence>
+            parts = line.split()
+            if len(parts) >= 3:
+                consensus_buffer.append(parts[2])
+
+        elif not line.startswith("#"):
+            # Parse Sequence Data
+            # Format: <seq_name> <sequence>
+            parts = line.split()
+            if len(parts) >= 2:
+                seq_id = parts[0]
+                seq_data = parts[1]
+                sequences[seq_id].append(seq_data)
+
+class RnaAlignment:
+    """
+    Represents an RNA sequence alignment including structure and consensus information.
+    """
+    def __init__(self, aligned_sequences: Dict[str, str], structure: str, 
+                 consensus: Optional[str] = None, energies: Optional[Any] = None):
+        """
+        Initialize the RNA Alignment object.
+
+        Args:
+            aligned_sequences (Dict[str, str]): Dictionary mapping sequence IDs to aligned strings.
+            structure (str): Secondary structure string (e.g., dot-bracket notation).
+            consensus (Optional[str]): The consensus sequence string.
+            energies (Optional[Any]): Energy scoring data (optional).
+        """
+        self.aligned_sequences = aligned_sequences
+        self.structure = structure
+        self.energies = energies
+        self.consensus = consensus
+        
+        # Calculate max length efficiently without creating a full intermediate list
+        self.alignment_length = max((len(seq) for seq in aligned_sequences.values()), default=0)
+
+    def add_upstream(self, prefix_sequences: Dict[str, str], prefix_structure: Optional[str] = None) -> 'RnaAlignment':
+        """
+        Prepends sequences to the aligned sequences.
+
+        Args:
+            prefix_sequences (Dict[str, str]): Dictionary of sequences to prepend. 
+                                               Keys must match existing sequences.
+            prefix_structure (Optional[str]): Structure string corresponding to the prefix. 
+                                              If None, ':' padding is used.
+
+        Returns:
+            RnaAlignment: A new instance with updated sequences and structure.
+        """
+        # Combine prefix + existing sequence
+        new_sequences = {
+            seq_id: prefix_sequences[seq_id] + curr_seq
+            for seq_id, curr_seq in self.aligned_sequences.items()
+        }
+
+        if prefix_structure is None:
+            # Determine padding length based on the longest prefix provided
+            max_len = max((len(seq) for seq in prefix_sequences.values()), default=0)
+            new_structure = (max_len * ":") + self.structure
+        else:
+            new_structure = prefix_structure + self.structure
+
+        return RnaAlignment(new_sequences, new_structure)
+
+    def add_downstream(self, suffix_sequences: Dict[str, str], suffix_structure: Optional[str] = None) -> 'RnaAlignment':
+        """
+        Appends sequences to the aligned sequences.
+
+        Args:
+            suffix_sequences (Dict[str, str]): Dictionary of sequences to append.
+                                               Keys must match existing sequences.
+            suffix_structure (Optional[str]): Structure string corresponding to the suffix.
+                                              If None, ':' padding is used.
+
+        Returns:
+            RnaAlignment: A new instance with updated sequences and structure.
+        """
+        # Combine existing sequence + suffix
+        new_sequences = {
+            seq_id: curr_seq + suffix_sequences[seq_id]
+            for seq_id, curr_seq in self.aligned_sequences.items()
+        }
+
+        if suffix_structure is None:
+            # Determine padding length based on the longest suffix provided
+            max_len = max((len(seq) for seq in suffix_sequences.values()), default=0)
+            new_structure = self.structure + (max_len * ":")
+        else:
+            new_structure = self.structure + suffix_structure
+
+        return RnaAlignment(new_sequences, new_structure)
+
+    def add_margin(self, length: int) -> 'RnaAlignment':
+        """
+        Adds 'N' padding to sequences and ':' padding to structure/consensus on both sides.
+
+        Args:
+            length (int): The number of padding characters to add to each side.
+
+        Returns:
+            RnaAlignment: A new instance with padded sequences, structure, and consensus.
+        """
+        seq_padding = "N" * length
+        struct_padding = ":" * length
+
+        new_sequences = {
+            seq_id: seq_padding + curr_seq + seq_padding
+            for seq_id, curr_seq in self.aligned_sequences.items()
+        }
+
+        new_structure = struct_padding + self.structure + struct_padding
+
+        new_consensus = None
+        if self.consensus is not None:
+            new_consensus = seq_padding + self.consensus + seq_padding
+
+        return RnaAlignment(new_sequences, new_structure, consensus=new_consensus)
+
+def invertstrand(strand: str) -> str:
+    if strand == "+":
+        return "-"
+    elif strand == "-":
+        return "+"
+    return strand
+
+def revcom(sequence: str) -> str:
+    # Use translation table for better performance
+    complement = str.maketrans({
+        'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'U': 'A', 'N': 'N', 
+        'a': 't', 'c': 'g', 'g': 'c', 't': 'a', 'u': 'a', 'n': 'n',
+        '-': '-'
+    })
+    return sequence.translate(complement)[::-1]
+
+@dataclass(slots=True)
+class GenomeRange:
+    dbname: str
+    chrom: str
+    start: int
+    end: int
+    strand: Optional[str] = None
+    name: Optional[str] = None
+    orderstrand: bool = False
+    data: Optional[Any] = None
+    fastafile: Optional[str] = None
+
+    def __post_init__(self):
+        self.start = int(self.start)
+        self.end = int(self.end)
+        if self.orderstrand and self.start > self.end:
+            self.start, self.end = self.end, self.start
+            self.strand = invertstrand(self.strand)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, GenomeRange):
+            return NotImplemented
+        return (self.strand == other.strand and 
+                self.chrom == other.chrom and 
+                self.start == other.start and 
+                self.end == other.end)
+
+    def __hash__(self) -> int:
+        return self.start + self.end + hash(self.chrom) + hash(self.strand)
+
+    def coverage(self, other: 'GenomeRange') -> int:
+        if self.strand == other.strand and self.chrom == other.chrom:
+            start = max(self.start, other.start)
+            end = min(self.end, other.end)
+            return max(0, end - start)
+        return 0
+            
+    def bedstring(self, name: Optional[str] = None, score: int = 1000) -> str:
+        strand = self.strand if self.strand is not None else "+"
+        
+        if name is None:
+            name = self.name if self.name is not None else "FEAT"
+            
+        return "\t".join([self.chrom, str(self.start), str(self.end), name, str(score), strand])
+
+    def length(self) -> int:
+        return self.end - self.start
+
+    def addmargin(self, dist: int = 50, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        return GenomeRange(self.dbname, self.chrom, self.start - dist, self.end + dist, self.strand, name=newname, fastafile=self.fastafile)
+
+    def getupstream(self, dist: int = 50, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        return GenomeRange(self.dbname, self.chrom, self.start - dist, self.start, self.strand, name=newname, fastafile=self.fastafile)
+
+    def getdownstream(self, dist: int = 50, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        if self.strand != '-':
+            return GenomeRange(self.dbname, self.chrom, self.end, self.end + dist, self.strand, name=newname, fastafile=self.fastafile)
+        else:
+            return GenomeRange(self.dbname, self.chrom, self.start - dist, self.start, self.strand, name=newname, fastafile=self.fastafile)
+
+    def getfirst(self, dist: int = 50, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        if self.strand == "-":
+            return GenomeRange(self.dbname, self.chrom, self.end - dist, self.end, self.strand, name=newname, fastafile=self.fastafile)
+        else:
+            return GenomeRange(self.dbname, self.chrom, self.start, self.start + dist, self.strand, name=newname, fastafile=self.fastafile)
+
+    def getlast(self, dist: int = 50, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        if self.strand == "-":
+            return GenomeRange(self.dbname, self.chrom, self.start, self.start + dist, self.strand, name=newname, fastafile=self.fastafile)
+        else:
+            return GenomeRange(self.dbname, self.chrom, self.end - dist, self.end, self.strand, name=newname, fastafile=self.fastafile)
+
+    def getbase(self, basenum: int, name: Optional[str] = None) -> 'GenomeRange':
+        newname = name if name is not None else self.name
+        if self.strand == "-":
+            return GenomeRange(self.dbname, self.chrom, self.end - basenum - 1, self.end - basenum, self.strand, name=newname, fastafile=self.fastafile)
+        else:
+            return GenomeRange(self.dbname, self.chrom, self.start + basenum, self.start + basenum + 1, self.strand, name=newname, fastafile=self.fastafile)
+
+    def antisense(self) -> 'GenomeRange':
+        newstrand = "-" if self.strand == "+" else "+"
+        return GenomeRange(self.dbname, self.chrom, self.start, self.end, newstrand, name=self.name, fastafile=self.fastafile)
+
+    def bamseq(self) -> str:
+        if self.data is None or "seq" not in self.data:
+             return ""
+        if self.strand == "+":
+            return self.data["seq"]
+        else:
+            return revcom(self.data["seq"])
+
+    def getgc(self) -> int:
+        seq = self.bamseq()
+        return sum(1 if currbase in {"G", "C"} else 0 for currbase in seq)
+
+@dataclass(slots=True, unsafe_hash=True)
+class tRNAlocus:
+    loc: GenomeRange
+    seq: str
+    score: float
+    amino: str
+    anticodon: str
+    intronseq: str
+    intron: Optional[Tuple[int, int]]
+    rawseq: Optional[str] = None
+    name: Optional[str] = field(init=False)
+
+    def __post_init__(self):
+        self.name = self.loc.name
+
+@dataclass(slots=True)
+class tRNAtranscript:
+    seq: str
+    score: Union[float, set]
+    amino: str
+    anticodon: str
+    loci: Union[Tuple[tRNAlocus, ...], set, list]
+    intronseqs: Union[str, set]
+    name: Optional[str] = None
+    rawseq: Optional[str] = None
+    artificialtrna: bool = False
+
+    def __post_init__(self):
+        if isinstance(self.loci, (set, list)):
+            self.loci = tuple(self.loci)
+
+    def getmatureseq(self, addcca: bool = True) -> str:
+        prefix = ""
+        if self.amino == "His":
+            prefix = "G"
+        end = ""
+        if addcca and not self.artificialtrna:
+            end = "CCA"
+        return prefix + self.seq + end 
+
+def getuniquetRNAs(trnalist: List[tRNAlocus]) -> Generator[tRNAtranscript, None, None]:
+    sequencedict: Dict[str, List[tRNAlocus]] = defaultdict(list)
+    
+    for curr in trnalist:
+        sequencedict[curr.seq].append(curr)
+        
+    for currtrans, loci_list in sequencedict.items():
+        scores = {curr.score for curr in loci_list}
+        anticodon = {curr.anticodon for curr in loci_list}
+        amino = {curr.amino for curr in loci_list}
+        introns = {curr.intronseq for curr in loci_list}
+        
+        #remove psuedo if there's a real one somewheres
+        if len(anticodon) > 1:
+            anticodon.discard('Xxx')
+            amino.discard('X')
+        if introns == {""}:
+            introns = set()
+            
+        if len(scores) > 1:
+            # Multiple scores found
+            pass
+        if len(anticodon) > 1:
+            print("tRNA file contains identical tRNAs with seperate anticodons, cannot continue", file=sys.stderr)
+            sys.exit(1)
+            
+        yield tRNAtranscript(currtrans, scores, list(amino)[0], list(anticodon)[0], loci_list, introns)
+
+def striplocus(trnaname: str) -> str:
+    return re.sub(r"\-\d+$", "", trnaname)
+
+def readtRNAscan(scanfile: Union[str, TextIO], genomefile: str, mode: Optional[str] = None) -> Generator[tRNAlocus, None, None]:
+    trnalist: List[GenomeRange] = []
+    orgname = "genome"
+    
+    if hasattr(scanfile, 'read'):
+        trnascan = scanfile
+    else:
+        trnascan = open(scanfile, "r")
+        
+    trnascore: Dict[str, float] = {}
+    trnaanticodon: Dict[str, str] = {}
+    trnaamino: Dict[str, str] = {}
+    tRNAintron: Dict[str, Tuple[int, int]] = {}
+    trnas: Dict[str, GenomeRange] = {}
+    
+    try:
+        for currline in trnascan:
+            if currline.startswith("Sequence") or currline.startswith("Name") or currline.startswith("------"):
+                continue
+            
+            fields = currline.split()
+            
+            if mode == "gtRNAdb":
+                del fields[6:8]
+                
+            curramino = fields[4]
+            currac = fields[5]
+            
+            if currac == "???":
+                currac = 'Xxx'
+                
+            start = int(fields[2])
+            end = int(fields[3])
+            
+            if start > end:
+                end -= 1
+            else:
+                start -= 1
+                
+            currchrom = fields[0]
+            trnanum = fields[1]
+            
+            # Create GenomeRange
+            currtRNA = GenomeRange(
+                dbname=orgname, 
+                chrom=currchrom, 
+                start=start, 
+                end=end, 
+                name=f"{currchrom}.tRNA{trnanum}-{curramino}{currac}", 
+                strand="+", 
+                orderstrand=True,
+                fastafile=genomefile
+            )
+            
+            currtrans = currtRNA
+
+            trnaamino[currtrans.name] = curramino
+            trnaanticodon[currtrans.name] = currac
+            trnascore[currtrans.name] = float(fields[8])
+            trnas[currtrans.name] = currtrans
+        
+            trnalist.append(currtRNA)
+            
+            if int(fields[6]) != 0:
+                if currtRNA.strand == "-":
+                    intronstart = int(fields[2]) - int(fields[6]) 
+                    intronend = int(fields[2]) - int(fields[7]) + 1
+                else:
+                    intronstart = int(fields[6]) - int(fields[2]) - 1
+                    intronend = int(fields[7]) - int(fields[2])
+                tRNAintron[currtRNA.name] = (intronstart, intronend)
+    finally:
+        if not hasattr(scanfile, 'read'):
+            trnascan.close()
+            
+    #should add check to make sure all trnas are grabbed
+    trnaseqs = getseqdict(trnalist, faifiles={orgname: genomefile + ".fai"})
+    intronseq: Dict[str, str] = defaultdict(str)
+    
+    for curr in trnaseqs.keys():
+        currintron = None
+        if curr in tRNAintron:
+            start_intron, end_intron = tRNAintron[curr]
+            intronseq[curr] = trnaseqs[curr][start_intron:end_intron]
+            trnaseqs[curr] = trnaseqs[curr][:start_intron] + trnaseqs[curr][end_intron:]
+            currintron = tRNAintron[curr]
+            
+        yield tRNAlocus(trnas[curr], trnaseqs[curr], trnascore[curr], trnaamino[curr], trnaanticodon[curr], intronseq[curr], currintron)
+
+def readtRNAdb(scanfile: Union[str, TextIO], genomefile: str, trnamap: Dict[str, str]) -> Generator[tRNAtranscript, None, None]:
+    trnalist: List[GenomeRange] = []
+    orgname = "genome"
+    
+    if hasattr(scanfile, 'read'):
+        trnascan = scanfile
+    else:
+        trnascan = open(scanfile, "r")
+        
+    trnascore: Dict[str, float] = {}
+    trnaanticodon: Dict[str, str] = {}
+    trnaamino: Dict[str, str] = {}
+    tRNAintron: Dict[str, Tuple[int, int]] = {}
+    trnas: Dict[str, GenomeRange] = {}
+    
+    try:
+        for linenum, currline in enumerate(trnascan):
+            if currline.startswith("Sequence") or currline.startswith("Name") or currline.startswith("------"):
+                continue
+            if len(currline) < 5:
+                print(f"cannot read line: {linenum} of {scanfile}", file=sys.stderr)
+                continue
+                
+            fields = currline.split()
+            curramino = fields[4]
+            currac = fields[5]
+            
+            start = int(fields[2])
+            end = int(fields[3])
+            
+            if start > end:
+                end -= 1
+            else:
+                start -= 1
+                
+            currchrom = fields[0]
+            trnanum = fields[1]
+            
+            trnascanname = f"{currchrom}.trna{trnanum}-{curramino}{currac}"
+            shorttrnascanname = f"{currchrom}.trna{trnanum}"
+            
+            if trnascanname in trnamap:
+                currtRNA = GenomeRange(orgname, currchrom, start, end, name=trnamap[trnascanname], strand="+", orderstrand=True)
+            elif shorttrnascanname in trnamap:
+                currtRNA = GenomeRange(orgname, currchrom, start, end, name=trnamap[shorttrnascanname], strand="+", orderstrand=True)
+            else:
+                print(f"Skipping {trnascanname}, has no transcript name", file=sys.stderr)
+                continue
+                
+            currtrans = currtRNA
+
+            trnaamino[currtrans.name] = curramino
+            trnaanticodon[currtrans.name] = currac
+            trnascore[currtrans.name] = float(fields[8])
+            trnas[currtrans.name] = currtrans
+        
+            currtRNA.fastafile = genomefile
+            trnalist.append(currtRNA)
+            
+            if int(fields[6]) != 0:
+                if currtRNA.strand == "-":
+                    intronstart = int(fields[2]) - int(fields[6])
+                    intronend = int(fields[2]) - int(fields[7]) + 1
+                else:
+                    intronstart = int(fields[6]) - int(fields[2]) 
+                    intronend = int(fields[7]) - int(fields[2]) + 1
+                tRNAintron[currtRNA.name] = (intronstart, intronend)
+    finally:
+        if not hasattr(scanfile, 'read'):
+            trnascan.close()
+            
+    trnaseqs = getseqdict(trnalist, faifiles={orgname: genomefile + ".fai"})
+    intronseq: Dict[str, str] = defaultdict(str)
+    trnaloci: List[tRNAlocus] = []
+    
+    for curr in trnaseqs.keys():
+        currintron = None
+        if curr in tRNAintron:
+            start_intron, end_intron = tRNAintron[curr]
+            intronseq[curr] = trnaseqs[curr][start_intron:end_intron]
+            trnaseqs[curr] = trnaseqs[curr][:start_intron] + trnaseqs[curr][end_intron:]
+            currintron = tRNAintron[curr]
+
+        trnaloci.append(tRNAlocus(trnas[curr], trnaseqs[curr], trnascore[curr], trnaamino[curr], trnaanticodon[curr], intronseq[curr], currintron))
+    
+    trnaloci.sort(key=lambda x: striplocus(x.name))
+    
+    for transname, currloci in itertools.groupby(trnaloci, lambda x: striplocus(x.name)):
+        currlocus = list(currloci)
+        yield tRNAtranscript(
+            currlocus[0].seq, 
+            {curr.score for curr in currlocus}, 
+            currlocus[0].amino, 
+            currlocus[0].anticodon, 
+            set(currlocus), 
+            currlocus[0].intronseq, 
+            name=transname
+        )
+
+def tempmultifasta(allseqs) -> tempfile.NamedTemporaryFile:
+    fafile = tempfile.NamedTemporaryFile(suffix=".fa", mode="w+")
+
+    for seqname, seq in allseqs:
+        print(f">{seqname}\n{seq}", file=fafile)
+
+    fafile.flush()
+    return fafile
+
+def getseqdict(genelist, faifiles = None) -> Dict[str, str]:
+    allorgs = {currgene.dbname for currgene in genelist}
+    dbdict = {currorg: {} for currorg in allorgs}
+    fastafiles = {}
+    
+    for currgene in genelist:
+        dbdict[currgene.dbname][currgene.name] = currgene
+        if currgene.fastafile is not None:
+            fastafiles[currgene.dbname] = currgene.fastafile
+        else:
+            pass 
+            
+    seqdict = {}
+    
+    for currorg in allorgs:
+        if faifiles is not None and currorg in faifiles:
+            currseqs = getseqs(fastafiles[currorg], dbdict[currorg], faindex=faifiles[currorg])
+        else:
+            currseqs = getseqs(fastafiles[currorg], dbdict[currorg])
+        seqdict.update(currseqs)
+    return seqdict
+
+def getnamedict(genelist) -> Dict[str, GenomeRange]:
+    return {currgene.name: currgene for currgene in genelist}
+
+class FastqSeqException(Exception):
+    pass
+
+def getseqs(fafile: str, rangedict: Dict[str, GenomeRange], faindex: Optional[str] = None) -> Dict[str, str]:
+    if faindex is not None:
+        try:
+            faifile_obj = fastaindex(fafile, faindex)
+        except IOError:
+            print(f"Cannot read fasta file {fafile}", file=sys.stderr)
+            print(f"Ensure that file {fafile} exits and generate fastaindex {faindex} with samtools faidx", file=sys.stderr)
+            sys.exit(1)
+        return faifile_obj.getseqs(rangedict)
+    
+    with open(fafile, "r") as genomefile:
+        reheader = re.compile(r"\>([^]+)")
+        allseqs: Dict[str, str] = defaultdict(str)
+        currloc = 0
+        currseq = ""
+        
+        for line in genomefile:
+            line = line.rstrip("\n")
+            currheader = reheader.match(line)
+            if currheader:
+                currseq = currheader.group(1)
+                currloc = 0
+            else:
+                line_len = len(line)
+                for currname, location in rangedict.items():
+                    if currseq == location.chrom:
+                        chromstart = location.start
+                        chromend = location.end
+                        
+                        overlap = False
+                        if currloc <= chromstart < currloc + line_len:
+                            overlap = True
+                        elif currloc < chromend <= currloc + line_len:
+                            overlap = True
+                        elif chromstart < currloc and chromend > currloc + line_len:
+                            overlap = True
+                            
+                        if overlap:
+                            start_in_line = max(0, chromstart - currloc)
+                            end_in_line = min(line_len, chromend - currloc)
+                            
+                            if start_in_line < end_in_line:
+                                allseqs[currname] += line[start_in_line:end_in_line]
+                    
+                currloc += line_len
+
+    finalseqs: Dict[str, str] = {}
+    
+    comp_trans_full = str.maketrans({
+        'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'U': 'A', 'N': 'N', 
+        'R': 'Y', 'Y': 'R', 'S': 'W', 'W': 'S', 'K': 'M', 'M': 'K'
+    })
+
+    for currname, seq_str in allseqs.items():
+        if rangedict[currname].strand == "-":
+            finalseqs[currname] = seq_str.upper().translate(comp_trans_full)[::-1]
+        else:
+            finalseqs[currname] = seq_str.upper()
+            
+    for currseq in rangedict.keys():
+        if currseq not in finalseqs:
+            print(f"No sequence extracted for {rangedict[currseq].dbname}.{rangedict[currseq].chrom}:{rangedict[currseq].start}-{rangedict[currseq].end}", file=sys.stderr)
+            
+    return finalseqs        
+
+class fastaindex:
+    def __init__(self, fafile: str, faifile: str):
+        self.fafile = fafile
+        self.chromsize: Dict[str, int] = {}
+        self.chromoffset: Dict[str, int] = {}
+        self.seqlinesize: Dict[str, int] = {}
+        self.seqlinebytes: Dict[str, int] = {}
+        
+        with open(faifile) as fai:
+            for line in fai:
+                fields = line.split("\t")
+                self.chromsize[fields[0]] = int(fields[1])
+                self.chromoffset[fields[0]] = int(fields[2])
+                self.seqlinesize[fields[0]] = int(fields[3])
+                self.seqlinebytes[fields[0]] = int(fields[4])
+
+    def getchrombed(self, dbname: str = 'genome') -> Generator[GenomeRange, None, None]:
+        for curr in self.chromsize.keys():
+            yield GenomeRange(dbname, curr, 0, self.chromsize[curr], name=curr, strand="+")
+
+    def getseek(self, currchrom: str, loc: int) -> int:
+        if currchrom not in self.chromsize:
+            raise FastqSeqException(f"sequence {currchrom} not found in index for {self.fafile}")
+        
+        return self.chromoffset[currchrom] + loc + int(loc / self.seqlinesize[currchrom]) * (self.seqlinebytes[currchrom] - self.seqlinesize[currchrom])
+
+    def getfullseqs(self, names: List[str]) -> Generator[Tuple[str, str], None, None]:
+        with open(self.fafile, "r") as genomefile:
+            for currchrom in names:
+                genomefile.seek(self.getseek(currchrom, 0))
+                seq = genomefile.read(self.getseek(currchrom, self.chromsize[currchrom]) - self.getseek(currchrom, 0))
+                yield currchrom, seq 
+
+    def getseqs(self, rangedict: Dict[str, GenomeRange]) -> Dict[str, str]:
+        allseqs: Dict[str, Optional[str]] = {}
+        
+        with open(self.fafile, "r") as genomefile:
+            for currname, currregion in rangedict.items():
+                try:
+                    currchrom = currregion.chrom
+                    start_seek = self.getseek(currchrom, currregion.start)
+                    end_seek = self.getseek(currchrom, currregion.end)
+                    
+                    genomefile.seek(start_seek)
+                    seq = genomefile.read(end_seek - start_seek)
+                    seq = seq.replace("\n", "")
+                    allseqs[currname] = seq
+                except FastqSeqException:
+                    allseqs[currname] = None
+                    pass
+        
+        finalseqs: Dict[str, str] = {}
+        
+        comp_trans_full = str.maketrans({
+            'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'U': 'A', 'N': 'N', 
+            'R': 'Y', 'Y': 'R', 'S': 'W', 'W': 'S', 'K': 'M', 'M': 'K'
+        })
+
+        for currname, seq_val in allseqs.items():
+            if seq_val is None:
+                continue
+            
+            if rangedict[currname].strand == "-":
+                finalseqs[currname] = seq_val.upper().translate(comp_trans_full)[::-1]
+            else:
+                finalseqs[currname] = seq_val.upper()
+                
+        return finalseqs    
+
+@dataclass(slots=True)
+class GenomeRead(GenomeRange):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, GenomeRead):
+            return NotImplemented
+        return self.name == other.name
+    
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+@dataclass(slots=True)
+class BamRead(GenomeRange):
+    bamline: Any = None
+
+    def getmismatches(self) -> Optional[int]:
+        if self.bamline.has_tag("XM"):
+            return int(self.bamline.get_tag("XM"))
+        else:
+            return None
+    def isuniqueaminomapping(self) -> Optional[bool]:
+        if self.bamline.has_tag("YM"):
+            return not self.bamline.get_tag("YM") > 1
+        else:
+            return None
+    def isuniqueacmapping(self) -> Optional[bool]:
+        if self.bamline.has_tag("YA"):
+            return not self.bamline.get_tag("YA") > 1
+        else:
+            return None
+    def isuniquetrnamapping(self) -> Optional[bool]:
+        if self.bamline.has_tag("YR"):
+            return not self.bamline.get_tag("YR") > 1
+        else:
+            return None
+
+    def hasindel(self) -> bool:
+        return len(self.bamline.cigar) > 1
+    def getlength(self) -> int:
+        return len(self.bamline.seq)
+    def getseq(self) -> str:
+        if self.strand == '-':
+            return revcom(self.bamline.seq)
+        else:
+            return self.bamline.seq
+            
+    def getgc(self) -> int:
+        seq = self.getseq()
+        return sum(1 if currbase in set(["G","C"]) else 0 for currbase in seq) 
+    def issinglemapped(self) -> bool:
+        return self.bamline.mapq >= 2
+    def getcigar(self) -> List[Tuple[int, int]]:
+        return self.bamline.cigar
+
+def isprimarymapping(mapping: Any) -> bool:
+    return not (mapping.flag & 0x0100 > 0)        
+def issinglemapping(mapping: Any) -> bool:
+    return mapping.mapq > 2
+    
+def mismatchnum(mapping: Any) -> int:
+    return int(mapping.get_tag("XM"))
+
+def getbamrangeshortseq(bamfile: Any, chromrange: Optional[GenomeRange] = None, primaryonly: bool = False, singleonly: bool = False, maxmismatches: Optional[int] = None, allowindels: bool = True, skiptags: bool = False) -> Generator[GenomeRead, None, None]:
+    try:
+        if chromrange is not None:
+            bamiter = bamfile.fetch(chromrange.chrom, chromrange.start, chromrange.end)
+        else:
+            bamiter = bamfile.fetch()
+   
+        for currline in bamiter: 
+            if primaryonly and not isprimarymapping(currline):
+                continue
+
+            if singleonly and not issinglemapping(currline):
+                continue
+            if not allowindels and len(currline.cigar) > 1:
+                continue
+            if maxmismatches is not None and mismatchnum(currline) > maxmismatches:
+                continue
+            rname = bamfile.getrname(currline.rname)
+            strand = ifelse(currline.is_reverse, '-','+')
+            yield GenomeRead( "genome",rname,currline.pos,currline.aend,strand, name = currline.qname, data = {"seq":currline.seq} )
+
+    except ValueError:
+        if chromrange is not None:
+            pass
+
+def getbamrangeshort(bamfile: Any, chromrange: Optional[GenomeRange] = None, primaryonly: bool = False, singleonly: bool = False, maxmismatches: Optional[int] = None, allowindels: bool = True, skiptags: bool = False) -> Generator[GenomeRead, None, None]:
+    try:
+        if chromrange is not None:
+            bamiter = bamfile.fetch(chromrange.chrom, chromrange.start, chromrange.end)
+        else:
+            bamiter = bamfile.fetch()
+   
+        for currline in bamiter:
+            if primaryonly and not isprimarymapping(currline):
+                continue
+
+            if singleonly and not issinglemapping(currline):
+                continue
+            if not allowindels and len(currline.cigar) > 1:
+                continue
+            if maxmismatches is not None and mismatchnum(currline) > maxmismatches:
+                continue
+            rname = bamfile.getrname(currline.rname)
+            strand = ifelse(currline.is_reverse, '-','+')
+            
+            yield GenomeRead( "genome",rname,currline.pos,currline.aend,strand, name = currline.qname)
+
+    except ValueError:
+        if chromrange is not None:
+            pass
+
+def getbamrange(bamfile: Any, chromrange: Optional[GenomeRange] = None, primaryonly: bool = False, singleonly: bool = False, maxmismatches: Optional[int] = None, allowindels: bool = True, skiptags: bool = False) -> Generator[GenomeRead, None, None]:
+    try:
+        if chromrange is not None:
+            bamiter = bamfile.fetch(chromrange.chrom, chromrange.start, chromrange.end)
+        else:
+            bamiter = bamfile.fetch()
+   
+        for currline in bamiter:
+            if primaryonly and not isprimarymapping(currline):
+                continue
+
+            if singleonly and not issinglemapping(currline):
+                continue
+            if maxmismatches is not None and mismatchnum(currline) > maxmismatches:
+                continue
+            rname = bamfile.getrname(currline.rname)
+            strand = ifelse(currline.is_reverse, '-','+')
+            
+            seq = currline.seq
+            
+            uniqueac = True
+            uniqueamino = True
+            uniquetrna = True
+            # mismatches = None
+            alignscore = None
+            secondbestscore = None
+            uniquemapping = False
+
+            if not skiptags:
+                if currline.has_tag("YA") and currline.get_tag("YA") > 1:
+                    uniqueac = False
+                if currline.has_tag("YM") and currline.get_tag("YM") > 1:
+                    uniqueamino = False
+                if currline.has_tag("YR") and currline.get_tag("YR") > 1:
+                    uniquetrna = False
+                if currline.has_tag("XM"):
+                    pass # mismatches = currline.get_tag("XM")
+                if currline.has_tag("XS"):
+                    secondbestscore = float(currline.get_tag("XS"))
+                if currline.has_tag("AS"):
+                    alignscore = float(currline.get_tag("AS"))
+
+            if secondbestscore is None or alignscore > secondbestscore:
+                uniquemapping = True
+            
+            if not allowindels and len(currline.cigar) > 1:
+                continue
+                
+            yield GenomeRead( "genome",rname,currline.pos,currline.aend,strand, name = currline.qname , data = {"score":currline.mapq, "CIGAR":currline.cigar,"CIGARstring":currline.cigarstring, "seq":seq, "flags": currline.flag, "qual":currline.qual,"bamline":currline,'uniqueac':uniqueac,"uniqueamino":uniqueamino,"uniquetrna":uniquetrna,"uniquemapping":uniquemapping})
+    except ValueError:
+        if chromrange is not None:
+            pass
+
+def getbam(bamfile: Any, chromrange: Optional[GenomeRange] = None, primaryonly: bool = False, singleonly: bool = False, allowindels: bool = True) -> Generator[BamRead, None, None]:
+    try:
+        if chromrange is not None:
+            bamiter = bamfile.fetch(chromrange.chrom, chromrange.start, chromrange.end)
+        else:
+            bamiter = bamfile.fetch()
+   
+        for currline in bamiter:
+            if primaryonly and not isprimarymapping(currline):
+                continue
+
+            if singleonly and not issinglemapping(currline):
+                continue
+           
+            rname = bamfile.getrname(currline.rname)
+            strand = ifelse(currline.is_reverse, '-','+')
+
+            if currline.aend is None:
+                continue
+            if not allowindels and len(currline.cigar) > 1:
+                continue
+            yield BamRead("genome", rname, currline.pos, currline.aend, strand=strand, name=currline.qname, bamline=currline)
+    except ValueError:
+        if chromrange is not None:
+            pass
+
+def isuniquetrnamapping(read: GenomeRead) -> bool:
+    return read.data["uniquetrna"]
+def isuniqueaminomapping(read: GenomeRead) -> bool:
+    return read.data["uniqueamino"]
+def isuniqueacmapping(read: GenomeRead) -> bool:
+    return read.data["uniqueac"]
+def issinglemapped(read: GenomeRead) -> bool:
+    return (read.data["score"] >= 2)  
+
+def getfragtype(currfeat: GenomeRange, currread: GenomeRange, maxoffset: int = 10) -> str:
+    if currread.start < currfeat.start + maxoffset and currread.end > currfeat.end - maxoffset:
+        return "Whole"
+    elif currread.start < currfeat.start + maxoffset:
+        if currfeat.strand == "+":
+            return "Fiveprime"
+        else:
+            return "Threeprime"
+    elif currread.end > currfeat.end - maxoffset:
+        if currfeat.strand == "+":
+            return "Threeprime"
+        else:
+            return "Fiveprime"
+    return "Other"
+
+def getendtype(currfeat: GenomeRange, currread: GenomeRange, maxoffset: int = 10) -> Optional[str]:
+    endtype = None
+    if currread.end == currfeat.end:
+        endtype = "CCA"
+    elif currread.end == currfeat.end -1:
+        endtype = "CC"
+    elif currread.end == currfeat.end -2:
+        endtype = "C"
+    elif currread.end == currfeat.end -3:
+        endtype = ""
+    return endtype
+
+class RangeBin:     
+    def __init__(self, rangelist: Iterable[GenomeRange], binfactor: int = 10000):
+        self.binfactor = binfactor
+        self.bins: List[set] = []
+        self.length = 0
+        for curr in rangelist:
+            self.additem(curr)
+        
+    def __len__(self) -> int:
+        return self.length
+    def __iter__(self) -> Generator[GenomeRange, None, None]:
+        for currbin in self.bins:
+            for currgene in currbin:
+                yield currgene
+    def additem(self, item: GenomeRange):
+        binstart = int(item.start / self.binfactor)
+        binend = int(item.end / self.binfactor) + 1
+        while (binend + 2 >= len(self.bins)):
+            self.bins.append(set())
+        self.bins[binstart].add(item)
+        for i in range(binstart, binend):
+            self.bins[i].add(item)
+        
+        self.length += 1
+        
+    def getrange(self, item: GenomeRange) -> Generator[GenomeRange, None, None]:
+        for i in range(int(item.start / self.binfactor)-1,int(item.end / self.binfactor)+1):
+            if i < len(self.bins):
+                for currrange in self.bins[i]:
+                    if currrange.start >= item.start and currrange.end <= item.end:
+                            yield currrange
+                            
+    def getbin(self, item: GenomeRange) -> Generator[GenomeRange, None, None]:
+        outputregions = set()
+        for i in range(int(item.start / self.binfactor)-1,int(item.end / self.binfactor)+1):
+            if i < len(self.bins) and i >= 0:
+                for currrange in self.bins[i]:
+                    regionid = (currrange.name, currrange.start, currrange.end)
+                    if regionid not in outputregions:
+                        outputregions.add(regionid)
+                        yield currrange
+                    
+    def getbinpos(self, item: int) -> Generator[GenomeRange, None, None]:
+        for i in range(int(item / self.binfactor)-1,int(item / self.binfactor)+1):
+            if i < len(self.bins) and i >= 0:
+                for currrange in self.bins[i]:
+                    yield currrange
+                    
+    def getfeatbin(self, name: str) -> Generator[int, None, None]:
+        for i, currbin in enumerate(self.bins):
+            for currgene in currbin:
+                if currgene.name == name:
+                    yield i
+    def getbinnums(self, item: GenomeRange) -> Generator[int, None, None]:
+        for i in range(int(item.start / self.binfactor)-1,int(item.end / self.binfactor)+1):
+            if i < len(self.bins) and i >= 0:
+                yield i
+
+def uniqueorder(inp: Iterable[Any]) -> Generator[Any, None, None]:
+    alldata = set()
+    for curr in inp:
+        if curr not in alldata:
+            yield curr
+            alldata.add(curr)
+
+class transcriptfile:
+    def __init__(self, trnafilename: str):
+        self.locustranscript: Dict[str, str] = {}
+        self.transcripts: List[str] = []
+        self.loci: List[str] = []
+        self.amino: Dict[str, str] = {}
+        self.anticodon: Dict[str, str] = {}
+        self.transcriptdict: Dict[str, set] = defaultdict(set)
+        aminoorder: List[str] = []
+        anticodonorder: List[str] = []
+        
+        with open(trnafilename, 'r') as trnafile:
+            for i, line in enumerate(trnafile):
+                fields = line.split()
+                if len(fields) < 2:
+                    continue
+                self.transcripts.append(fields[0])
+                self.amino[fields[0]] = fields[2]
+                self.anticodon[fields[0]] = fields[3]
+                aminoorder.append(fields[2])
+                anticodonorder.append(fields[3])
+                for currlocus in fields[1].split(','):
+                    self.locustranscript[currlocus] = fields[0]
+                    self.loci.append(currlocus)
+                    self.transcriptdict[fields[0]].add(currlocus)
+
+        self.aminoorder = tuple(uniqueorder(aminoorder))             
+        self.anticodonorder = tuple(uniqueorder(anticodonorder))
+
+    def gettranscripts(self) -> set:
+        return set(self.transcripts)
+    def getlocustranscript(self, locus: str) -> str:
+        return self.locustranscript[locus]
+    def getloci(self) -> List[str]:
+        return self.loci
+    def getamino(self, trna: str) -> str:
+        return self.amino[trna]
+    def getanticodon(self, trna: str) -> str:
+        return self.anticodon[trna]
+        
+    def allaminos(self) -> Tuple[str, ...]:
+        return self.aminoorder
+    def allanticodons(self) -> Tuple[str, ...]:
+        return self.anticodonorder
+    def getaminotranscripts(self, trnaamino: str) -> set:
+        return set(curr for curr in self.transcripts if trnaamino == self.amino[curr])
+    def getanticodontranscripts(self, trnaanticodon: str) -> set:
+        return set(curr for curr in self.transcripts if trnaanticodon == self.anticodon[curr])
+
+def getpairfile(pairfilename: str) -> Generator[Tuple[str, str], None, None]:
+    with open(pairfilename, 'r') as pairfile:
+        for currline in pairfile:
+            fields = currline.split()
+            if len(fields) > 1:
+                yield fields[0], fields[1]
+
+class extraseqfile:
+    def __init__(self, extraseqfilename: str):
+        self.seqlist: List[str] = []
+        self.seqfasta: Dict[str, str] = {}
+        self.seqbed: Dict[str, str] = {}
+        
+        try:
+            with open(extraseqfilename, 'r') as extrafile:
+                directory = os.path.dirname(extraseqfilename)
+                for i, line in enumerate(extrafile):
+                    fields = line.split()
+                    if len(fields) < 2:
+                        continue
+                    self.seqfasta[fields[0]] = directory+"/"+fields[1]
+                    self.seqbed[fields[0]] = directory+"/"+fields[2]
+                    self.seqlist.append(fields[0])
+        except IOError as e:
+            self.seqlist = []
+            self.seqfasta = {}
+            self.seqbed = {}
+            print(f"extraseqfile I/O error({e.errno}): {e.strerror}", file=sys.stderr)
+
+    def getseqnames(self) -> Dict[str, set]:
+        seqnamedict = defaultdict(set)
+        for currseq in self.seqlist:
+            seqnamedict[currseq] = set(curr.name for curr in readbed(self.seqbed[currseq]))
+        return seqnamedict
+    def getseqbeds(self) -> Dict[str, str]:
+        return self.seqbed
+
+def getsizefactors(sizefactorfilename: str) -> Dict[str, float]:
+    try:
+        with open(sizefactorfilename, 'r') as sizefactorfile:
+            lines = sizefactorfile.readlines()
+    except IOError:
+        print(f"Cannot read size factor file {sizefactorfilename}", file=sys.stderr)
+        print("check Rlog.txt", file=sys.stderr)
+        sys.exit(1)
+        
+    sizefactors = {}
+    bamheaders = []
+    sizes = []
+    
+    for i, line in enumerate(lines):
+        if i == 0:
+            bamheaders = [curr.strip("\"\n") for curr in line.split()]
+        elif i == 1:
+            sizes = [float(curr.strip("\"\n")) for curr in line.split()]
+            
+    for i in range(len(bamheaders)):
+        sizefactors[bamheaders[i]] = sizes[i]
+    return sizefactors
+
+def ifelse(arg: bool, trueres: Any, falseres: Any) -> Any:
+    if arg:
+        return trueres
+    else:
+        return falseres
+
+class samplefile:
+    def __init__(self, samplefilename, bamdir = "./"):
+        try:
+            samplefile = open(samplefilename)
+            samplelist = list()
+            samplefiles = dict()
+            replicatename = dict()
+            
+            
+            replicatelist = list()
+            for i, line in enumerate(samplefile):
+                fields = line.split()
+                if len(fields) < 2:
+                    continue
+                samplefiles[fields[0]] = fields[2]
+                replicatename[fields[0]] = fields[1]
+                
+                samplelist.append(fields[0])
+                if fields[1] not in set(replicatelist):
+                    replicatelist.append(fields[1])
+            
+            #bamlist = list(curr + "_sort.bam" for curr in samplefiles.iterkeys())
+            #samplenames = list(curr  for curr in samplefiles.keys())
+            if bamdir is None:
+                bamdir = "./"
+            self.bamdir = bamdir
+            self.samplelist = samplelist
+            self.samplefiles = samplefiles
+            self.replicatename = replicatename
+            self.replicatelist = replicatelist
+            #self.bamlist = list(curr+ "_sort.bam" for curr in samplelist)
+        except IOError:
+            print("Cannot read sample file "+samplefilename, file=sys.stderr)
+            print("exiting...", file=sys.stderr)
+            sys.exit(1)
+    def getsamples(self):
+        return self.samplelist
+    def getbamlist(self):
+        return list(curr+ ".bam" for curr in self.samplelist)
+    def getbam(self, sample):
+        return self.bamdir + "/" + sample + ".bam" 
+    def getmergebam(self, sample):
+        return self.bamdir + "/" + sample + "-merge.bam" 
+    def getfastq(self, sample):
+        return self.samplefiles[sample]
+    def getreplicatename(self, sample):
+        return self.replicatename[sample]
+    def allreplicates(self):
+        return self.replicatelist
+    def getrepsamples(self, replicate):
+        return list(currsample for currsample in self.samplelist if self.replicatename[currsample] == replicate)
+    def getfastqsample(self, fastqname):
+        for currsample in self.samplefiles.keys():
+            if self.samplefiles[currsample] == fastqname:
+                return currsample
+
+def readfeatures(filename, orgdb="genome", seqfile= None, removepseudo = False):
+    if filename.endswith(".bed") or filename.endswith(".bed.gz"):
+        return readbed(filename, orgdb, seqfile)
+    elif filename.endswith(".gtf") or filename.endswith(".gtf.gz") or filename.endswith(".gff") or filename.endswith(".gff.gz"):
+        #print >>sys.stderr, removepseudo
+        return (curr for curr in readgtf(filename, orgdb, seqfile, filterpsuedo = removepseudo, filtertypes =set(['retained_intron','antisense','lincRNA']) ))
+    else:
+        print(filename+" not valid feature file", file=sys.stderr)
+        sys.exit()
+
+
+def readgtf(filename, orgdb="genome", seqfile= None, filterpsuedo = False, replacename = False, filtertypes = set(['retained_intron','antisense','lincRNA'])):
+    bedfile = None
+    skippedlines = 0
+    #print >>sys.stderr, "****"
+    if filename == "stdin":
+        bedfile = sys.stdin
+    elif filename.endswith(".gz"):
+        bedfile = gzip.open(filename, 'rt', encoding='utf-8')
+    else:
+        bedfile = open(filename, "r")
+    
+    for currline in bedfile:
+        #print currline
+        if currline.startswith('track') or currline.startswith('#'):
+            continue
+        fields = currline.rstrip().split("\t")
+        if len(fields) > 2:
+            biotype = "Unknown"
+            featname = None
+            genename = None
+            #print >>sys.stderr, len(fields)
+            genesource = fields[1]  
+            #retained introns are often other things as well, so I skip em
+            if fields[2] != "transcript" or genesource in filtertypes:
+                continue
+
+              
+            for currattr in fields[8].rstrip(";").split(";"):
+                #print >>sys.stderr,  currattr
+                currname = currattr.strip().split()[0]
+                currvalue = currattr.strip().split()[1]
+                if currname == "transcript_name":
+                    featname = currvalue.strip('"')
+                elif currname == "name" or currname == "gene_id" and featname is None:
+                    featname = currvalue.strip('"')
+
+                elif currname == "gene_biotype":
+                    biotype = currvalue.strip('"')
+                elif currname == "gene_name":
+                    genename = currvalue.strip('"')
+                #print >>sys.stderr, "***||"
+            if genename is None:
+                #print >>sys.stderr, "No name for gtf entry "+featname
+                genename = featname
+                pass
+            if filterpsuedo and biotype == "pseudogene":
+                #print >>sys.stderr, "*******"
+                continue
+                
+            if genesource == 'ensembl':
+                #print >>sys.stderr, biotype
+                genesource = biotype
+            if not (fields[6] == "+" or fields[6] == "-"):
+                print("strand error in "+filename, file=sys.stderr)
+                skippedlines += 1
+            elif not (fields[3].isdigit() and fields[4].isdigit()):
+                print("non-number coordinates in "+filename, file=sys.stderr)
+                print(currline, file=sys.stderr)
+                
+                skippedlines += 1
+            else:
+                if replacename:
+                    featname = genename
+                yield GenomeRange( orgdb, fields[0],fields[3],fields[4],fields[6], name = featname, fastafile = seqfile, data = {"biotype":biotype, "source":genesource, "genename":genename,"feature":fields[2]})
+            
+def readbed(filename, orgdb="genome", seqfile= None, includeintrons = False):
+    bedfile = None
+    if filename == "stdin":
+        bedfile = sys.stdin
+    elif filename.endswith(".gz"):
+        bedfile = gzip.open(filename, 'rt', encoding='utf-8')
+    else:
+        bedfile = open(filename, "r")
+    skippedlines = 0
+    
+    for currline in bedfile:
+        #print currline
+        data = dict()
+        if currline.startswith('track') or currline.startswith('#'):
+            continue
+        fields = currline.rstrip().split()
+        if len(fields) > 2:
+            if len(fields) < 5:
+                strand = "+"
+            else:
+                strand = fields[5]
+            if not (strand == "+" or strand == "-"):
+                print("strand error in "+filename, file=sys.stderr)
+                skippedlines += 1
+            elif not (fields[1].isdigit() and fields[2].isdigit()):
+                print("non-number coordinates in "+filename, file=sys.stderr)
+                print(currline, file=sys.stderr)
+                skippedlines += 1
+            else:
+                if includeintrons and len(fields) > 7:
+                    data["blockcount"] = int(fields[9])
+                    data["blocksizes"] = tuple(int(curr) for curr in fields[10].rstrip(",").split(","))
+                    data["blockstarts"] = tuple(int(curr) for curr in fields[11].rstrip(",").split(",")) 
+                yield GenomeRange( orgdb, fields[0],fields[1],fields[2],strand, name = fields[3], fastafile = seqfile, data = data)
+    
+    if skippedlines > 0:
+        print("skipped "+str(skippedlines)+" in "+filename, file=sys.stderr)
+

@@ -10,7 +10,10 @@ import json
 import contextlib
 import multiprocessing
 # Custom functions
+import toolsTDatabase
 import toolsTG
+import toolsTrim
+import toolsMap
 import plotsBar
 import plotsCount
 import plotsCluster
@@ -791,8 +794,29 @@ def main(args):
     '''
     Main function for running argparse and calling the appropriate class
     '''
-        # Read database object or create one from trax run if none provided
-    if args.mode == 'build':
+    if args.mode == 'makedb':
+        if not os.path.isfile(args.genome):
+            raise Exception('Error: genome fasta file does not exist.')
+        print('Building tRNA database...')
+        toolsTDatabase.tRNADatabaseBuilder(args).main()
+        print('Done!\n')
+    elif args.mode == 'trim':
+        # Check for fastp
+        import shutil
+        if shutil.which('fastp') is None:
+            raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
+        # Validate manifest existence
+        if not os.path.isfile(args.manifest):
+            raise Exception(f'Error: Manifest file does not exist: {args.manifest}')
+        print('Starting fastp trimming pipeline...')
+        toolsTrim.FastpTrimmer(args).process()
+        print('Done!\n')
+    elif args.mode == 'map':
+        print('Mapping samples...')
+        toolsMap.MapSamples(args).main()
+        print('Done!\n')
+    # Read database object or create one from trax run if none provided
+    elif args.mode == 'build':
         # Clean the path to the trax directory
         args.traxdir = os.path.abspath(args.traxdir)
         # Raise exception if trax directory is empty or doesn't exist
@@ -892,8 +916,17 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(
         title='Operating modes',
-        description='Choose between building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, \
+        description='Choose between preprocessing your fastq/fasta files, building a database object, mergeing two database objects together, running dimensionality reduction and clustering of coverage, \
             graphing data from an existing database object or using extra utilities to manipulate the database object.',
+        dest='mode',
+        required=True
+    )
+
+    # Preprocess parser
+    parser_preprocess = subparsers.add_parser("preprocess", help="Preprocess raw fastq/fasta files for tRNA analysis")
+    preprocess_subparsers = parser_preprocess.add_subparsers(
+        title='Operating modes',
+        description='Preprocess raw fastq/fasta files for tRNA analysis',
         dest='mode',
         required=True
     )
@@ -906,6 +939,62 @@ if __name__ == '__main__':
         dest='mode',
         required=True
     )
+
+    # Index builder parser
+    parser_index = preprocess_subparsers.add_parser("makedb", help="Build bowtie2 index from gtRNAdb/tRNAScan-SE output and reference genome")
+    parser_index.add_argument('-g', '--genome', help='Specify location of the reference genome fasta file (required)', required=True)
+    parser_index.add_argument('-t', '--trnaout', help='Specify location of the tRNAScan-SE out file (required)', required=True)
+    parser_index.add_argument('-r', '--trnafa', help='Specify location of the tRNA reference fasta file (required)', required=True)
+    parser_index.add_argument('-m', '--namemap', help='Specify location of the tRNA name mapping file (required)', required=True)
+    parser_index.add_argument('--addtrna', help='Specify location of additional tRNA sequences file (optional)', default=None)
+    parser_index.add_argument('--addseqs', help='Specify location of additional sequences file (optional)', default=None)
+    parser_index.add_argument('-s', '--orgmode', help='Specify organism mode used for tRNAScan-SE (default: euk) (required)', choices=['euk', 'bact', 'arch', 'mito'])
+    parser_index.add_argument('--forcecca', help='Force addition of CCA tail (optional)', action='store_true', default=False)
+    parser_index.add_argument('-n', '--threads', help='Specify number of threads to use (default: cpu_max) (optional)', default=0, type=int)
+    parser_index.add_argument('-o', '--output', help='Specify output directory/name for bowtie2 index files (default: db) (optional)', default='db')
+    parser_index.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_index.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+
+    # Trim parser
+    parser_trim = preprocess_subparsers.add_parser("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
+    parser_trim.add_argument('-r', '--runname', required=True, help='Name of the run (used for output filenames)')
+    parser_trim.add_argument('-i', '--manifest', required=True, help='Tab-delimited file: SampleName <tab> R1_Path [<tab> R2_Path]')
+    parser_trim.add_argument('-a1', '--adapter1', default=None, help='Adapter sequence for R1 (optional, fastp auto-detects)')
+    parser_trim.add_argument('-a2', '--adapter2', default=None, help='Adapter sequence for R2 (optional, fastp auto-detects)')
+    parser_trim.add_argument('-l', '--length', default=15, type=int, help='Minimum length of sequence after trimming (default: 15)')
+    parser_trim.add_argument('-u', '--umilength', default=0, type=int, help='Length of UMI (0 to disable)')
+    parser_trim.add_argument('--umi3', action='store_true', help='UMI is at the 3-prime end (Default is 5-prime)')
+    parser_trim.add_argument('-n', '--threads', default=0, type=int, help='Total number of threads to use (0 = all available)')
+    parser_trim.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_trim.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
+    parser_trim.add_argument('-v', '--verbose', action='store_true', help='Print detailed command execution')
+
+    # Map parser
+    parser_map = preprocess_subparsers.add_parser("map", help="Map reads to tRNA database")
+    parser_map.add_argument('-e', '--experiment', required=True, help='Experiment name to be used (required)')
+    parser_map.add_argument('-d', '--database', required=True, help='Name of the tRNA database (required)')
+    parser_map.add_argument('-s', '--samples', required=True, help='Sample file (required)')
+    parser_map.add_argument('--gtf', help='The ensembl gene list for that species (optional)', default=None)
+    parser_map.add_argument('--pairs', help='List of sample pairs to compare (optional)', default=None)
+    parser_map.add_argument('--bed', nargs='*', help='Additional bed files for feature list (optional)', default=None)
+    parser_map.add_argument('--lazy', action="store_true", default=False, help='Skip mapping reads if bam files exist (optional)')
+    parser_map.add_argument('--nofrag', action="store_true", default=False, help='Omit fragment determination (Used for TGIRT mapping) (optional)')
+    parser_map.add_argument('--nosizefactors', action="store_true", default=False, help='Don\'t use Deseq size factors in plotting (optional)')
+    parser_map.add_argument('--maxmismatches', help='Maximum allowed mismatches (optional)', default=None)
+    parser_map.add_argument('--mincoverage', help='Minimum read count for coverage plots (optional)', default=None)
+    parser_map.add_argument('--minnontrnasize', type=int, default=20, help='Minimum read length for non-tRNAs (default: 20) (optional)')
+    parser_map.add_argument('--paironly', action="store_true", default=False, help='Generate only pair files (for adding a pair file after initial processing) (optional)')
+    parser_map.add_argument('--hub', action="store_true", default=False, help='Make a track hub (optional)')
+    parser_map.add_argument('--hubonly', action="store_true", default=False, help='Only make the track hub (optional)')
+    parser_map.add_argument('--maponly', action="store_true", default=False, help='Only do the mapping step (optional)')
+    parser_map.add_argument('--dumpother', action="store_true", default=False, help='Dump "other" features when counting gene types (optional)')
+    parser_map.add_argument('--local', action="store_true", default=False, help='Use local bam mapping (optional)')
+    parser_map.add_argument('-n', '--threads', help='Number of threads to use (default: 8) (optional)', default=8, type=int)
+    parser_map.add_argument('--skipcheck', action="store_true", default=False, help='Skips the check that the fq files match bam files (optional)')
+    parser_map.add_argument('--bamdir', help='Directory for placing bam files (default: current working directory) (optional)', default=None)
+    parser_map.add_argument('--uniqueonly', action="store_true", default=False, help='Show only unique coverage (optional)')
+    parser_map.add_argument('--log', help='Log output to file (optional)', default=None)
+    parser_map.add_argument('-q', '--quiet', help='Suppress output to stdout (optional)', action='store_true')
 
     # Build parser
     parser_build = subparsers.add_parser("build", help="Build a h5ad AnnData object from a tRAX run")
