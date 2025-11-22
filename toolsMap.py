@@ -79,7 +79,7 @@ class MapInfo:
         print(self.bowtietext, file=logfile)
 
 class MapReads:
-    def __init__(self, bowtiedb, trnafile, scriptdir, minnontrnasize=20, local=False, maxmaps=100, program='bowtie2'):
+    def __init__(self, bowtiedb, trnafile, scriptdir, minnontrnasize=20, local=False, maxmaps=100, program='bowtie2', threads=None):
         self.bowtiedb = bowtiedb
         self.trnafile = trnafile
         self.scriptdir = scriptdir
@@ -87,6 +87,13 @@ class MapReads:
         self.local = local
         self.maxmaps = maxmaps
         self.program = program
+        if threads:
+            self.threads = threads
+        else:
+            try:
+                self.threads = min(8, cpu_count())
+            except Exception:
+                self.threads = 1
 
     def map_sample(self, samplename, fastqfile, bamfile, expname, logfile=None):
         localmode = " "
@@ -97,7 +104,7 @@ class MapReads:
         # Note: choosemappings.py is expected to be in scriptdir
         choosemappings_script = os.path.join(self.scriptdir, 'choosemappings.py')
         
-        bowtiecommand = f"{self.program}{localmode} -x {self.bowtiedb} -k {self.maxmaps} --very-sensitive --ignore-quals --np 5 --reorder -p 1 -U {fastqfile}"
+        bowtiecommand = f"{self.program}{localmode} -x {self.bowtiedb} -k {self.maxmaps} --very-sensitive --ignore-quals --np 5 --reorder -p {self.threads} -U {fastqfile}"
         
         temploc = os.path.basename(bamfile) + ''.join(random.choice(string.ascii_lowercase) for i in range(8))
         print(temploc, file=sys.stderr)
@@ -279,7 +286,13 @@ class MapSamples:
         self.nofrag = args.nofrag
         self.nosizefactors = args.nosizefactors
         self.bamdir = args.bamdir if args.bamdir else "./"
-        self.cores = args.threads if args.threads else 8
+        if args.threads:
+            self.cores = args.threads
+        else:
+            try:
+                self.cores = min(8, cpu_count())
+            except Exception:
+                self.cores = 8
         self.minnontrnasize = args.minnontrnasize
         self.local = args.local
         self.skipfqcheck = args.skipcheck
@@ -346,11 +359,21 @@ class MapSamples:
             self.createtrackhub()
 
     def mapsamples(self):
+        # Calculate resource allocation
+        total_cores = self.cores
+        if total_cores > 1:
+             pool_size = max(1, total_cores // 8)
+             bowtie_threads = total_cores // pool_size
+        else:
+             pool_size = 1
+             bowtie_threads = 1
+        print(f"Mapping with {pool_size} concurrent jobs, {bowtie_threads} threads per job.", file=sys.stderr)
+
         # Initialize MapReads
         scriptdir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../tRAX'))
         mapper = MapReads(bowtiedb=self.trnainfo.bowtiedb, trnafile=self.trnainfo.trnatable, 
                           scriptdir=scriptdir, minnontrnasize=self.minnontrnasize, 
-                          local=self.local)
+                          local=self.local, threads=bowtie_threads)
         
         # Get samples
         sampledata = toolsTG.samplefile(self.samplefilename)
@@ -374,7 +397,7 @@ class MapSamples:
         # Run mapping
         mapresults = {}
         if map_args:
-            with Pool(processes=self.cores) as pool:
+            with Pool(processes=pool_size) as pool:
                 for result in pool.imap_unordered(map_sample_wrapper, map_args):
                     if result.failedrun:
                         print("Failure to Bowtie2 map", file=sys.stderr)

@@ -261,13 +261,62 @@ class demoPipeline:
         self.logger.info("Mapping reads to tRNA genes...")
         print("Mapping reads to tRNA genes...")
         
+        extra_flags = ""
+        if self.args.hubonly:
+            extra_flags += " --hubonly"
+        if self.args.maponly:
+            extra_flags += " --maponly"
+
         cmd = (
             "python3 ../trnagraph.py preprocess map "
             "-e vibrChol1-tRAX -d trnadb/vibrChol1_db "
             "-s vibrChol1.metadata.txt --pairs vibrChol1.pair.txt "
-            "--gtf vibrChol1/genes.gtf --traxmode"
+            f"--gtf vibrChol1/genes.gtf --traxmode{extra_flags}"
         )
         self._run_command(cmd, "Running map command...")
+        
+        self.logger.info("Done.")
+        print("Done.")
+
+    def build_db(self) -> None:
+        """Builds the AnnData object from the tRAX output."""
+        self.logger.info("Building AnnData object...")
+        print("Building AnnData object...")
+        
+        cmd = (
+            "python3 ../trnagraph.py build "
+            "-i vibrChol1-tRAX -m vibrChol1.metadata.txt "
+            "-o vibrChol1.h5ad"
+        )
+        self._run_command(cmd, "Running build command...")
+        
+        self.logger.info("Done.")
+        print("Done.")
+
+    def cluster_db(self) -> None:
+        """Clusters the AnnData object."""
+        self.logger.info("Clustering AnnData object...")
+        print("Clustering AnnData object...")
+        
+        cmd = (
+            "python3 ../trnagraph.py cluster "
+            "-i vibrChol1.h5ad -o vibrChol1.cluster.h5ad"
+        )
+        self._run_command(cmd, "Running cluster command...")
+        
+        self.logger.info("Done.")
+        print("Done.")
+
+    def graph_db(self) -> None:
+        """Generates graphs from the AnnData object."""
+        self.logger.info("Generating graphs...")
+        print("Generating graphs...")
+        
+        cmd = (
+            "python3 ../trnagraph.py graph "
+            "-i vibrChol1.cluster.h5ad -o vibrChol1_graphs"
+        )
+        self._run_command(cmd, "Running graph command...")
         
         self.logger.info("Done.")
         print("Done.")
@@ -280,7 +329,9 @@ class demoPipeline:
             
             specific_flags = [
                 self.args.metadata, self.args.fastq, self.args.trna,
-                self.args.genome, self.args.trim, self.args.makedb, self.args.map
+                self.args.genome, self.args.trim, self.args.makedb, self.args.map,
+                self.args.build, self.args.cluster, self.args.merge, self.args.graph,
+                self.args.hubonly, self.args.maponly
             ]
             run_all = self.args.all or not any(specific_flags)
 
@@ -296,8 +347,14 @@ class demoPipeline:
                 self.trim_fastq()
             if run_all or self.args.makedb:
                 self.create_index()
-            if run_all or self.args.map:
+            if run_all or self.args.map or self.args.hubonly or self.args.maponly:
                 self.map_reads()
+            if run_all or self.args.build:
+                self.build_db()
+            if run_all or self.args.cluster:
+                self.cluster_db()
+            if run_all or self.args.graph:
+                self.graph_db()
                 
             if self.args.cleanrun:
                 self.logger.info("Cleaning up test files...")

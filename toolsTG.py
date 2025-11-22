@@ -18,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass, field
 
+
 def builder(directory: Union[str, Path]) -> str:
     '''
     Function to create output directory if it does not already exist
@@ -92,8 +93,8 @@ class adataLog2FC:
             col_name = f'{pair[0]}-{pair[1]}'
             df_pairs[f'log2_{col_name}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
             _, pval = stats.ttest_ind_from_stats(
-                mdf[pair[0]], sdf[pair[0]], cdf[pair[0]], 
-                mdf[pair[1]], sdf[pair[1]], cdf[pair[1]]
+                mdf[pair[0]].values, sdf[pair[0]].values, cdf[pair[0]].values, 
+                mdf[pair[1]].values, sdf[pair[1]].values, cdf[pair[1]].values
             )
             df_pairs[f'pval_{col_name}'] = pval
             
@@ -154,8 +155,8 @@ def log2fc_compare_df(adata: ad.AnnData, countgrp: str, comparison_groups: List[
             pair_name = f"{cgrp2[0]}-{cgrp2[1]}"
             df_pairs.loc[:, ('log2', cgrp1, pair_name)] = np.log2(mdf[cgrp1][cgrp2[1]]) - np.log2(mdf[cgrp1][cgrp2[0]])
             _, pval = stats.ttest_ind_from_stats(
-                mdf[cgrp1][cgrp2[0]], sdf[cgrp1][cgrp2[0]], cdf[cgrp1][cgrp2[0]], 
-                mdf[cgrp1][cgrp2[1]], sdf[cgrp1][cgrp2[1]], cdf[cgrp1][cgrp2[1]]
+                mdf[cgrp1][cgrp2[0]].values, sdf[cgrp1][cgrp2[0]].values, cdf[cgrp1][cgrp2[0]].values, 
+                mdf[cgrp1][cgrp2[1]].values, sdf[cgrp1][cgrp2[1]].values, cdf[cgrp1][cgrp2[1]].values
             )
             df_pairs.loc[:, ('pval', cgrp1, pair_name)] = pval
 

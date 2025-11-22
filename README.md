@@ -115,6 +115,25 @@ tRNAgraph can be used with `preprocess`, `build`, `cluster`, `merge`, `graph` an
 
 The `preprocess` command integrates an updated tRAX pipeline directly into tRNAgraph, allowing users to process raw FASTQ files into the coverage files required for the `build` step. It consists of three subcommands: `trim`, `makedb`, and `map`.
 
+#### MakeDB
+
+Creates a Bowtie2 index for the tRNA database.
+
+```bash
+python trnagraph.py preprocess makedb -g <genome> -t <trnascan> -r <gtrnafa> -m <namemap> -s <orgmode> -o <output> [options]
+```
+
+- `-g` or `--genome`: Genome FASTA file.
+- `-t` or `--trnaout`: tRNAscan-SE output file.
+- `-r` or `--trnafa`: gtRNAdb FASTA file.
+- `-m` or `--namemap`: Name map file.
+- `-s` or `--orgmode`: Organism mode (`euk`, `bact`, `arch`).
+- `-o` or `--output`: Output prefix for the database.
+- `--addtrna`: Specify location of additional tRNA sequences file.
+- `--addseqs`: Specify location of additional sequences file.
+- `--forcecca`: Force addition of CCA tail.
+- `-n` or `--threads`: Specify number of threads to use (default: cpu_max).
+
 #### Trim
 
 Trims adapters from FASTQ files using `fastp`.
@@ -132,21 +151,6 @@ python trnagraph.py preprocess trim -r <runname> -i <manifest> [options]
 - `--umi3`: UMI is at the 3-prime end (Default is 5-prime).
 - `-n` or `--threads`: Total number of threads to use (0 = all available).
 
-#### MakeDB
-
-Creates a Bowtie2 index for the tRNA database.
-
-```bash
-python trnagraph.py preprocess makedb -g <genome> -t <trnascan> -r <gtrnafa> -m <namemap> -s <orgmode> -o <output>
-```
-
-- `-g` or `--genome`: Genome FASTA file.
-- `-t` or `--trnascan`: tRNAscan-SE output file.
-- `-r` or `--gtrnafa`: gtRNAdb FASTA file.
-- `-m` or `--namemap`: Name map file.
-- `-s` or `--orgmode`: Organism mode (`euk`, `bact`, `arch`).
-- `-o` or `--output`: Output prefix for the database.
-
 #### Map
 
 Maps reads to the tRNA database and generates coverage files.
@@ -160,8 +164,25 @@ python trnagraph.py preprocess map -e <experiment> -d <database> -s <samples> [o
 - `-s` or `--samples`: Sample file.
 - `--gtf`: The Ensembl gene list for that species.
 - `--pairs`: List of sample pairs to compare.
+- `--bed`: Additional bed files for feature list.
+- `--lazy`: Skip mapping reads if bam files exist.
+- `--nofrag`: Omit fragment determination (Used for TGIRT mapping).
+- `--nosizefactors`: Don't use Deseq size factors in plotting.
+- `--maxmismatches`: Maximum allowed mismatches.
+- `--mincoverage`: Minimum read count for coverage plots.
+- `--minnontrnasize`: Minimum read length for non-tRNAs (default: 20).
+- `--paironly`: Generate only pair files (for adding a pair file after initial processing).
+- `--hub`: Make a track hub.
+- `--hubonly`: Only make the track hub.
+- `--maponly`: Only do the mapping step.
+- `--dumpother`: Dump 'other' features when counting gene types.
+- `--local`: Use local bam mapping.
+- `--skipcheck`: Skips the check that the fq files match bam files.
+- `--bamdir`: Directory for placing bam files.
+- `--uniqueonly`: Show only unique coverage.
 - `--traxmode`: Run in tRAX compatibility mode, generating legacy plots.
 - `-n` or `--threads`: Number of threads to use (default: 8).
+  - **Note:** The number of threads used for mapping is highly system dependent. Bowtie2 can be memory intensive, and using too many threads can cause the system to run out of memory or lose performance because of overhead. It is recommended to use a number of threads that is appropriate for your system's available memory and CPU cores although between 8-10 has been commonly used on high performance machines as an optimal range and starting point.
 
 ### Input files
 

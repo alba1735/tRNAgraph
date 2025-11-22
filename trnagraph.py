@@ -46,6 +46,16 @@ class trax2anndata():
         # For adding normalized read counts to coverage file split by read type
         normalizedreadcounts = traxdir + '/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
+
+        # Fallback for different file formats where index is not automatically detected - aka tRAX generates tsv/csv strangely sometimes
+        if normalized_read_counts.index.dtype != 'object':
+             if 'Unnamed: 0' in normalized_read_counts.columns:
+                 normalized_read_counts = normalized_read_counts.set_index('Unnamed: 0')
+                 normalized_read_counts.index.name = None
+             elif normalized_read_counts.shape[1] > 0 and normalized_read_counts.iloc[:, 0].astype(str).str.contains('tRNA').any():
+                 normalized_read_counts = normalized_read_counts.set_index(normalized_read_counts.columns[0])
+                 normalized_read_counts.index.name = None
+
         # Clean all non tRNAs from normalized read counts by removing all rows that do not have a tRNA in the feature column
         non_trna_read_counts = normalized_read_counts[~(normalized_read_counts.index.str.contains('tRNA'))]
         self.non_trna_read_counts = non_trna_read_counts[~(non_trna_read_counts.index.str.contains('tRX'))]
@@ -64,15 +74,20 @@ class trax2anndata():
         aminoacidcounts = traxdir + '/' + traxdir.split('/')[-1] + '-aminocounts.txt'
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
         # For adding metadata to adata object
-        metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else ' '
+        metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
         try:
-            self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None)
+            self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None, engine='python' if metadata_type is None else None)
         except:
             raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
         # turn first row into a list then remove it from the dataframe
-        self.observations = self.metadata.iloc[0].dropna().values.tolist()
+        first_row = self.metadata.iloc[0].dropna().values.tolist()
+        if len(first_row) >= 2 and first_row[0] == 'sample' and first_row[1] == 'group':
+            self.observations = first_row
+            self.metadata = self.metadata.iloc[1:]
+        else:
+            self.observations = ['sample', 'group'] + [f'metadata_{i}' for i in range(2, len(first_row))]
+        
         # self.metadata.columns = self.observations
-        self.metadata = self.metadata.iloc[1:]
         # Create list of reference sequences from actualbase column of coverage file - skips gap positions
         self.seqs = self._seq_build_()
         self.seqs_full = self._seq_build_(gap=True)
@@ -101,11 +116,15 @@ class trax2anndata():
         self.metadata.set_index('sample', inplace=True)
         self.metadata = self.metadata.to_dict()
         # For adding the tRAX runinfo
-        with open(traxdir + '/' + traxdir.split('/')[-1] + '-runinfo.txt', 'r') as f:
-            runinfo = f.readlines()
-        # Split the strings and convert to dictionary
-        runinfo = [x.rstrip().split('\t') for x in runinfo]
-        self.trax_run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
+        try:
+            with open(traxdir + '/' + traxdir.split('/')[-1] + '-runinfo.txt', 'r') as f:
+                runinfo = f.readlines()
+            # Split the strings and convert to dictionary
+            runinfo = [x.rstrip().split('\t') for x in runinfo]
+            self.trax_run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
+        except FileNotFoundError:
+            print(f"Warning: runinfo file not found. Using default runinfo.")
+            self.trax_run_info = {'git version': 'unknown', 'command': ''}
         if self.trax_run_info['git version'] == 'Cannot find git version':
             print('WARNING: Could not find git version in trax runinfo file. This is likely because the version of trax was not from a git repository or downloaded directly.\n'+ \
                   'Please make sure that the version of trax is at least v1.1.0-beta or later. Merging datasets may not work properly without matching git versions.\n')
@@ -156,6 +175,8 @@ class trax2anndata():
             raise ValueError('The index of the obs and x dataframes are not the same. This means somthing went wrong in the sorting process.')
         # Build adata object
         adata = self._adata_build_(obs_df, x_df)
+        print(f"DEBUG: adata.X type: {type(adata.X)}")
+        print(f"DEBUG: adata.obs['deseq2_sizefactor'] type: {type(adata.obs['deseq2_sizefactor'])}")
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
         # Quality check adata by dropping NaN values and printing summary
@@ -212,7 +233,7 @@ class trax2anndata():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['refseq_full'] = self.seqs_full
-        obs_df['sizefactor'] = self.size_factors_list # [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
+        obs_df['sizefactor'] = [self.size_factors.get('_'.join(x.split('_')[1:])) for x in x_df.index.values]
         # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         # Create unique counts for each tRNA split by type
         for rt in ['fiveprime','threeprime','wholecounts','other']: # Changed whole to wholecounts in recent trax versions
@@ -1014,7 +1035,7 @@ def map_cmd(
     maponly: bool = typer.Option(False, "--maponly", help="Only do the mapping step"),
     dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
-    threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use"),
+    threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
     skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
@@ -1204,7 +1225,7 @@ def legacy(
     )
     run_logic(args)
 
-@tools_app.command("test", help="Run preflight tests")
+@tools_app.command("test", help="Run pipeline demo tests")
 def test(
     metadata: bool = typer.Option(False, "--metadata", help="Run metadata download test"),
     fastq: bool = typer.Option(False, "--fastq", help="Run fastq download test"),
@@ -1213,6 +1234,11 @@ def test(
     trim: bool = typer.Option(False, "--trim", help="Run trim test"),
     makedb: bool = typer.Option(False, "--makedb", help="Run makedb test"),
     map: bool = typer.Option(False, "--map", help="Run map test"),
+    hubonly: bool = typer.Option(False, "--hubonly", help="Run map test with hubonly flag"),
+    maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
+    build: bool = typer.Option(False, "--build", help="Run build test"),
+    cluster: bool = typer.Option(False, "--cluster", help="Run cluster test"),
+    graph: bool = typer.Option(False, "--graph", help="Run graph test"),
     all: bool = typer.Option(False, "--all", help="Run all tests (default)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
@@ -1220,7 +1246,7 @@ def test(
 ):
     args = SimpleNamespace(
         mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-        makedb=makedb, map=map, all=all, cleanrun=cleanrun, log=log, quiet=quiet
+        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, log=log, quiet=quiet
     )
     run_logic(args)
 
