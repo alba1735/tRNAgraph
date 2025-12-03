@@ -16,10 +16,7 @@ import toolsTestSuite
 from lazy_imports import (
     plotsBar, plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
     plotsCoverage, plotsHeatmap, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano,
-    plotsLegacyReadLength, plotsLegacyMismatch, plotsTrimmingStats,
-    plotsLegacyLocusCoverage, plotsLegacyMismatchBoxplot, plotsLegacyGeneFeatures,
-    plotsLegacyFeatureTypes, plotsLegacyPCA, plotsLegacyScatter, plotsLegacyCCA,
-    plotsLegacyVolcano, plotsLegacyCoverage, umap, hdbscan,
+    plotsTrimmingStats, umap, hdbscan,
     toolsMap, toolsTDatabase, toolsTrim, toolsTG
 )
 
@@ -915,33 +912,6 @@ def _main_logic(args):
         print('Writing csv files to: ' + args.output)
         adata.write_csvs(args.output, skip_data=False)
         print('Done!\n')
-    elif args.mode == 'legacy':
-        print(f'Generating legacy plot: {args.plot}...')
-        if args.plot == 'readlength':
-            plotsLegacyReadLength.visualizer(args.input, args.output).plot()
-        elif args.plot == 'mismatch':
-            plotsLegacyMismatch.visualizer(args.input, args.output).plot()
-        elif args.plot == 'trimmingstats':
-            plotsTrimmingStats.visualizer(args.input, args.output).plot()
-        elif args.plot == 'locuscoverage':
-            plotsLegacyLocusCoverage.visualizer(args.input, args.output).plot()
-        elif args.plot == 'mismatchboxplot':
-            plotsLegacyMismatchBoxplot.visualizer(args.input, args.output).plot()
-        elif args.plot == 'coverage':
-            plotsLegacyCoverage.visualizer(args.input, args.output).plot()
-        elif args.plot == 'genefeatures':
-            plotsLegacyGeneFeatures.visualizer(args.input, args.output).plot()
-        elif args.plot == 'featuretypes':
-            plotsLegacyFeatureTypes.visualizer(args.input, args.output).plot()
-        elif args.plot == 'pca':
-            plotsLegacyPCA.visualizer(args.input, args.output).plot()
-        elif args.plot == 'scatter':
-            plotsLegacyScatter.visualizer(args.input, args.output).plot()
-        elif args.plot == 'cca':
-            plotsLegacyCCA.visualizer(args.input, args.output).plot()
-        elif args.plot == 'volcano':
-            plotsLegacyVolcano.visualizer(args.input, args.output).plot()
-        print('Done!\n')
     elif args.mode == 'test':
         toolsTestSuite.demoPipeline(args).main()
         print('Done!\n')
@@ -1037,9 +1007,8 @@ def map_cmd(
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
     skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
-    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: bam/<experimentname>)"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
-    traxmode: bool = typer.Option(False, "--traxmode", help="Run in tRAX compatibility mode, generating legacy plots"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
@@ -1048,7 +1017,7 @@ def map_cmd(
         bed=bed, lazy=lazy, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
         mincoverage=mincoverage, minnontrnasize=minnontrnasize, paironly=paironly, hub=hub, hubonly=hubonly,
         maponly=maponly, dumpother=dumpother, local=local, threads=threads, skipcheck=skipcheck,
-        bamdir=bamdir, uniqueonly=uniqueonly, traxmode=traxmode, log=log, quiet=quiet
+        bamdir=bamdir, uniqueonly=uniqueonly, log=log, quiet=quiet
     )
     run_logic(args)
 
@@ -1212,19 +1181,6 @@ def csv_cmd(
     )
     run_logic(args)
 
-@tools_app.command("legacy", help="Generate legacy tRAX plots")
-def legacy(
-    plot: str = typer.Option(..., "-p", "--plot", help="Type of plot to generate"),
-    input: str = typer.Option(..., "-i", "--input", help="Input file path"),
-    output: str = typer.Option(..., "-o", "--output", help="Output file path"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
-    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
-):
-    args = SimpleNamespace(
-        mode='legacy', plot=plot, input=input, output=output, log=log, quiet=quiet
-    )
-    run_logic(args)
-
 @tools_app.command("test", help="Run pipeline demo tests")
 def test(
     metadata: bool = typer.Option(False, "--metadata", help="Run metadata download test"),
@@ -1238,15 +1194,17 @@ def test(
     maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
     build: bool = typer.Option(False, "--build", help="Run build test"),
     cluster: bool = typer.Option(False, "--cluster", help="Run cluster test"),
+    merge: bool = typer.Option(False, "--merge", help="Run merge test"),
     graph: bool = typer.Option(False, "--graph", help="Run graph test"),
     all: bool = typer.Option(False, "--all", help="Run all tests (default)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
+    directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Specify directory to run tests in"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     args = SimpleNamespace(
         mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, log=log, quiet=quiet
+        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
     )
     run_logic(args)
 

@@ -24,7 +24,7 @@ table { width: 70%; }
 </style>
 '''
 
-MODE_TEMPLATE = '''<h2>TRAX Data Quality Report</h2>
+MODE_TEMPLATE = '''<h2>tRNAgraph Data Quality Report</h2>
 
 <h4>
 

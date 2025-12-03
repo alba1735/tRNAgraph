@@ -13,44 +13,34 @@ from shutil import which
 
 # Try to import from local toolsTG, otherwise assume it's in the path
 try:
-    from .toolsTG import samplefile, getsizefactors
+    from .toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
 except ImportError:
     try:
-        from toolsTG import samplefile, getsizefactors
+        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
     except ImportError:
         # Fallback for when running from tRNAgraph directory
         sys.path.append(os.path.dirname(__file__))
-        from toolsTG import samplefile, getsizefactors
+        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
+
+def cigarlength(cigar):
+    # 0=M, 1=I. Counts length on query sequence.
+    return sum(curr[1] for curr in cigar if curr[0] in {0, 1})
+
+def reverseintrons(introns, length):
+    for currint in reversed(introns):
+        yield (length - currint[0] + 1, currint[1])
 
 class TrackHubBuilder:
     def __init__(self, 
                  genomedatabase: str, 
                  samplefilename: str, 
                  expname: str, 
-                 scriptdir: Optional[str] = None,
                  threads: int = 8):
         self.dbname = genomedatabase
         self.samplefilename = samplefilename
         self.expname = expname
         self.threads = threads
         
-        # Determine script directory (tRAX directory)
-        if scriptdir:
-            self.scriptdir = Path(scriptdir)
-        else:
-            # Assume tRAX is sibling to tRNAgraph or in parent
-            # Current file is in tRNAgraph/toolsTrackHub.py
-            # tRAX scripts are in ../tRAX/
-            current_file = Path(__file__).resolve()
-            self.scriptdir = current_file.parent.parent / 'tRAX'
-            
-        if not self.scriptdir.exists():
-             # Fallback to current directory or check if we are in tRAX
-             if (Path.cwd() / 'convertbam.py').exists():
-                 self.scriptdir = Path.cwd()
-             else:
-                 print(f"Warning: Could not find tRAX script directory at {self.scriptdir}", file=sys.stderr)
-
         self.sampledata = samplefile(self.samplefilename)
         self.trackdir = Path(self.expname) / "trackhub"
         
@@ -73,26 +63,156 @@ class TrackHubBuilder:
             tempprefix = f"{Path(inputbam).stem}_{os.getpid()}"
             temp_dir = tempfile.gettempdir()
             
-            convert_script = self.scriptdir / 'convertbam.py'
+            print(f"Converting {inputbam} to genome coordinates...", file=sys.stderr)
             
-            cmd = f"{convert_script} {inputbam} {self.dbname} | samtools sort -T {temp_dir}/convert{tempprefix} - -o {outputbam}"
+            # Prepare sorting process
+            sort_cmd = f"samtools sort -T {temp_dir}/convert{tempprefix} - -o {outputbam}"
+            sort_process = subprocess.Popen(sort_cmd, shell=True, stdin=subprocess.PIPE)
             
-            print(cmd, file=sys.stderr)
-            
-            if logfile:
-                logfile.flush()
+            try:
+                # Open input BAM
+                bamfile = pysam.AlignmentFile(inputbam, "rb")
                 
-            process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, universal_newlines=True)
-            _, errinfo = process.communicate()
-            
-            if logfile and errinfo:
-                print(errinfo, file=logfile)
-                logfile.flush()
+                # Open output BAM stream to sort process
+                outfile = pysam.AlignmentFile(sort_process.stdin, "wb", template=bamfile)
                 
-            if process.returncode:
-                print("Failure to convert bam to genome space", file=sys.stderr)
-                print("check logfile", file=sys.stderr)
+                # Load tRNA info
+                trnainfo = transcriptfile(f"{self.dbname}-trnatable.txt")
+                trnaloci = getnamedict(readbed(f"{self.dbname}-trnaloci.bed", includeintrons=True))
+                trnatranscripts = trnainfo.gettranscripts()
+                
+                npad = 20
+                bam_cins = 1
+                bam_cdel = 2
+                
+                for currmap in bamfile:
+                    chromname = bamfile.getrname(currmap.tid)
+                    readquals = currmap.query_qualities
+                    readseq = currmap.query_sequence
+                    readtags = currmap.get_tags()
+                    origcigar = currmap.cigartuples
+                    
+                    if chromname in trnatranscripts:
+                        origstart = currmap.reference_start
+                        
+                        # Iterate over loci for this transcript
+                        for currlocusname in trnainfo.transcriptdict[chromname]:
+                            currlocus = trnaloci[currlocusname]
+                            
+                            # We need a new read object to write
+                            new_read = pysam.AlignedSegment(bamfile.header)
+                            new_read.query_name = currmap.query_name
+                            new_read.query_sequence = currmap.query_sequence
+                            new_read.query_qualities = currmap.query_qualities
+                            new_read.flag = currmap.flag
+                            new_read.reference_id = bamfile.get_tid(currlocus.chrom)
+                            new_read.mapping_quality = currmap.mapping_quality
+                            new_read.tags = readtags
+                            new_read.next_reference_id = currmap.next_reference_id
+                            new_read.next_reference_start = currmap.next_reference_start
+                            new_read.template_length = currmap.template_length
+                            
+                            introns = list()
+                            if currlocus.data and "blockcount" in currlocus.data and currlocus.data["blockcount"] > 1:
+                                lastblock = 0
+                                for i in range(currlocus.data["blockcount"]):
+                                    currblocksize = int(currlocus.data["blocksizes"][i])
+                                    currblockstart = int(currlocus.data["blockstarts"][i])
+                                    if lastblock != 0:
+                                        introns.append([lastblock, currblockstart - lastblock])
+                                    lastblock += currblocksize
+                                    
+                            if currlocus.strand == '+':
+                                new_read.reference_start = origstart - npad + currlocus.start
+                                new_read.query_sequence = readseq
+                                new_read.query_qualities = readquals
+                                new_read.is_reverse = False
+                                
+                                currpoint = origstart - npad
+                                newcigar = list()
+                                
+                                # Adjust start for introns
+                                for i in range(len(introns)):
+                                    if currpoint >= introns[i][0]:
+                                        new_read.reference_start += introns[i][1]
+                                        currpoint += introns[i][1]
+                                        
+                                for currcigar in origcigar:
+                                    if currcigar[0] in {0, bam_cins}: # M or I
+                                        foundintron = False
+                                        for intronstart, intronlength in introns:
+                                            if currpoint < intronstart < currpoint + currcigar[1]:
+                                                firseglength = intronstart - currpoint
+                                                secseglength = currpoint + currcigar[1] - intronstart
+                                                newcigar.append((currcigar[0], firseglength))
+                                                newcigar.append((bam_cdel, intronlength))
+                                                newcigar.append((currcigar[0], secseglength))
+                                                foundintron = True
+                                        if not foundintron:
+                                            newcigar.append(currcigar)
+                                        if currcigar[0] in {0, bam_cdel}: # M or D (D consumes ref)
+                                            currpoint += currcigar[1]
+                                    else:
+                                        newcigar.append(currcigar)
+                                        
+                                new_read.cigartuples = newcigar
+                                
+                            else: # Minus strand
+                                new_read.reference_start = currlocus.end - (origstart - npad + cigarlength(origcigar) + sum(curr[1] for curr in introns))
+                                new_read.query_sequence = revcom(readseq)
+                                new_read.query_qualities = list(reversed(readquals))
+                                new_read.is_reverse = True
+                                
+                                currpoint = origstart - npad
+                                newcigar = list()
+                                
+                                for intronstart, intronlength in reverseintrons(introns, currlocus.length()):
+                                    if currpoint + cigarlength(origcigar) < intronstart:
+                                        new_read.reference_start += intronlength
+                                        currpoint -= intronlength
+                                        
+                                for currcigar in reversed(origcigar):
+                                    if currcigar[0] in {0, bam_cins}:
+                                        foundintron = False
+                                        for intronstart, intronlength in introns:
+                                            if currpoint < intronstart < currpoint + currcigar[1]:
+                                                firseglength = intronstart - currpoint + 1
+                                                secseglength = currpoint + currcigar[1] - intronstart - 1
+                                                newcigar.append((currcigar[0], secseglength))
+                                                newcigar.append((bam_cdel, intronlength))
+                                                newcigar.append((currcigar[0], firseglength))
+                                                foundintron = True
+                                        if not foundintron:
+                                            newcigar.append(currcigar)
+                                        if currcigar[0] in {0, bam_cdel}:
+                                            currpoint += currcigar[1]
+                                    else:
+                                        newcigar.append(currcigar)
+                                        
+                                new_read.cigartuples = newcigar
+                                
+                            outfile.write(new_read)
+                    else:
+                        outfile.write(currmap)
+                        
+                outfile.close()
+                bamfile.close()
+                sort_process.wait()
+                
+                if sort_process.returncode != 0:
+                    print("Failure to convert bam to genome space", file=sys.stderr)
+                    sys.exit(1)
+                
+                subprocess.check_call(f"samtools index {outputbam}", shell=True, stderr=logfile)
+                
+            except Exception as e:
+                print(f"Error converting BAM: {e}", file=sys.stderr)
+                if sort_process.poll() is None:
+                    sort_process.kill()
                 sys.exit(1)
+                
+        else:
+            print(f"Skipping {outputbam} (already exists)", file=sys.stderr)
 
     def samtoolsmerge(self, bamfiles: List[str], outbam: str, force: bool = False) -> None:
         samtoolsloc = self.get_location("samtools")
@@ -189,17 +309,12 @@ class TrackHubBuilder:
 
                 currpriority += 0.2
 
-    def makebigwigs(self, bamfile: str, repname: str, faifile: str, directory: Union[str, Path], filterloci: bool = False, suffix: str = '', scalefactor: float = 1) -> None:
-        filtercommand = ''
-        if filterloci:
-            filter_script = self.scriptdir / 'filterunique.py'
-            filtercommand = f"{filter_script} --uniqloci | "
-        
+    def makebigwigs(self, bamfile: str, repname: str, faifile: str, directory: Union[str, Path], suffix: str = '', scalefactor: float = 1) -> None:
         print(faifile, file=sys.stderr)
         
-        # Pipeline: samtools view -> (filter) -> genomeCoverageBed -> sort -> temp_bedgraph
+        # Pipeline: samtools view -> genomeCoverageBed -> sort -> temp_bedgraph
         
-        cmd_pipeline = f"samtools view -b -F 0x10 {bamfile} | {filtercommand} genomeCoverageBed -scale {1./scalefactor} -bg -ibam stdin -g {faifile} | sort -k1,1 -k2,2n"
+        cmd_pipeline = f"samtools view -b -F 0x10 {bamfile} | genomeCoverageBed -scale {1./scalefactor} -bg -ibam stdin -g {faifile} | sort -k1,1 -k2,2n"
         
         # Plus strand
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp_plus:
@@ -216,7 +331,7 @@ class TrackHubBuilder:
         os.remove(tmp_plus_name)
 
         # Minus strand (samtools view -f 0x10)
-        cmd_pipeline_minus = f"samtools view -b -f 0x10 {bamfile} | {filtercommand} genomeCoverageBed -scale {1./scalefactor} -bg -ibam stdin -g {faifile} | sort -k1,1 -k2,2n"
+        cmd_pipeline_minus = f"samtools view -b -f 0x10 {bamfile} | genomeCoverageBed -scale {1./scalefactor} -bg -ibam stdin -g {faifile} | sort -k1,1 -k2,2n"
         
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp_minus:
             tmp_minus_name = tmp_minus.name

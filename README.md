@@ -180,7 +180,7 @@ python trnagraph.py preprocess map -e <experiment> -d <database> -s <samples> [o
 - `--skipcheck`: Skips the check that the fq files match bam files.
 - `--bamdir`: Directory for placing bam files.
 - `--uniqueonly`: Show only unique coverage.
-- `--traxmode`: Run in tRAX compatibility mode, generating legacy plots.
+
 - `-n` or `--threads`: Number of threads to use (default: 8).
   - **Note:** The number of threads used for mapping is highly system dependent. Bowtie2 can be memory intensive, and using too many threads can cause the system to run out of memory or lose performance because of overhead. It is recommended to use a number of threads that is appropriate for your system's available memory and CPU cores although between 8-10 has been commonly used on high performance machines as an optimal range and starting point.
 

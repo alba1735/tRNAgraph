@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import itertools
 import sys
 import os
 import subprocess
@@ -18,24 +19,171 @@ from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 import pysam
 
-import toolsQC
-
 import toolsTG
 import toolsCountReads
 import toolsGetCoverage
 import toolsTrackHub
 
-import plotsLegacyPCA
-import plotsLegacyGeneFeatures
-import plotsLegacyFeatureTypes
-import plotsLegacyCoverage
-import plotsLegacyReadLength
-import plotsLegacyMismatch
-import plotsLegacyLocusCoverage
-import plotsLegacyMismatchBoxplot
-import plotsLegacyCCA
-import plotsLegacyScatter
-import plotsLegacyVolcano
+
+
+def isprimarymapping(mapping):
+    return not (mapping.flag & 0x0100 > 0)
+
+def process_mappings(trnafile_path, infile, outfile, logfile=sys.stderr, progname=None, fqname=None, libname=None, minnontrnasize=20):
+    trnadata = toolsTG.transcriptfile(trnafile_path)
+    trnatranscripts = set(trnadata.gettranscripts())
+    
+    totalreads = 0
+    multimaps = 0
+    duperemove = 0
+    shortened = 0
+    mapsremoved = 0
+    totalmaps = 0
+    
+    trnareads = 0
+    maxreads = 0
+    diffreads = 0
+    
+    uniquenontrnas = 0
+    nonuniquenontrnas = 0
+    
+    ambanticodon = 0
+    ambamino = 0
+    ambtrna = 0
+    
+    imperfect = 0
+    extraimperfect = 0
+    
+    maxmaps = 50 # Default from choosemappings.py
+
+    try:
+        bamfile = pysam.AlignmentFile(infile, "r")
+    except Exception as e:
+        print(f"Error opening input stream: {e}", file=logfile)
+        return None
+
+    newheader = bamfile.header.to_dict()
+    newheader["RG"] = list()
+    newheader["RG"].append(dict())
+    
+    if "PG" not in newheader:
+        newheader["PG"] = list()
+    if progname is not None:
+        newheader["PG"].append({"PN" :progname, "ID": progname})
+    if fqname is not None:
+        newheader["RG"][0]["ID"] = fqname 
+    if libname is not None:
+        newheader["RG"][0]["LB"] = libname
+        
+    try:
+        outbam = pysam.AlignmentFile(outfile, "wb", header=newheader)
+    except Exception as e:
+        print(f"Error opening output stream: {e}", file=logfile)
+        return None
+
+    for pairedname, allmaps in itertools.groupby(bamfile, lambda x: x.qname):
+        allmaps = list(allmaps)
+        if sum(curr.flag & 0x004 > 0 for curr in allmaps):
+            continue
+        totalreads += 1
+        
+        readlength = None
+        clipsize = 50
+        mappings = 0
+        currscore = None
+        newset = set()
+        
+        for currmap in allmaps:
+            tagdict = dict()
+            for curr in currmap.tags:
+                tagdict[curr[0]] = curr[1]
+            totalmaps += 1
+            if currmap.tid == -1:
+                continue
+            
+            readlength = len(currmap.seq)
+            mappings += 1
+            
+            if currscore is None or currscore < tagdict["AS"]:
+                newset = set()
+                newset.add(currmap)
+                currscore = tagdict["AS"]
+            elif currscore == tagdict["AS"]:
+                newset.add(currmap)
+            else:
+                pass
+        
+        if mappings > 1:
+            multimaps += 1
+        if len(newset) < mappings:
+            shortened += 1
+            
+        if len(newset) >= 50:
+            maxreads += 1
+            
+        finalset = list()
+        
+        if sum(bamfile.getrname(curr.tid) in trnatranscripts for curr in newset) > 0:
+            trnareads += 1
+            diff = len(newset) - sum(bamfile.getrname(curr.tid) in trnatranscripts for curr in newset)
+            anticodons = frozenset(trnadata.getanticodon(bamfile.getrname(curr.tid)) for curr in newset if bamfile.getrname(curr.tid) in trnatranscripts)
+            aminos = frozenset(trnadata.getamino(bamfile.getrname(curr.tid)) for curr in newset if bamfile.getrname(curr.tid) in trnatranscripts)
+            trnamappings = list(curr for curr in newset if bamfile.getrname(curr.tid) in trnatranscripts)
+            locusmaps = list(itertools.chain.from_iterable(trnadata.transcriptdict[bamfile.getrname(curr.tid)] for curr in trnamappings))
+            
+            if trnamappings[0].get_tag("XM") + trnamappings[0].get_tag("XO") > 0:
+                imperfect += 1
+            if trnamappings[0].get_tag("XM") + trnamappings[0].get_tag("XO") > 2:
+                extraimperfect += 1
+            
+            if len(anticodons - frozenset(['NNN'])) > 1:
+                ambanticodon += 1
+            
+            if len(aminos - frozenset(['Und'])) > 1:
+                ambamino += 1
+                
+            if diff > 0:
+                diffreads += 1
+            
+            if len(trnamappings) > 1:
+                ambtrna += 1
+            
+            for currtrnamap in trnamappings:
+                currtrnamap.tags = currtrnamap.tags + [("YA",len(anticodons))] + [("YM",len(aminos))]  + [("YR",len(trnamappings))] +  [("YL",len(locusmaps))]
+            finalset = trnamappings
+            
+        else:
+            #for non-tRNA, remove reads that are too small
+            if readlength < minnontrnasize:
+                continue
+            
+            for curr in newset:
+                finalset.append(curr)
+                
+            if len(finalset) > maxmaps:
+                duperemove += 1
+                continue
+            if len(newset) > 1:
+                nonuniquenontrnas += 1
+            else:
+                uniquenontrnas += 1
+        
+        mapsremoved += mappings - len(finalset)
+        if sum(isprimarymapping(curr) for curr in finalset) < 1:
+            for i, curr in enumerate(finalset):
+                if i == 0:
+                    curr.flag &= ~ 0x0100
+                    outbam.write(curr)
+                else:
+                    outbam.write(curr)
+        else:
+            for curr in finalset:
+                outbam.write(curr)
+    
+    outbam.close()
+    bamfile.close()
+    
+    return TRNAMapInfo(ambtrna, ambanticodon, ambamino, trnareads, uniquenontrnas, nonuniquenontrnas)
 
 class TRNAMapInfo:
     def __init__(self, multtrans, multac, multamino, trna, singlenon, multiplenon):
@@ -79,10 +227,9 @@ class MapInfo:
         print(self.bowtietext, file=logfile)
 
 class MapReads:
-    def __init__(self, bowtiedb, trnafile, scriptdir, minnontrnasize=20, local=False, maxmaps=100, program='bowtie2', threads=None):
+    def __init__(self, bowtiedb, trnafile, minnontrnasize=20, local=False, maxmaps=100, program='bowtie2', threads=None):
         self.bowtiedb = bowtiedb
         self.trnafile = trnafile
-        self.scriptdir = scriptdir
         self.minnontrnasize = minnontrnasize
         self.local = local
         self.maxmaps = maxmaps
@@ -96,67 +243,81 @@ class MapReads:
                 self.threads = 1
 
     def map_sample(self, samplename, fastqfile, bamfile, expname, logfile=None):
-        localmode = " "
+        localmode = []
         if self.local:
-            localmode = " --local "
+            localmode = ["--local"]
         
-        # Construct bowtie2 command
-        # Note: choosemappings.py is expected to be in scriptdir
-        choosemappings_script = os.path.join(self.scriptdir, 'choosemappings.py')
-        
-        bowtiecommand = f"{self.program}{localmode} -x {self.bowtiedb} -k {self.maxmaps} --very-sensitive --ignore-quals --np 5 --reorder -p {self.threads} -U {fastqfile}"
+        # Construct bowtie2 command list
+        bowtie_args = [self.program] + localmode + ["-x", self.bowtiedb, "-k", str(self.maxmaps), "--very-sensitive", "--ignore-quals", "--np", "5", "--reorder", "-p", str(self.threads), "-U", fastqfile]
         
         temploc = os.path.basename(bamfile) + ''.join(random.choice(string.ascii_lowercase) for i in range(8))
         print(temploc, file=sys.stderr)
         
-        bowtiecommand += f" | {choosemappings_script} {self.trnafile} --progname=TRAX --fqname={fastqfile} --expname={expname} --minnontrnasize={self.minnontrnasize}"
-        bowtiecommand += f" | samtools sort -T {tempfile.gettempdir()}/{temploc}temp - -o {bamfile}.bam"
+        # Construct samtools command list
+        samtools_args = ["samtools", "sort", "-T", f"{tempfile.gettempdir()}/{temploc}temp", "-", "-o", f"{bamfile}.bam"]
         
-        print(bowtiecommand, file=sys.stderr)
+        bowtie_cmd_str = " ".join(bowtie_args)
+        print(bowtie_cmd_str, file=sys.stderr)
         if logfile:
-            print(bowtiecommand, file=logfile)
+            print(bowtie_cmd_str, file=logfile)
             logfile.flush()
             
-        bowtierun = subprocess.Popen(bowtiecommand, shell=True, stderr=subprocess.PIPE, universal_newlines=True)
-        output = bowtierun.communicate()
-        errinfo = output[1]
-        
-        if logfile is not None:
-            print(errinfo, file=logfile) 
-            logfile.flush()
+        # Use a temporary file for bowtie2 stderr to avoid deadlock
+        with tempfile.TemporaryFile(mode='w+') as bowtie_err_file:
+            try:
+                # Start bowtie2 (stdout is text SAM)
+                bowtie_proc = subprocess.Popen(bowtie_args, stdout=subprocess.PIPE, stderr=bowtie_err_file, universal_newlines=True)
+                
+                # Start samtools (stdin is binary BAM)
+                samtools_proc = subprocess.Popen(samtools_args, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # Process mappings
+                trnamapinfo = process_mappings(self.trnafile, bowtie_proc.stdout, samtools_proc.stdin, 
+                                               logfile=logfile if logfile else sys.stderr, 
+                                               progname="tRNAgraph", fqname=fastqfile, libname=expname, 
+                                               minnontrnasize=self.minnontrnasize)
+                
+                # Wait for processes
+                bowtie_proc.wait()
+                # samtools_proc.stdin is closed by process_mappings via pysam
+                samtools_out, samtools_err = samtools_proc.communicate()
+                
+                # Read bowtie2 stderr
+                bowtie_err_file.seek(0)
+                errinfo = bowtie_err_file.read()
+                
+                if logfile is not None:
+                    print(errinfo, file=logfile)
+                    if samtools_err:
+                        print(samtools_err.decode('utf-8', errors='replace'), file=logfile)
+                    logfile.flush()
             
-        if bowtierun.returncode:
-            return MapInfo(0, 0, 0, 0, errinfo, samplename, failedrun=True, bowtiecommand=bowtiecommand)
+                if bowtie_proc.returncode != 0:
+                    return MapInfo(0, 0, 0, 0, errinfo, samplename, failedrun=True, bowtiecommand=bowtie_cmd_str)
 
-        # Parse bowtie2 output
-        rereadmulttrans = re.search(r'tRNA Reads with multiple transcripts:(\d+)', errinfo)
-        rereadmultac = re.search(r'tRNA Reads with multiple anticodons:(\d+)', errinfo)
-        rereadmultamino = re.search(r'tRNA Reads with multiple aminos:(\d+)', errinfo)
-        rereadtrna = re.search(r'Total tRNA Reads:(\d+)', errinfo)
-        rereadsinglenon = re.search(r'Single mapped non-tRNAs:(\d+)', errinfo)
-        rereadmultiplenon = re.search(r'Multiply mapped non-tRNAs:(\d+)', errinfo)
-        
-        trnamapinfo = None
-        if rereadmulttrans and rereadmultac and rereadmultamino and rereadtrna and rereadsinglenon and rereadmultiplenon:
-             trnamapinfo = TRNAMapInfo(rereadmulttrans.group(1), rereadmultac.group(1), rereadmultamino.group(1), 
-                                       rereadtrna.group(1), rereadsinglenon.group(1), rereadmultiplenon.group(1)) 
+                # Parse bowtie2 output
+                rereadtotal = re.search(r'(\d+).*reads', errinfo)
+                rereadunmap = re.search(r'\s*(\d+).*0 times', errinfo)
+                rereadsingle = re.search(r'\s*(\d+).*exactly 1 time', errinfo)
+                rereadmult = re.search(r'\s*(\d+).*>1 times', errinfo)
+                
+                if rereadtotal and rereadunmap and rereadsingle and rereadmult:
+                    totalreads = rereadtotal.group(1)
+                    unmappedreads = rereadunmap.group(1)
+                    singlemaps = rereadsingle.group(1)
+                    multmaps = rereadmult.group(1)
+                    return MapInfo(singlemaps, multmaps, unmappedreads, totalreads, errinfo, samplename, bowtiecommand=bowtie_cmd_str, trnamapinfo=trnamapinfo)
+                else:
+                    print(f"Could not map {fastqfile}, check mapstats file", file=sys.stderr)
+                    print("Exiting...", file=sys.stderr)
+                    print(errinfo, file=sys.stderr)
+                    return MapInfo(0, 0, 0, 0, errinfo, samplename, failedrun=True, bowtiecommand=bowtie_cmd_str)
 
-        rereadtotal = re.search(r'(\d+).*reads', errinfo)
-        rereadunmap = re.search(r'\s*(\d+).*0 times', errinfo)
-        rereadsingle = re.search(r'\s*(\d+).*exactly 1 time', errinfo)
-        rereadmult = re.search(r'\s*(\d+).*>1 times', errinfo)
-        
-        if rereadtotal and rereadunmap and rereadsingle and rereadmult:
-            totalreads = rereadtotal.group(1)
-            unmappedreads = rereadunmap.group(1)
-            singlemaps = rereadsingle.group(1)
-            multmaps = rereadmult.group(1)
-            return MapInfo(singlemaps, multmaps, unmappedreads, totalreads, errinfo, samplename, bowtiecommand=bowtiecommand, trnamapinfo=trnamapinfo)
-        else:
-            print(f"Could not map {fastqfile}, check mapstats file", file=sys.stderr)
-            print("Exiting...", file=sys.stderr)
-            print(errinfo, file=sys.stderr)
-            return MapInfo(0, 0, 0, 0, errinfo, samplename, failedrun=True, bowtiecommand=bowtiecommand)
+            except Exception as e:
+                print(f"Error during mapping: {e}", file=sys.stderr)
+                if logfile:
+                    print(f"Error during mapping: {e}", file=logfile)
+                return MapInfo(0, 0, 0, 0, str(e), samplename, failedrun=True, bowtiecommand=bowtie_cmd_str)
 
     @staticmethod
     def checkheaders(bamname, fqname):
@@ -169,7 +330,7 @@ class MapReads:
             print(e, file=sys.stderr)
             sys.exit(1)
         newheader = bamfile.header
-        if 'PG' in newheader and len(newheader["PG"]) > 1 and newheader["PG"][1]["PN"] == "TRAX":
+        if 'PG' in newheader and len(newheader["PG"]) > 1 and newheader["PG"][1]["PN"] == "tRNAgraph":
             if newheader["RG"][0]["ID"] != fqname:
                 return False
         return True
@@ -285,7 +446,7 @@ class MapSamples:
         self.lazyremap = args.lazy
         self.nofrag = args.nofrag
         self.nosizefactors = args.nosizefactors
-        self.bamdir = args.bamdir if args.bamdir else "./"
+        self.bamdir = args.bamdir if args.bamdir else os.path.join("bam", self.expname)
         if args.threads:
             self.cores = args.threads
         else:
@@ -305,7 +466,6 @@ class MapSamples:
         self.makehubs = args.hub
         self.maponly = args.maponly
         self.dumpother = args.dumpother
-        self.traxmode = args.traxmode
         
         self.trnainfo = trnadatabase(self.dbname)
         self.expinfo = expdatabase(self.expname)
@@ -322,10 +482,17 @@ class MapSamples:
             os.makedirs(self.expname+"/unique")
         if not os.path.exists(self.expname+"/trna"):
             os.makedirs(self.expname+"/trna")
+        if not os.path.exists(self.bamdir):
+            os.makedirs(self.bamdir)
 
         # Expand dbname
         self.dbname = os.path.expanduser(self.dbname)
         
+        if self.hubonly:
+            print("Generating Track Hub...", file=sys.stderr)
+            self.createtrackhub()
+            return
+
         # Mapping Reads
         print("Mapping Reads", file=sys.stderr)
         self.mapsamples()
@@ -353,8 +520,6 @@ class MapSamples:
         orgtype = self.trnainfo.getorgtype()
         self.gettrnacoverage(orgtype)
         
-        self.gettraxqc()
-        
         if self.makehubs:
             self.createtrackhub()
 
@@ -370,9 +535,8 @@ class MapSamples:
         print(f"Mapping with {pool_size} concurrent jobs, {bowtie_threads} threads per job.", file=sys.stderr)
 
         # Initialize MapReads
-        scriptdir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../tRAX'))
         mapper = MapReads(bowtiedb=self.trnainfo.bowtiedb, trnafile=self.trnainfo.trnatable, 
-                          scriptdir=scriptdir, minnontrnasize=self.minnontrnasize, 
+                          minnontrnasize=self.minnontrnasize, 
                           local=self.local, threads=bowtie_threads)
         
         # Get samples
@@ -427,23 +591,6 @@ class MapSamples:
                 print("singlenon\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
                 print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
                 print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-        
-        if self.traxmode:
-            print("Generating legacy PCA plots...", file=sys.stderr)
-            plotsLegacyPCA.visualizer(self.expinfo.normalizedcounts, self.expinfo.pcaplot).plot()
-            plotsLegacyPCA.visualizer(self.expinfo.trnacounts, self.expinfo.pcatrnaplot).plot()
-            print("Generating legacy feature plots...", file=sys.stderr)
-            plotsLegacyGeneFeatures.visualizer(self.expinfo.genetypecounts, self.expinfo.genetypeplot).plot()
-            plotsLegacyFeatureTypes.visualizer(self.expinfo.trnaaminofile, self.expinfo.trnaaminoplot).plot()
-            plotsLegacyReadLength.visualizer(self.expinfo.trnalengthfile, self.expinfo.trnalengthplot).plot()
-            plotsLegacyMismatch.visualizer(self.expinfo.mismatchcountfile, self.expinfo.mismatchcountplot).plot()
-            # CCA plot usually runs on trnaendcounts
-            if os.path.exists(self.expinfo.trnaendfile):
-                 plotsLegacyCCA.visualizer(self.expinfo.trnaendfile, self.expinfo.trnaendfile.replace('.txt', '.pdf')).plot()
-            print("Generating legacy coverage plots...", file=sys.stderr)
-            plotsLegacyCoverage.visualizer(self.expinfo.trnacoveragefile, self.expinfo.trnacoverageplot).plot()
-            plotsLegacyLocusCoverage.visualizer(self.expinfo.locicoveragefile, self.expinfo.locicoverageplot).plot()
-            plotsLegacyMismatchBoxplot.visualizer(self.expinfo.trnacoveragefile, self.expinfo.expname+"/mismatch/mismatch_boxplot.pdf").plot()
 
     def makefeaturebed(self):
         allfeatfile = open(self.expinfo.allfeats, "w")
@@ -469,12 +616,6 @@ class MapSamples:
                             bedfile=self.bedfiles if self.bedfiles else [], trnacounts=self.expinfo.trnacounts,
                             trnaends=self.expinfo.trnaendfile, trnauniquecounts=self.expinfo.trnauniquefile,
                             nofrag=self.nofrag, cores=self.cores, maxmismatches=self.maxmismatches)
-        
-        if self.traxmode:
-            print("Generating legacy PCA plots...", file=sys.stderr)
-            plotsLegacyPCA.visualizer(self.expinfo.normalizedcounts, self.expinfo.pcaplot).plot()
-            plotsLegacyPCA.visualizer(self.expinfo.trnacounts, self.expinfo.pcatrnaplot).plot()
-            plotsLegacyScatter.visualizer(self.expinfo.normalizedcounts, self.expinfo.expname+"/scatter.pdf").plot()
 
     def run_deseq2(self):
         # Load counts
@@ -591,10 +732,6 @@ class MapSamples:
                 res_df.to_csv(out_file, sep='\t')
                 print(f"Saved DE results to {out_file}", file=sys.stderr)
                 
-                if self.traxmode:
-                    volcano_out = os.path.join(self.expinfo.expname, "de_results", f"{cond1}_vs_{cond2}_volcano.pdf")
-                    plotsLegacyVolcano.visualizer(out_file, volcano_out).plot()
-                
             except Exception as e:
                 print(f"Error running DE for {cond1} vs {cond2}: {e}", file=sys.stderr)
 
@@ -619,15 +756,6 @@ class MapSamples:
                                     countfile=self.expinfo.genetypecounts, realcountfile=self.expinfo.genetyperealcounts,
                                     bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
                                     countfrags=False, uniquename=self.expinfo.uniquename, cores=self.cores)
-        
-        if self.traxmode:
-            print("Generating legacy feature plots...", file=sys.stderr)
-            plotsLegacyGeneFeatures.visualizer(self.expinfo.genetypecounts, self.expinfo.genetypeplot).plot()
-            plotsLegacyFeatureTypes.visualizer(self.expinfo.trnaaminofile, self.expinfo.trnaaminoplot).plot()
-            plotsLegacyReadLength.visualizer(self.expinfo.trnalengthfile, self.expinfo.trnalengthplot).plot()
-            plotsLegacyMismatch.visualizer(self.expinfo.mismatchcountfile, self.expinfo.mismatchcountplot).plot()
-            if os.path.exists(self.expinfo.trnaendfile):
-                 plotsLegacyCCA.visualizer(self.expinfo.trnaendfile, self.expinfo.trnaendfile.replace('.txt', '.pdf')).plot()
 
     def gettrnacoverage(self, orgtype):
         if not self.nosizefactors:
@@ -647,16 +775,6 @@ class MapSamples:
                                  trnafasta=self.trnainfo.trnafasta, cores=self.cores,
                                  uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
                                  uniqueonly=self.uniqueonlycov, locibed=[], locistk=self.trnainfo.locialign)
-        
-        if self.traxmode:
-            print("Generating legacy coverage plots...", file=sys.stderr)
-            plotsLegacyCoverage.visualizer(self.expinfo.trnacoveragefile, self.expinfo.trnacoverageplot).plot()
-            plotsLegacyLocusCoverage.visualizer(self.expinfo.locicoveragefile, self.expinfo.locicoverageplot).plot()
-            plotsLegacyMismatchBoxplot.visualizer(self.expinfo.trnacoveragefile, self.expinfo.expname+"/mismatch/mismatch_boxplot.pdf").plot()
-
-    def gettraxqc(self):
-        toolsQC.main(samplefile=self.samplefilename, databasename=self.trnainfo.dbname,
-                    experimentname=self.expinfo.expname, tgirt=self.nofrag, output=self.expinfo.qaoutputname)
 
     def createtrackhub(self):
         hub_builder = toolsTrackHub.TrackHubBuilder(

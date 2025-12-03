@@ -92,7 +92,7 @@ class visualizer():
             axs[i[2],i[3]].set_xticks([])
             axs[i[2],i[3]].set_yticks([])
         # Add title
-        fig.suptitle(f'UMAP Projection of tRNAs sorted by tRAX {umapgroup}', y=0.925)
+        fig.suptitle(f'UMAP Projection of tRNAs sorted by tRNAgraph {umapgroup}', y=0.925)
         # Save figure
         if self.threaded:
             self.threaded += f'Saving figure: {output}umap_{umapgroup}_overview.pdf\n'
@@ -186,9 +186,9 @@ class visualizer():
                 axs.legend(handles, labels, bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0., frameon=False, title=clustgrp)
         # Add title
         if numeric:
-            plt.suptitle(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
+            plt.suptitle(f'UMAP projection of {clustgrp} by tRNAgraph {umapgroup}')
         else:
-            plt.title(f'UMAP projection of {clustgrp} by tRAX {umapgroup}')
+            plt.title(f'UMAP projection of {clustgrp} by tRNAgraph {umapgroup}')
         # Set layout to equal with gca
         # plt.gca().set_aspect('equal', adjustable='box')
         # Save figure

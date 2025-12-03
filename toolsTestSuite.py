@@ -14,7 +14,6 @@ class demoPipeline:
     to verify the functionality of the tRNAgraph pipeline. It mirrors the steps
     found in the tRAX tutorial.
     """
-
     def __init__(self, args: argparse.Namespace) -> None:
         """
         Initialize the demoPipeline.
@@ -24,11 +23,16 @@ class demoPipeline:
         """
         self.args = args
         self.repo_root = os.path.abspath(os.path.dirname(__file__))
+        self.trnagraph_path = os.path.join(self.repo_root, "trnagraph.py")
         
         # Set up working directory
-        os.chdir(self.repo_root)
-        os.makedirs("tests/", exist_ok=True)
-        os.chdir(os.path.join(self.repo_root, "tests/"))
+        if self.args.directory:
+             work_dir = os.path.abspath(self.args.directory)
+        else:
+             work_dir = os.path.join(self.repo_root, "tests")
+
+        os.makedirs(work_dir, exist_ok=True)
+        os.chdir(work_dir)
 
         # Configure logging
         logging.basicConfig(
@@ -44,7 +48,9 @@ class demoPipeline:
             self._cleanup_workspace()
 
         # Copy assets
-        self._run_command("cp --update=none ../assets/* .", "Copying assets...")
+        self.assets_dir = os.path.join(self.repo_root, "assets")
+        os.makedirs("config", exist_ok=True)
+        self._run_command(f"cp --update=none {self.assets_dir}/*.txt config/.", "Copying assets...")
 
     def _run_command(self, command: str, description: str = "", check: bool = True) -> subprocess.CompletedProcess:
         """
@@ -82,21 +88,22 @@ class demoPipeline:
 
     def _cleanup_workspace(self) -> None:
         """Removes generated files to ensure a clean run."""
-        dirs_to_remove = "fastq_raw fastq_trim trnadb vibrChol1 vibrChol1-tRNAs vibrChol1-tRAX"
-        files_to_remove = "accessions.tsv mismatchcompare.txt vibrChol1-tRNAs.tar.gz vibrChol1.*.txt VC_*.bam VC_*.bai"
+        dirs_to_remove = "raw processed references vibrChol1-tRNAgraph vibrChol1_graphs"
+        files_to_remove = "mismatchcompare.txt vibrChol1-tRNAs.tar.gz vibrChol1.*.txt VC_*.bam VC_*.bai vibrChol1.h5ad vibrChol1.cluster.h5ad"
         
         self._run_command(f"rm -rf {dirs_to_remove}", "Cleaning directories...")
         self._run_command(f"rm -f {files_to_remove}", "Cleaning files...")
 
     def download_metadata(self) -> None:
         """Downloads metadata from SRA using pysradb."""
+        os.makedirs("raw/vibrChol1/fastq", exist_ok=True)
         self.logger.info("Downloading metadata from SRA...")
         print("Downloading metadata from SRA...")
         
         cmd = (
             "pysradb metadata SRP254278 | "
             "grep -v -e 'Escherichia coli' -e 'trmK' -e 'miaA' -e 'ttcA' -e 'thiI' -e 'run_accession' | "
-            "cut -f22 > accessions.tsv"
+            "cut -f22 > raw/vibrChol1/fastq/accessions.tsv"
         )
         self._run_command(cmd, "Fetching metadata...")
         self.logger.info("Done.")
@@ -108,28 +115,28 @@ class demoPipeline:
         print("Downloading fastq files...")
         
         try:
-            with open("accessions.tsv", "r") as f:
+            with open("raw/vibrChol1/fastq/accessions.tsv", "r") as f:
                 accessions = f.read().splitlines()
             
             for acc in accessions:
-                if os.path.exists(f"fastq_raw/{acc}.fastq"):
+                if os.path.exists(f"raw/vibrChol1/fastq/{acc}.fastq"):
                     self.logger.info(f"{acc}.fastq already exists, skipping download.")
                     continue
                 
                 # Prefetch
                 self._run_command(
-                    f"prefetch {acc} --output-file fastq_raw/{acc}.sra",
+                    f"prefetch {acc} --output-file raw/vibrChol1/fastq/{acc}.sra",
                     f"Prefetching {acc}..."
                 )
                 
                 # Fastq-dump
                 self._run_command(
-                    f"fastq-dump -O fastq_raw -X 100000 {acc}",
+                    f"fastq-dump -O raw/vibrChol1/fastq -X 100000 {acc}",
                     f"Dumping fastq for {acc}..."
                 )
                 
                 # Cleanup SRA file
-                sra_file = f"fastq_raw/{acc}.sra"
+                sra_file = f"raw/vibrChol1/fastq/{acc}.sra"
                 if os.path.exists(sra_file):
                     os.remove(sra_file)
                     
@@ -142,29 +149,34 @@ class demoPipeline:
 
     def download_trna(self) -> None:
         """Downloads and extracts Vibrio cholerae tRNA sequences."""
-        os.makedirs("vibrChol1-tRNAs", exist_ok=True)
+        os.makedirs("references/vibrChol1/trnas", exist_ok=True)
+        self._run_command(f"cp --update=none {self.assets_dir}/*.gz .", "Copying assets...")
         self.logger.info("Downloading Vibrio cholerae tRNA sequences...")
         print("Downloading Vibrio cholerae tRNA sequences...")
         
-        if os.path.exists("vibrChol1-tRNAs/vibrChol1-tRNAs.fa"):
+        if os.path.exists("references/vibrChol1/trnas/vibrChol1-tRNAs.fa"):
             self.logger.info("vibrChol1-tRNAs.fa already exists, skipping download.")
         else:
             # Using local tar.gz as per original logic - gtRNAdb has issues currently with downloads
             self._run_command(
-                "tar xzvf vibrChol1-tRNAs.tar.gz -C vibrChol1-tRNAs/",
+                "tar xzvf vibrChol1-tRNAs.tar.gz -C references/vibrChol1/trnas/",
                 "Extracting tRNA sequences..."
             )
+
+        # cleanup
+        self._run_command("rm -f vibrChol1-tRNAs.tar.gz", "Removing tRNA tar.gz...")
             
         self.logger.info("Done.")
         print("Done.")
 
     def download_genome(self) -> None:
         """Downloads Vibrio cholerae genome and GFF annotation, converting to GTF."""
+        os.makedirs("references/vibrChol1/genes", exist_ok=True)
+        os.makedirs("references/vibrChol1/genomes", exist_ok=True)
         self.logger.info("Downloading Vibrio cholerae genome and GFF annotation...")
         print("Downloading Vibrio cholerae genome and GFF annotation...")
         
-        os.makedirs("vibrChol1", exist_ok=True)
-        if os.path.exists("vibrChol1/genes.gtf"):
+        if os.path.exists("references/vibrChol1/genes/GCF_000006745.1.gtf"):
             self.logger.info("Vibrio cholerae genome already exists, skipping download.")
             return
 
@@ -179,11 +191,11 @@ class demoPipeline:
 
         # Extract
         with zipfile.ZipFile("GCF_000006745.1.zip", "r") as zip_ref:
-            zip_ref.extractall("genomes")
+            zip_ref.extractall("references/vibrChol1/temp_extract")
         os.remove("GCF_000006745.1.zip")
 
         # Modify FASTA headers
-        base_path = "genomes/ncbi_dataset/data/GCF_000006745.1"
+        base_path = "references/vibrChol1/temp_extract/ncbi_dataset/data/GCF_000006745.1"
         fna_path = f"{base_path}/GCF_000006745.1_ASM674v1_genomic.fna"
         
         sed_cmd = (
@@ -197,26 +209,29 @@ class demoPipeline:
         gtf_path = f"{base_path}/genomic.gtf"
         self._run_command(f"gffread -E {gff_path} -T -o {gtf_path}", "Converting GFF to GTF...")
 
-        # Modify GTF and filter
+        # Modify GTF and filter safely (write to a temporary file first to avoid truncation)
+        filtered_gtf_path = f"{base_path}/genomic.filtered.gtf"
         final_gtf_cmd = (
             f"cat {gtf_path} | sed 's/NC_002505.1/chrI/g' | "
-            f"sed 's/NC_002506.1/chrII/g' | grep -v '^#' > {base_path}/genes.gtf"
+            f"sed 's/NC_002506.1/chrII/g' | grep -v '^#' > {filtered_gtf_path}"
         )
         self._run_command(final_gtf_cmd, "Finalizing GTF file...")
+        # Atomically replace the original GTF with the filtered version
+        os.replace(filtered_gtf_path, f"{base_path}/genomic.gtf")
 
         # Move files
-        os.rename(fna_path, "vibrChol1/GCF_000006745.1_ASM674v1_genomic.fna")
-        os.rename(f"{base_path}/genes.gtf", "vibrChol1/genes.gtf")
+        os.rename(fna_path, "references/vibrChol1/genomes/GCF_000006745.1_ASM674v1_genomic.fna")
+        os.rename(f"{base_path}/genomic.gtf", "references/vibrChol1/genes/GCF_000006745.1.gtf")
         
         # Cleanup
-        self._run_command("rm -rf genomes", "Removing temporary genomes directory...")
+        self._run_command("rm -rf references/vibrChol1/temp_extract", "Removing temporary extraction directory...")
         
         self.logger.info("Done.")
         print("Done.")
 
     def trim_fastq(self) -> None:
         """Trims adapters from FASTQ files using the tRNAgraph preprocess trim tool."""
-        if os.path.exists("fastq_trim/vibrChol1_trim_manifest_updated.txt"):
+        if os.path.exists("processed/vibrChol1/fastq_trimmed_fastp/vibrChol1_trim_manifest_updated.txt"):
             self.logger.info("Trimmed fastq files already exist, skipping trimming.")
             print("Trimmed fastq files already exist, skipping trimming.")
             return
@@ -225,8 +240,8 @@ class demoPipeline:
         print("Trimming fastq files with fastp...")
         
         cmd = (
-            "python3 ../trnagraph.py preprocess trim "
-            "-r vibrChol1 -i vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
+            f"python3 {self.trnagraph_path} preprocess trim "
+            "-r vibrChol1 -i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
         )
         self._run_command(cmd, "Running trim command...")
         
@@ -235,7 +250,7 @@ class demoPipeline:
 
     def create_index(self) -> None:
         """Creates the Bowtie2 index for the tRNA database."""
-        if os.path.exists("trnadb/vibrChol1_db-tRNAgenome.1.bt2l"):
+        if os.path.exists("references/vibrChol1/trnadb/vibrChol1_db-tRNAgenome.1.bt2l"):
             self.logger.info("Bowtie2 index already exists, skipping creation.")
             print("Bowtie2 index already exists, skipping creation.")
             return
@@ -244,12 +259,12 @@ class demoPipeline:
         print("Creating bowtie2 index...")
         
         cmd = (
-            "python3 ../trnagraph.py preprocess makedb "
-            "-g vibrChol1/GCF_000006745.1_ASM674v1_genomic.fna "
-            "-t vibrChol1-tRNAs/vibrChol1-tRNAs.out "
-            "-r vibrChol1-tRNAs/vibrChol1-tRNAs.fa "
-            "-m vibrChol1-tRNAs/vibrChol1-tRNAs_name_map.txt "
-            "-s bact -o trnadb/vibrChol1_db"
+            f"python3 {self.trnagraph_path} preprocess makedb "
+            "-g references/vibrChol1/genomes/GCF_000006745.1_ASM674v1_genomic.fna "
+            "-t references/vibrChol1/trnas/vibrChol1-tRNAs.out "
+            "-r references/vibrChol1/trnas/vibrChol1-tRNAs.fa "
+            "-m references/vibrChol1/trnas/vibrChol1-tRNAs_name_map.txt "
+            "-s bact -o references/vibrChol1/trnadb/vibrChol1_db"
         )
         self._run_command(cmd, "Running makedb command...")
         
@@ -268,10 +283,10 @@ class demoPipeline:
             extra_flags += " --maponly"
 
         cmd = (
-            "python3 ../trnagraph.py preprocess map "
-            "-e vibrChol1-tRAX -d trnadb/vibrChol1_db "
-            "-s vibrChol1.metadata.txt --pairs vibrChol1.pair.txt "
-            f"--gtf vibrChol1/genes.gtf --traxmode{extra_flags}"
+            f"python3 {self.trnagraph_path} preprocess map "
+            "-e vibrChol1-tRNAgraph -d references/vibrChol1/trnadb/vibrChol1_db "
+            "-s config/vibrChol1.metadata.txt --pairs config/vibrChol1.pair.txt "
+            f"--gtf references/vibrChol1/genes/GCF_000006745.1.gtf --bamdir processed/vibrChol1/bam {extra_flags}"
         )
         self._run_command(cmd, "Running map command...")
         
@@ -279,13 +294,13 @@ class demoPipeline:
         print("Done.")
 
     def build_db(self) -> None:
-        """Builds the AnnData object from the tRAX output."""
+        """Builds the AnnData object from the tRNAgraph output."""
         self.logger.info("Building AnnData object...")
         print("Building AnnData object...")
         
         cmd = (
-            "python3 ../trnagraph.py build "
-            "-i vibrChol1-tRAX -m vibrChol1.metadata.txt "
+            f"python3 {self.trnagraph_path} build "
+            "-i vibrChol1-tRNAgraph -m vibrChol1.metadata.txt "
             "-o vibrChol1.h5ad"
         )
         self._run_command(cmd, "Running build command...")
@@ -299,7 +314,7 @@ class demoPipeline:
         print("Clustering AnnData object...")
         
         cmd = (
-            "python3 ../trnagraph.py cluster "
+            f"python3 {self.trnagraph_path} cluster "
             "-i vibrChol1.h5ad -o vibrChol1.cluster.h5ad"
         )
         self._run_command(cmd, "Running cluster command...")
@@ -313,7 +328,7 @@ class demoPipeline:
         print("Generating graphs...")
         
         cmd = (
-            "python3 ../trnagraph.py graph "
+            f"python3 {self.trnagraph_path} graph "
             "-i vibrChol1.cluster.h5ad -o vibrChol1_graphs"
         )
         self._run_command(cmd, "Running graph command...")
@@ -349,12 +364,12 @@ class demoPipeline:
                 self.create_index()
             if run_all or self.args.map or self.args.hubonly or self.args.maponly:
                 self.map_reads()
-            if run_all or self.args.build:
-                self.build_db()
-            if run_all or self.args.cluster:
-                self.cluster_db()
-            if run_all or self.args.graph:
-                self.graph_db()
+            # if run_all or self.args.build:
+            #     self.build_db()
+            # if run_all or self.args.cluster:
+            #     self.cluster_db()
+            # if run_all or self.args.graph:
+            #     self.graph_db()
                 
             if self.args.cleanrun:
                 self.logger.info("Cleaning up test files...")

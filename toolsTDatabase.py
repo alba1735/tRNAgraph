@@ -206,18 +206,18 @@ class tRNADatabaseBuilder:
         # Determine Covariance Models
         prok_mode = False
         if self.orgmode == "euk":
-            mature_model = self.script_dir + 'cm/trnamature-euk.cm'
-            trna_model = self.script_dir + 'cm/TRNAinf-euk.cm'
+            mature_model = self.script_dir + 'assets/cm/trnamature-euk.cm'
+            trna_model = self.script_dir + 'assets/cm/TRNAinf-euk.cm'
         elif self.orgmode == "arch":
-            mature_model = self.script_dir + 'cm/trnamature-arch.cm'
-            trna_model = self.script_dir + 'cm/TRNAinf-arch.cm'
+            mature_model = self.script_dir + 'assets/cm/trnamature-arch.cm'
+            trna_model = self.script_dir + 'assets/cm/TRNAinf-arch.cm'
             prok_mode = True
         elif self.orgmode == "mito":
-            mature_model = self.script_dir + 'cm/TRNAMatureMitoinf.cm'
-            trna_model = self.script_dir + 'cm/TRNAinf.cm'
+            mature_model = self.script_dir + 'assets/cm/TRNAMatureMitoinf.cm'
+            trna_model = self.script_dir + 'assets/cm/TRNAinf.cm'
         elif self.orgmode == "bact":
-            mature_model = self.script_dir + 'cm/trnamature-bact.cm'
-            trna_model = self.script_dir + 'cm/TRNAinf-bact.cm'
+            mature_model = self.script_dir + 'assets/cm/trnamature-bact.cm'
+            trna_model = self.script_dir + 'assets/cm/TRNAinf-bact.cm'
             prok_mode = True
             
         if self.forcecca:
