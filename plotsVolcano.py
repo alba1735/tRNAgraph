@@ -3,7 +3,7 @@
 import seaborn as sns
 import numpy as np
 
-import toolsTG
+from . import toolsTG
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300

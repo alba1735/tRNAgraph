@@ -50,3 +50,11 @@
 #     if adata.obs[self.coverage_obs].isna().any().any():
 #         raise ValueError('Coverage obs contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
 #                         'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.') -->
+
+## Important to come back to
+
+- Remove the cutadapt stuff from the test suite once done
+- adata creation debug warnings
+- lazy remap?
+- remove de_results?
+- log2 shift to deseq2?

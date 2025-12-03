@@ -162,24 +162,11 @@ python trnagraph.py preprocess map -e <experiment> -d <database> -s <samples> [o
 - `-e` or `--experiment`: Experiment name.
 - `-d` or `--database`: Name of the tRNA database (created with `makedb`).
 - `-s` or `--samples`: Sample file.
-- `--gtf`: The Ensembl gene list for that species.
-- `--pairs`: List of sample pairs to compare.
-- `--bed`: Additional bed files for feature list.
 - `--lazy`: Skip mapping reads if bam files exist.
-- `--nofrag`: Omit fragment determination (Used for TGIRT mapping).
-- `--nosizefactors`: Don't use Deseq size factors in plotting.
-- `--maxmismatches`: Maximum allowed mismatches.
-- `--mincoverage`: Minimum read count for coverage plots.
 - `--minnontrnasize`: Minimum read length for non-tRNAs (default: 20).
-- `--paironly`: Generate only pair files (for adding a pair file after initial processing).
-- `--hub`: Make a track hub.
-- `--hubonly`: Only make the track hub.
-- `--maponly`: Only do the mapping step.
-- `--dumpother`: Dump 'other' features when counting gene types.
 - `--local`: Use local bam mapping.
 - `--skipcheck`: Skips the check that the fq files match bam files.
 - `--bamdir`: Directory for placing bam files.
-- `--uniqueonly`: Show only unique coverage.
 
 - `-n` or `--threads`: Number of threads to use (default: 8).
   - **Note:** The number of threads used for mapping is highly system dependent. Bowtie2 can be memory intensive, and using too many threads can cause the system to run out of memory or lose performance because of overhead. It is recommended to use a number of threads that is appropriate for your system's available memory and CPU cores although between 8-10 has been commonly used on high performance machines as an optimal range and starting point.
@@ -218,6 +205,28 @@ python trnagraph.py build -i <tRAX_directory> -s <tRAX_samples_file> -o <output_
 - `-o` or `--output` is the path to the output file. The output file should be a `.h5ad` file. By default, the output file will be named `h5ad/trnagraph.h5ad` if no path is provided.
 - `--log` is used to output a log of the shell commands that generate the AnnData object. By default, the log will not be output.
 - `-q` or `--quiet` suppresses the shell commands' output. By default, the output will be displayed.
+
+#### Analysis
+
+The `build` command can also be used to run the full analysis pipeline (counting, DESeq2, coverage) before building the AnnData object. To do this, provide the following arguments:
+
+- `-e` or `--experiment`: Experiment name.
+- `-d` or `--database`: Name of the tRNA database (created with `makedb`).
+- `-s` or `--samples`: Sample file.
+- `--gtf`: The Ensembl gene list for that species.
+- `--pairs`: List of sample pairs to compare.
+- `--bed`: Additional bed files for feature list.
+- `--nofrag`: Omit fragment determination (Used for TGIRT mapping).
+- `--nosizefactors`: Don't use Deseq size factors in plotting.
+- `--maxmismatches`: Maximum allowed mismatches.
+- `--mincoverage`: Minimum read count for coverage plots.
+- `--minnontrnasize`: Minimum read length for non-tRNAs (default: 20).
+- `--hub`: Make a track hub.
+- `--hubonly`: Only make the track hub.
+- `--dumpother`: Dump 'other' features when counting gene types.
+- `--bamdir`: Directory for placing bam files.
+- `--uniqueonly`: Show only unique coverage.
+- `-n` or `--threads`: Number of threads to use (default: 8).
 
 ### Cluster
 

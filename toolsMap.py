@@ -13,16 +13,9 @@ from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
-import pandas as pd
-import numpy as np
-from pydeseq2.dds import DeseqDataSet
-from pydeseq2.ds import DeseqStats
 import pysam
 
-import toolsTG
-import toolsCountReads
-import toolsGetCoverage
-import toolsTrackHub
+from . import toolsTG
 
 
 
@@ -368,72 +361,80 @@ class trnadatabase:
 class expdatabase:
     def __init__(self, expname):
         self.expname = expname
-        self.uniquename = expname+"/unique/"+expname+"-unique"
-        self.allfeats = expname+"/"+expname+"-allfeats.bed"
+        self.resultsdir = os.path.join(expname, "results")
+        self.graphsdir = os.path.join(expname, "graphs")
         
-        self.mapinfo = expname+"/"+expname+"-mapinfo.txt"
-        self.mapplot = expname+"/"+expname+"-mapinfo.pdf"
+        # Helper to join paths
+        def res_path(path): return os.path.join(self.resultsdir, path)
+        def graph_path(path): return os.path.join(self.graphsdir, path)
 
-        self.trnamapfile = expname+"/"+expname+"-trnamapinfo.txt"
-        self.trnamapplot = expname+"/"+expname+"-trnamapinfo.pdf"
+        self.uniquename = res_path("unique/"+expname+"-unique")
+        self.allfeats = res_path(expname+"-allfeats.bed")
         
-        self.maplog = expname+"/"+expname+"-mapstats.txt"
-        self.genetypes = expname+"/"+expname+"-genetypes.txt"
-        self.genecounts = expname+"/"+expname+"-readcounts.txt"
-        self.trnacounts = expname+"/"+expname+"-trnacounts.txt"
-        
-        self.normalizedcounts = expname+"/"+expname+"-normalizedreadcounts.txt"
-        self.normalizedtrnacounts = expname+"/trna/"+expname+"-trna_normalizedreadcounts.txt"
-        self.sizefactors = expname+"/"+expname+"-SizeFactors.txt"
-        self.trnasizefactors = expname+"/trna/"+expname+"-SizeFactors.txt"
+        self.mapinfo = res_path(expname+"-mapinfo.txt")
+        self.mapplot = graph_path(expname+"-mapinfo.pdf")
 
-        self.genetypecounts=expname+"/"+expname+"-typecounts.txt"
-        self.genetypeplot=expname+"/"+expname+"-typecounts.pdf"
+        self.trnamapfile = res_path(expname+"-trnamapinfo.txt")
+        self.trnamapplot = graph_path(expname+"-trnamapinfo.pdf")
+        
+        self.maplog = res_path(expname+"-mapstats.txt")
+        self.genetypes = res_path(expname+"-genetypes.txt")
+        self.genecounts = res_path(expname+"-readcounts.txt")
+        self.trnacounts = res_path(expname+"-trnacounts.txt")
+        
+        self.normalizedcounts = res_path(expname+"-normalizedreadcounts.txt")
+        self.normalizedtrnacounts = res_path("trna/"+expname+"-trna_normalizedreadcounts.txt")
+        self.sizefactors = res_path(expname+"-SizeFactors.txt")
+        self.trnasizefactors = res_path("trna/"+expname+"-trna_SizeFactors.txt")
 
-        self.genetyperealcounts=expname+"/"+expname+"-typerealcounts.txt"
-        self.genetyperealplot=expname+"/"+expname+"-typerealcounts.pdf"
-        
-        self.trnaaminofile=expname+"/"+expname+"-aminocounts.txt"
-        self.trnauniqaminofile=expname+"/unique/"+expname+"-unique-aminos.txt" 
+        self.genetypecounts=res_path(expname+"-typecounts.txt")
+        self.genetypeplot=graph_path(expname+"-typecounts.pdf")
 
-        self.trnaaminoplot=expname+"/"+expname+"-aminocounts.pdf"
-        self.trnaaminorealplot=expname+"/"+expname+"-aminorealcounts.pdf"
+        self.genetyperealcounts=res_path(expname+"-typerealcounts.txt")
+        self.genetyperealplot=graph_path(expname+"-typerealcounts.pdf")
         
-        self.trnaanticodonfile=expname+"/"+expname+"-anticodoncounts.txt"
-        self.trnauniqanticodonfile=expname+"/unique/"+expname+"-unique-anticodons.txt"
-        self.trnauniqcountsfile=expname+"/unique/"+expname+"-unique-trnas.txt"
-        
-        self.trnalengthfile=expname+"/"+expname+"-readlengths.txt"
-        self.trnalengthplot=expname+"/"+expname+"-readlengths.pdf"
-        
-        self.mismatchcountfile=expname+"/"+expname+"-mismatches.txt"
-        self.mismatchcountplot=expname+"/"+expname+"-mismatches.pdf"
-        
-        self.trnacoveragefile=expname+"/"+expname+"-coverage.txt"
-        self.trnacoverageplot=expname+"/"+expname+"-coverage.pdf"
-        self.trnacombinecoverageplot=expname+"/"+expname+"-combinecoverage.pdf"
-        
-        self.trnauniqcoveragefile=expname+"/"+expname+"-uniqcoverage.txt"
+        self.trnaaminofile=res_path(expname+"-aminocounts.txt")
+        self.trnauniqaminofile=res_path("unique/"+expname+"-unique-aminos.txt") 
 
-        self.locicoveragefile=expname+"/pretRNAs/"+expname+"-pretRNAcoverage.txt"
-        self.locicoverageplot=expname+"/pretRNAs/"+expname+"-pretRNAcoverage.pdf"
-        self.locicombinecoverageplot=expname+"/pretRNAs/"+expname+"-pretRNAcombinecoverage.pdf"
+        self.trnaaminoplot=graph_path(expname+"-aminocounts.pdf")
+        self.trnaaminorealplot=graph_path(expname+"-aminorealcounts.pdf")
         
-        self.trnamismatchfile = expname+"/mismatch/"+expname+"-mismatchcoverage.txt"
-        self.trnamismatchplot = expname+"/mismatch/"+expname+"-mismatchcoverage.pdf"
+        self.trnaanticodonfile=res_path(expname+"-anticodoncounts.txt")
+        self.trnauniqanticodonfile=res_path("unique/"+expname+"-unique-anticodons.txt")
+        self.trnauniqcountsfile=res_path("unique/"+expname+"-unique-trnas.txt")
         
-        self.trnadeletefile = expname+"/mismatch/"+expname+"-deletecoverage.txt"
-        self.trnadeleteplot = expname+"/mismatch/"+expname+"-deletecoverage.pdf"
+        self.trnalengthfile=res_path(expname+"-readlengths.txt")
+        self.trnalengthplot=graph_path(expname+"-readlengths.pdf")
         
-        self.trnamismatchreport = expname+"/mismatch/"+expname+"-mismatchreport.txt"
-        self.trnauniquefile=expname+"/unique/"+expname+"-trnauniquecounts.txt"
-        self.trnaendfile=expname+"/"+expname+"-trnaendcounts.txt"
+        self.mismatchcountfile=res_path(expname+"-mismatches.txt")
+        self.mismatchcountplot=graph_path(expname+"-mismatches.pdf")
         
-        self.pcaplot = expname+"/"+expname+"-pca.pdf"
-        self.pcatrnaplot = expname+"/"+expname+"-pcatrna.pdf"
-        self.pcaacplot = expname+"/unique/"+expname+"-pcaac.pdf"
+        self.trnacoveragefile=res_path(expname+"-coverage.txt")
+        self.trnacoverageplot=graph_path(expname+"-coverage.pdf")
+        self.trnacombinecoverageplot=graph_path(expname+"-combinecoverage.pdf")
+        
+        self.trnauniqcoveragefile=res_path(expname+"-uniqcoverage.txt")
 
-        self.qaoutputname = expname+"/"+expname+"-qa.html"
+        self.locicoveragefile=res_path("pretRNAs/"+expname+"-pretRNAcoverage.txt")
+        self.locicoverageplot=graph_path("pretRNAs/"+expname+"-pretRNAcoverage.pdf")
+        self.locicombinecoverageplot=graph_path("pretRNAs/"+expname+"-pretRNAcombinecoverage.pdf")
+        
+        self.trnamismatchfile = res_path("mismatch/"+expname+"-mismatchcoverage.txt")
+        self.sigmismatchfile = res_path("mismatch/"+expname+"-sigmismatch.txt")
+        self.trnamismatchplot = graph_path("mismatch/"+expname+"-mismatchcoverage.pdf")
+        
+        self.trnadeletefile = res_path("mismatch/"+expname+"-deletecoverage.txt")
+        self.trnadeleteplot = graph_path("mismatch/"+expname+"-deletecoverage.pdf")
+        
+        self.trnamismatchreport = res_path("mismatch/"+expname+"-mismatchreport.txt")
+        self.trnauniquefile=res_path("unique/"+expname+"-trnauniquecounts.txt")
+        self.trnaendfile=res_path(expname+"-trnaendcounts.txt")
+        
+        self.pcaplot = graph_path(expname+"-pca.pdf")
+        self.pcatrnaplot = graph_path(expname+"-pcatrna.pdf")
+        self.pcaacplot = graph_path("unique/"+expname+"-pcaac.pdf")
+
+        self.qaoutputname = res_path(expname+"-qa.html")
 
 class MapSamples:
     def __init__(self, args):
@@ -441,11 +442,7 @@ class MapSamples:
         self.dbname = args.database
         self.expname = args.experiment
         self.samplefilename = args.samples
-        self.ensgtf = args.gtf
-        self.bedfiles = args.bed
         self.lazyremap = args.lazy
-        self.nofrag = args.nofrag
-        self.nosizefactors = args.nosizefactors
         self.bamdir = args.bamdir if args.bamdir else os.path.join("bam", self.expname)
         if args.threads:
             self.cores = args.threads
@@ -457,15 +454,6 @@ class MapSamples:
         self.minnontrnasize = args.minnontrnasize
         self.local = args.local
         self.skipfqcheck = args.skipcheck
-        self.maxmismatches = args.maxmismatches
-        self.mincoverage = args.mincoverage
-        self.uniqueonlycov = args.uniqueonly
-        self.pairfile = args.pairs
-        self.paironly = args.paironly
-        self.hubonly = args.hubonly
-        self.makehubs = args.hub
-        self.maponly = args.maponly
-        self.dumpother = args.dumpother
         
         self.trnainfo = trnadatabase(self.dbname)
         self.expinfo = expdatabase(self.expname)
@@ -474,54 +462,21 @@ class MapSamples:
         # Create directories
         if not os.path.exists(self.expname):
             os.makedirs(self.expname)
-        if not os.path.exists(self.expname+"/mismatch"):
-            os.makedirs(self.expname+"/mismatch")
-        if not os.path.exists(self.expname+"/pretRNAs"):
-            os.makedirs(self.expname+"/pretRNAs")
-        if not os.path.exists(self.expname+"/unique"):
-            os.makedirs(self.expname+"/unique")
-        if not os.path.exists(self.expname+"/trna"):
-            os.makedirs(self.expname+"/trna")
         if not os.path.exists(self.bamdir):
             os.makedirs(self.bamdir)
+            
+        # Create results and graphs directories
+        if not os.path.exists(self.expinfo.resultsdir):
+            os.makedirs(self.expinfo.resultsdir)
+        if not os.path.exists(self.expinfo.graphsdir):
+            os.makedirs(self.expinfo.graphsdir)
 
         # Expand dbname
         self.dbname = os.path.expanduser(self.dbname)
         
-        if self.hubonly:
-            print("Generating Track Hub...", file=sys.stderr)
-            self.createtrackhub()
-            return
-
         # Mapping Reads
         print("Mapping Reads", file=sys.stderr)
         self.mapsamples()
-        
-        if self.maponly:
-            return
-
-        self.makefeaturebed()
-        
-        # Counting Reads
-        print("Counting Reads", file=sys.stderr)
-        self.countfeatures()
-        
-        print("Analyzing counts", file=sys.stderr)
-        # DESeq2 analysis using PyDESeq2
-        if not self.nosizefactors:
-            self.run_deseq2()
-            
-        # Counting Read Types
-        print("Counting Read Types", file=sys.stderr)
-        self.counttypes()
-        
-        # Coverage plots
-        print("Generating Read Coverage plots", file=sys.stderr)
-        orgtype = self.trnainfo.getorgtype()
-        self.gettrnacoverage(orgtype)
-        
-        if self.makehubs:
-            self.createtrackhub()
 
     def mapsamples(self):
         # Calculate resource allocation
@@ -591,196 +546,3 @@ class MapSamples:
                 print("singlenon\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
                 print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
                 print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-
-    def makefeaturebed(self):
-        allfeatfile = open(self.expinfo.allfeats, "w")
-        for currfeature in toolsTG.readbed(self.trnainfo.maturetrnas):
-            print(currfeature.bedstring(), file=allfeatfile)
-        for currfeature in toolsTG.readbed(self.trnainfo.locifile):
-            print(currfeature.bedstring(), file=allfeatfile)
-        if self.ensgtf:
-            for currfeature in toolsTG.readgtf(self.ensgtf):
-                print(currfeature.bedstring(name = currfeature.data["genename"]), file=allfeatfile)
-        if self.bedfiles:
-            for currbed in self.bedfiles:
-                for currfeature in toolsTG.readbed(currbed):
-                    print(currfeature.bedstring(), file=allfeatfile)
-        allfeatfile.close()
-
-    def countfeatures(self):
-        toolsCountReads.countreads_main(samplefile=self.samplefilename, ensemblgtf=self.ensgtf,
-                            maturetrnas=[self.trnainfo.maturetrnas], bamdir=self.bamdir,
-                            otherseqs=self.trnainfo.otherseqs, trnaloci=[self.trnainfo.locifile],
-                            removepseudo=True, genetypefile=self.expinfo.genetypes,
-                            trnatable=self.trnainfo.trnatable, countfile=self.expinfo.genecounts,
-                            bedfile=self.bedfiles if self.bedfiles else [], trnacounts=self.expinfo.trnacounts,
-                            trnaends=self.expinfo.trnaendfile, trnauniquecounts=self.expinfo.trnauniquefile,
-                            nofrag=self.nofrag, cores=self.cores, maxmismatches=self.maxmismatches)
-
-    def run_deseq2(self):
-        # Load counts
-        counts_df = pd.read_csv(self.expinfo.genecounts, sep='\t', index_col=0)
-        # Transpose because PyDESeq2 expects samples as rows
-        counts_df = counts_df.T
-        
-        # Load sample info
-        try:
-            # Use sep=None to auto-detect delimiter (handles tabs or spaces)
-            sample_df = pd.read_csv(self.samplefilename, sep=None, engine='python', header=None, names=['sample', 'condition', 'replicate'])
-            sample_df.set_index('sample', inplace=True)
-        except Exception as e:
-            print(f"Error reading sample file {self.samplefilename}: {e}", file=sys.stderr)
-            return
-        
-        # Filter samples that are in counts
-        sample_df = sample_df.loc[counts_df.index]
-        
-        # Run DESeq2
-        if counts_df.empty or (counts_df.sum().sum() == 0):
-            print("Warning: Counts matrix is empty or all zeros. Skipping DESeq2.", file=sys.stderr)
-            # Create dummy size factors
-            pd.DataFrame(1.0, index=sample_df.index, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
-            # Create empty normalized counts
-            counts_df.T.to_csv(self.expinfo.normalizedcounts, sep='\t')
-            return
-
-        try:
-            dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition")
-            dds.deseq2()
-        except Exception as e:
-            print(f"Warning: DESeq2 failed: {e}", file=sys.stderr)
-            # Create dummy size factors
-            pd.DataFrame(1.0, index=sample_df.index, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
-            # Save raw counts as normalized counts (fallback)
-            counts_df.T.to_csv(self.expinfo.normalizedcounts, sep='\t')
-            return
-        
-        # Save normalized counts
-        if 'normed_counts' in dds.layers:
-            norm_counts = dds.layers['normed_counts']
-            norm_counts = pd.DataFrame(norm_counts, index=dds.obs_names, columns=dds.var_names)
-            norm_counts = norm_counts.T # Transpose back
-            norm_counts.to_csv(self.expinfo.normalizedcounts, sep='\t')
-        else:
-            print("Warning: 'normed_counts' not found in dds.layers. Using raw counts.", file=sys.stderr)
-            counts_df.T.to_csv(self.expinfo.normalizedcounts, sep='\t')
-        
-        # Save size factors
-        if 'size_factors' in dds.obs:
-            size_factors = dds.obs['size_factors']
-            pd.DataFrame(size_factors.values, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
-        elif 'size_factors' in dds.obsm:
-            size_factors = dds.obsm['size_factors']
-            pd.DataFrame(size_factors.values, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
-        else:
-             print("Warning: 'size_factors' not found in dds.obs or dds.obsm. Using 1.0.", file=sys.stderr)
-             pd.DataFrame(1.0, index=dds.obs_names, columns=['sizeFactor']).T.to_csv(self.expinfo.sizefactors, sep=' ', index=False)
-
-        # Run pairwise comparisons if pairs file is provided
-        if self.pairfile:
-            self.run_pairwise_de(dds, sample_df)
-
-    def run_pairwise_de(self, dds, sample_df):
-        try:
-            # Use sep='\s+' to handle any whitespace
-            pairs_df = pd.read_csv(self.pairfile, sep=r'\s+', engine='python', header=None, names=['Sample1', 'Sample2'])
-        except Exception as e:
-            print(f"Error reading pairs file: {e}", file=sys.stderr)
-            return
-
-        # Ensure output directory exists
-        os.makedirs(os.path.join(self.expinfo.expname, "de_results"), exist_ok=True)
-
-        for index, row in pairs_df.iterrows():
-            sample1 = row['Sample1']
-            sample2 = row['Sample2']
-            
-            # Check if samples exist in metadata or are valid conditions
-            is_sample1 = sample1 in sample_df.index
-            is_sample2 = sample2 in sample_df.index
-            
-            is_cond1 = sample1 in sample_df['condition'].values
-            is_cond2 = sample2 in sample_df['condition'].values
-            
-            if not (is_sample1 or is_cond1) or not (is_sample2 or is_cond2):
-                print(f"Warning: {sample1} or {sample2} not found in metadata (as sample or condition). Skipping pair.", file=sys.stderr)
-                continue
-
-            if is_sample1:
-                cond1 = sample_df.loc[sample1, 'condition']
-            else:
-                cond1 = sample1
-                
-            if is_sample2:
-                cond2 = sample_df.loc[sample2, 'condition']
-            else:
-                cond2 = sample2
-            
-            if cond1 == cond2:
-                print(f"Warning: Comparison between same condition {cond1}. Skipping DE.", file=sys.stderr)
-                continue
-
-            print(f"Running DE for {cond1} vs {cond2}...", file=sys.stderr)
-            
-            try:
-                stat_res = DeseqStats(dds, contrast=["condition", cond1, cond2])
-                stat_res.summary()
-                res_df = stat_res.results_df
-                
-                # Save results
-                out_file = os.path.join(self.expinfo.expname, "de_results", f"{cond1}_vs_{cond2}.txt")
-                res_df.to_csv(out_file, sep='\t')
-                print(f"Saved DE results to {out_file}", file=sys.stderr)
-                
-            except Exception as e:
-                print(f"Error running DE for {cond1} vs {cond2}: {e}", file=sys.stderr)
-
-    def counttypes(self):
-        if not self.nosizefactors:
-            toolsCountReads.main(sizefactors=self.expinfo.sizefactors, combinereps=True,
-                                bamdir=self.bamdir, otherseqs=self.trnainfo.otherseqs,
-                                samplefile=self.samplefilename, maturetrnas=[self.trnainfo.maturetrnas],
-                                trnatable=self.trnainfo.trnatable, trnaaminofile=self.expinfo.trnaaminofile,
-                                trnaanticodonfile=self.expinfo.trnaanticodonfile, ensemblgtf=self.ensgtf,
-                                trnaloci=[self.trnainfo.locifile], countfile=self.expinfo.genetypecounts,
-                                realcountfile=self.expinfo.genetyperealcounts, mismatchfile=self.expinfo.mismatchcountfile,
-                                bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
-                                countfrags=False, bamnofeature=self.dumpother,
-                                uniquename=self.expinfo.uniquename, fraguniq=not self.nofrag, cores=self.cores)
-        else:
-            toolsCountReads.main(combinereps=True, samplefile=self.samplefilename,
-                                    maturetrnas=[self.trnainfo.maturetrnas], otherseqs=self.trnainfo.otherseqs,
-                                    bamdir=self.bamdir, trnatable=self.trnainfo.trnatable,
-                                    trnaaminofile=self.expinfo.trnaaminofile, trnaanticodonfile=self.expinfo.trnaanticodonfile,
-                                    ensemblgtf=self.ensgtf, trnaloci=[self.trnainfo.locifile],
-                                    countfile=self.expinfo.genetypecounts, realcountfile=self.expinfo.genetyperealcounts,
-                                    bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
-                                    countfrags=False, uniquename=self.expinfo.uniquename, cores=self.cores)
-
-    def gettrnacoverage(self, orgtype):
-        if not self.nosizefactors:
-            toolsGetCoverage.main(samplefile=self.samplefilename, bedfile=[self.trnainfo.maturetrnas],
-                                 locibed=[self.trnainfo.locifile], locistk=self.trnainfo.locialign,
-                                 bamdir=self.bamdir, lociedgemargin=30, sizefactors=self.expinfo.sizefactors,
-                                 orgtype=orgtype, locicoverage=self.expinfo.locicoveragefile,
-                                 stkfile=self.trnainfo.trnaalign, numfile=self.trnainfo.trnanums,
-                                 locinums=self.trnainfo.locinums, allcoverage=self.expinfo.trnacoveragefile,
-                                 trnafasta=self.trnainfo.trnafasta, cores=self.cores,
-                                 uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
-                                 uniqueonly=self.uniqueonlycov)
-        else:
-            toolsGetCoverage.main(samplefile=self.samplefilename, bedfile=[self.trnainfo.maturetrnas],
-                                 stkfile=self.trnainfo.trnaalign, uniquename=self.expname+"/"+self.expname,
-                                 orgtype=orgtype, bamdir=self.bamdir, allcoverage=self.expinfo.trnacoveragefile,
-                                 trnafasta=self.trnainfo.trnafasta, cores=self.cores,
-                                 uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
-                                 uniqueonly=self.uniqueonlycov, locibed=[], locistk=self.trnainfo.locialign)
-
-    def createtrackhub(self):
-        hub_builder = toolsTrackHub.TrackHubBuilder(
-            genomedatabase=self.trnainfo.dbname,
-            samplefilename=self.samplefilename,
-            expname=self.expinfo.expname,
-            threads=self.cores
-        )
-        hub_builder.run()

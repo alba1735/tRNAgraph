@@ -2,7 +2,7 @@
 
 import numpy as np
 
-import toolsTG
+from . import toolsTG
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors

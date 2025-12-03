@@ -6,7 +6,7 @@ import itertools
 from time import localtime, strftime
 from typing import List, Dict, Optional, Tuple, Any
 from collections import defaultdict
-import toolsTG
+from . import toolsTG
 
 
 # Constants

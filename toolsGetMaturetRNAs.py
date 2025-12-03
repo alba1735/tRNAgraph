@@ -8,7 +8,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import List, Optional, Dict
 
-import toolsTG
+from . import toolsTG
 
 def get_mature_trnas(
     trnascan: Optional[List[str]] = None,

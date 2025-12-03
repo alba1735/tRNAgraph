@@ -6,7 +6,7 @@ import os.path
 from collections import defaultdict
 import itertools
 from multiprocessing import Process, Queue, Pool
-import toolsTG
+from . import toolsTG
 
 def getdupes(namelist):
     allset = set()
@@ -507,11 +507,13 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
                 #if currread.name == "NB501427:473:H3YJ2BGXG:3:11512:1635:4586"  and currfeat.name == "tRNA-Val-AAC-5-1":
                 #    print >>sys.stderr, "**trnaread:" +str(currfeat.coverage(currread))
                 #    print >>sys.stderr, "**trnaread:" +str(currfeat.coverage(currread))
-                if currfeat.coverage(currread) > 10: # and (currread.start + minpretrnaextend <= currfeat.start or currread.end - minpretrnaextend >= currfeat.end):
+                
+                cov = currfeat.coverage(currread)
+                if cov > 10: # and (currread.start + minpretrnaextend <= currfeat.start or currread.end - minpretrnaextend >= currfeat.end):
                     #if currread.name == "NB501427:473:H3YJ2BGXG:3:11512:1635:4586":
                     #    print >>sys.stderr, "**foundread:" +str(currfeat.name)
                     if currfeat.strand != currread.strand:
-                        readtypecounts.addantilocuscounts(currbed)
+                        readtypecounts.addtrnaantilocuscounts(currbed)
                         break
                     if (currread.start + minpretrnaextend <= currfeat.start or currread.end - minpretrnaextend >= currfeat.end):
                         pass
@@ -526,6 +528,7 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
                         #print >>sys.stderr, "***"
                     gotread = True
                     break
+                
                 if currfeat.getdownstream(30).coverage(currread) > 10:
                     readtypecounts.addtrnaantisense(currbed)
                     #readtypecounts.addpretrnareadlengths(readlength)
@@ -658,6 +661,7 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
             #emblbiotypes.add(currtype)
         if not gotread and bamnofeature:
             outbamnofeature.write(currread.bamline)
+    
     return readtypecounts
 
 def counttypereadsqueue(countqueue,currsample, *args, **kwargs):
@@ -1170,6 +1174,7 @@ def printtypefile(countfile,samples, sampledata,allcounts,trnalist, trnaloci, be
             
         for currbed in trnaloci:
      
+            print("pretRNA_antisense\t"+"\t".join(str(sumsamples({s: allcounts[s].trnaantilocuscounts[currbed] for s in samples},sampledata,currrep, sizefactors = sizefactor)) for currrep in replicates), file=countfile)
             print("pretRNA\t"+"\t".join(str(sumsamples({s: allcounts[s].trnalocuscounts[currbed] for s in samples},sampledata,currrep, sizefactors = sizefactor)) for currrep in replicates), file=countfile)
         for currbed in trnalist:     
             print("tRNA_antisense\t"+"\t".join(str(sumsamples({s: allcounts[s].trnaanticounts[currbed] for s in samples},sampledata,currrep, sizefactors = sizefactor)) for currrep in replicates), file=countfile)

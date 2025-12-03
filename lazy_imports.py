@@ -7,7 +7,7 @@ class LazyLoader:
 
     def __getattr__(self, name):
         if self.module is None:
-            self.module = importlib.import_module(self.module_name)
+            self.module = importlib.import_module(f'.{self.module_name}', package='tRNAgraph')
         return getattr(self.module, name)
 
 # Plot modules
@@ -35,3 +35,6 @@ toolsMap = LazyLoader('toolsMap')
 toolsTDatabase = LazyLoader('toolsTDatabase')
 toolsTrim = LazyLoader('toolsTrim')
 toolsTG = LazyLoader('toolsTG')
+toolsCountReads = LazyLoader('toolsCountReads')
+toolsGetCoverage = LazyLoader('toolsGetCoverage')
+toolsTrackHub = LazyLoader('toolsTrackHub')

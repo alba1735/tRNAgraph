@@ -276,17 +276,11 @@ class demoPipeline:
         self.logger.info("Mapping reads to tRNA genes...")
         print("Mapping reads to tRNA genes...")
         
-        extra_flags = ""
-        if self.args.hubonly:
-            extra_flags += " --hubonly"
-        if self.args.maponly:
-            extra_flags += " --maponly"
-
         cmd = (
             f"python3 {self.trnagraph_path} preprocess map "
-            "-e vibrChol1-tRNAgraph -d references/vibrChol1/trnadb/vibrChol1_db "
-            "-s config/vibrChol1.metadata.txt --pairs config/vibrChol1.pair.txt "
-            f"--gtf references/vibrChol1/genes/GCF_000006745.1.gtf --bamdir processed/vibrChol1/bam {extra_flags}"
+            "-e vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
+            "-s config/vibrChol1.metadata.cutadapt.txt "
+            f"--bamdir processed/vibrChol1/bam"
         )
         self._run_command(cmd, "Running map command...")
         
@@ -298,10 +292,20 @@ class demoPipeline:
         self.logger.info("Building AnnData object...")
         print("Building AnnData object...")
         
+        extra_flags = ""
+        if self.args.hubonly:
+            extra_flags += " --hubonly"
+
         cmd = (
             f"python3 {self.trnagraph_path} build "
-            "-i vibrChol1-tRNAgraph -m vibrChol1.metadata.txt "
+            "-e vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
+            "-s config/vibrChol1.metadata.txt "
+            "-m config/vibrChol1.metadata.txt "
+            "--gtf references/vibrChol1/genes/GCF_000006745.1.gtf "
+            "--pairs config/vibrChol1.pair.txt "
+            "--bamdir processed/vibrChol1/bam "
             "-o vibrChol1.h5ad"
+            f"{extra_flags}"
         )
         self._run_command(cmd, "Running build command...")
         
@@ -362,14 +366,14 @@ class demoPipeline:
                 self.trim_fastq()
             if run_all or self.args.makedb:
                 self.create_index()
-            if run_all or self.args.map or self.args.hubonly or self.args.maponly:
+            if run_all or self.args.map or self.args.maponly:
                 self.map_reads()
-            # if run_all or self.args.build:
-            #     self.build_db()
-            # if run_all or self.args.cluster:
-            #     self.cluster_db()
-            # if run_all or self.args.graph:
-            #     self.graph_db()
+            if (run_all and not self.args.maponly) or self.args.build or self.args.hubonly:
+                self.build_db()
+            if (run_all and not self.args.maponly) or self.args.cluster:
+                self.cluster_db()
+            if (run_all and not self.args.maponly) or self.args.graph:
+                self.graph_db()
                 
             if self.args.cleanrun:
                 self.logger.info("Cleaning up test files...")

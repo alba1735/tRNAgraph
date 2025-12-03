@@ -4,7 +4,7 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-import toolsTG
+from . import toolsTG
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages

@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Union
 
-import toolsTG
+from . import toolsTG
 
 def align_trna_locus(
     stkfile: Union[str, Path],

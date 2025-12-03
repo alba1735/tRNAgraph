@@ -9,9 +9,9 @@ import multiprocessing
 from collections import defaultdict
 
 # Custom external modules (Assuming these exist in the PYTHONPATH)
-import toolsGetMaturetRNAs
-import toolsAligntRNALocus
-import toolsTG
+from . import toolsGetMaturetRNAs
+from . import toolsAligntRNALocus
+from . import toolsTG
 
 class tRNADatabaseBuilder:
     '''

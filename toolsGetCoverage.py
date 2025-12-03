@@ -127,7 +127,14 @@ def gettnanums(trnaalign: toolsTG.RnaAlignment, margin: int = 0, orgtype: str = 
     enum = 1
     gapnum = 1
     intronnum = 1
-    positions = eukpositions # Simplified, add others if needed
+    if orgtype == "bact":
+        positions = bactpositions
+    elif orgtype == "arch":
+        positions = archpositions
+    elif orgtype == "mito":
+        positions = mitopositions
+    else:
+        positions = eukpositions
     
     for i in range(margin):
         trnanum.append(f'head{margin - i}')
@@ -222,9 +229,7 @@ def getlocicoverage(currsample: str, sampledata: toolsTG.samplefile, trnaloci: L
         allcoverages[currfeat.name] = ReadCoverage(currfeat)
         readcounts[currfeat.name] = 0
         
-        for currread in toolsTG.getbam(bamfile, currfeat, primaryonly=True, singleonly=False, allowindels=True):
-            if not currread.issinglemapped():
-                continue
+        for currread in toolsTG.getbam(bamfile, currfeat, primaryonly=False, singleonly=False, allowindels=True):
             if maxmismatches is not None:
                 xm = currread.getmismatches()
                 if xm is not None and xm > maxmismatches:
@@ -299,9 +304,7 @@ def getsamplecoverage(currsample: str, sampledata: toolsTG.samplefile, trnalist:
         trimreadmismatches[name] = ReadCoverage(currfeat)
         readcounts[name] = 0
         
-        for currread in toolsTG.getbam(bamfile, currfeat, primaryonly=True, singleonly=False, allowindels=True):
-            if not currread.issinglemapped():
-                continue
+        for currread in toolsTG.getbam(bamfile, currfeat, primaryonly=False, singleonly=False, allowindels=True):
             if maxmismatches is not None:
                 xm = currread.getmismatches()
                 if xm is not None and xm > maxmismatches:
@@ -438,9 +441,11 @@ def getsamplecoverage(currsample: str, sampledata: toolsTG.samplefile, trnalist:
 def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport: Any, 
                        trnalist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float], 
                        mincoverage: int, trnastk: toolsTG.RnaAlignment, positionnums: List[str], 
-                       skipgaps: bool = True):
+                       skipgaps: bool = True, sigmismatch: Any = None):
     
     samples = sampledata.getsamples()
+    mismatchthreshold = 0.05
+
     for currfeat in trnalist:
         name = currfeat.name
         totalreads = sum(samplecoverages[s].allcoverages[name].totalreads for s in samples)
@@ -449,6 +454,37 @@ def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport:
         if totalreads - ambigreads < mincoverage:
             continue
             
+        if sigmismatch:
+            mismatchpos = {}
+            coveragepos = {}
+            trnalen = 0
+            
+            for currsample in samples:
+                sc = samplecoverages[currsample]
+                align = trnastk.aligned_sequences[name]
+                
+                # Use raw counts (sizefactor=1) for percentage calculation
+                covcounts_raw = list(sc.allcoverages[name].coveragealign(align, sizefactor=1))
+                mismatches_raw = list(sc.readmismatches[name].coveragealign(align, sizefactor=1))
+                
+                trnalen = len(mismatches_raw)
+                mismatchpos[currsample] = mismatches_raw
+                coveragepos[currsample] = covcounts_raw
+            
+            for currpos in range(trnalen):
+                if skipgaps and "gap" in str(positionnums[currpos]):
+                    continue
+                
+                maxpercent = max((0 + 1.0 * mismatchpos[s][currpos]) / (10 + coveragepos[s][currpos]) for s in samples)
+                
+                if maxpercent > mismatchthreshold:
+                    try:
+                        # Note: currpos is alignment index. If alignment has gaps, this might be off for genomic position.
+                        # However, tRAX uses the same logic.
+                        print(currfeat.getbase(currpos).bedstring(name = currfeat.name+"_"+str(currpos)+"pos", score = int(maxpercent * 1000)), file=sigmismatch)
+                    except Exception:
+                        pass
+
         for currsample in samples:
             sf = sizefactor[currsample]
             sc = samplecoverages[currsample]
@@ -484,8 +520,8 @@ def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport:
                     name, currsample, str(positionnums[i]), str(covcounts[i]), str(allstarts[i]), 
                     str(allends[i]), str(uniquecounts[i]), str(multitrna[i]), str(multaccounts[i]), 
                     str(multaminocounts[i]), str(sc.readcounts[name]/sf), realbase, str(mismatches[i]), 
-                    str(deletions[i]), str(adeninecount[i]), str(thyminecount[i]), str(cytosinecount[i]), 
-                    str(guanosinecount[i]), str(readskipcount[i])
+                    str(deletions[i]), str(int(adeninecount[i])), str(int(thyminecount[i])), str(int(cytosinecount[i])), 
+                    str(int(guanosinecount[i])), str(int(readskipcount[i]))
                 ]
                 print("\t".join(row), file=mismatchreport)
 
@@ -536,8 +572,10 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
          maxmismatches: Optional[int] = None, minextend: Optional[int] = None, 
          combinereps: bool = False, uniquename: Optional[str] = None, 
          uniquegenome: Optional[str] = None, lociedgemargin: int = 30,
-         locibed: Optional[List[str]] = None, locistk: Optional[str] = None):
+         locibed: Optional[List[str]] = None, locistk: Optional[str] = None,
+         sigmismatch: Optional[str] = None):
     
+    print("DEBUG: Starting main", file=sys.stderr)
     if mincoverage is None:
         mincoverage = 30
 
@@ -605,6 +643,10 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
     print("\t".join(["pos","firsample","secsample","firmismatches","firtotal","secmismatches","sectotal",
                      "firmismatchestrim","firtotaltrim","secmismatchestrim","sectotaltrim"]), file=mismatchcomparetable)
 
+    sigmismatch_file = None
+    if sigmismatch:
+        sigmismatch_file = open(sigmismatch, "w")
+
     samples = sampledata.getsamples()
     
     # Chunking
@@ -626,7 +668,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
             for currsample in samples:
                 samplecoverages[currsample] = getsamplecoverage(currsample, sampledata, trnasubset, trnaseqs, 
                                                                 maxmismatches=maxmismatches, minextend=minextend, 
-                                                                uniqueonly=True)
+                                                                uniqueonly=uniqueonly)
                 if locisubset:
                     locicoverages[currsample] = getlocicoverage(currsample, sampledata, locisubset, 
                                                             maxmismatches=maxmismatches, minextend=minextend)
@@ -635,7 +677,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
             lociargs = []
             for currsample in samples:
                 trackargs.append(compressargs(currsample, sampledata, trnasubset, trnaseqs, 
-                                              maxmismatches=maxmismatches, minextend=minextend, uniqueonly=True))
+                                              maxmismatches=maxmismatches, minextend=minextend, uniqueonly=uniqueonly))
                 if locisubset:
                     lociargs.append(compressargs(currsample, sampledata, locisubset, 
                                              maxmismatches=maxmismatches, minextend=minextend))
@@ -650,7 +692,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
                     locicoverages[currsample] = lociresults[i]
 
         transcriptcoverage(samplecoverages, coveragetable, trnasubset, sampledata, sizefactor_dict, 
-                           mincoverage, trnastk, positionnums)
+                           mincoverage, trnastk, positionnums, sigmismatch=sigmismatch_file)
         
         if locistk_obj and locisubset:
             locuscoverage(locicoverages, locicoveragetable_file, locisubset, sampledata, sizefactor_dict, 
@@ -664,5 +706,33 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
         coveragetable.close()
     locicoveragetable_file.close()
     mismatchcomparetable.close()
+    if sigmismatch_file:
+        sigmismatch_file.close()
 
 
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Calculate tRNA coverage')
+    parser.add_argument('-i', '--samplefile', required=True, help='Sample file')
+    parser.add_argument('-b', '--bedfile', required=True, nargs='+', help='Bed file(s)')
+    parser.add_argument('-s', '--stkfile', required=True, help='Stockholm alignment file')
+    parser.add_argument('--bamdir', default='./', help='Directory containing BAM files')
+    parser.add_argument('--mincoverage', type=int, default=30, help='Minimum coverage')
+    parser.add_argument('--sizefactors', help='Size factors file')
+    parser.add_argument('--orgtype', default='euk', help='Organism type')
+    parser.add_argument('--locicoverage', default='locicoverage.txt', help='Loci coverage output file')
+    parser.add_argument('--allcoverage', default='stdout', help='All coverage output file')
+    parser.add_argument('--trnafasta', help='tRNA fasta file')
+    parser.add_argument('--locibed', nargs='+', help='Loci bed file(s)')
+    parser.add_argument('--locistk', help='Loci stockholm file')
+    parser.add_argument('--cores', type=int, default=1, help='Number of cores')
+    parser.add_argument('--uniqueonly', action='store_true', help='Only use unique reads')
+    
+    args = parser.parse_args()
+    
+    main(samplefile=args.samplefile, bedfile=args.bedfile, stkfile=args.stkfile, 
+         bamdir=args.bamdir, mincoverage=args.mincoverage, sizefactors=args.sizefactors, 
+         orgtype=args.orgtype, locicoverage=args.locicoverage, allcoverage=args.allcoverage, 
+         trnafasta=args.trnafasta, locibed=args.locibed, locistk=args.locistk, cores=args.cores,
+         uniqueonly=args.uniqueonly)
