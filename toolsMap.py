@@ -514,6 +514,15 @@ class MapSamples:
                 map_args.append((mapper, samplename, fastqfile, bamfile, self.expname))
 
         # Run mapping
+        # Open mapstats log file
+        maplog_file = None
+        if self.expinfo.maplog:
+            try:
+                maplog_file = open(self.expinfo.maplog, 'w')
+            except IOError as e:
+                print(f"Could not open mapstats file {self.expinfo.maplog}: {e}", file=sys.stderr)
+
+        # Run mapping
         mapresults = {}
         if map_args:
             with Pool(processes=pool_size) as pool:
@@ -521,28 +530,41 @@ class MapSamples:
                     if result.failedrun:
                         print("Failure to Bowtie2 map", file=sys.stderr)
                         result.printbowtie()
+                        if maplog_file:
+                            result.printbowtie(logfile=maplog_file)
                         sys.exit(1)
                     mapresults[result.samplename] = result
                     result.printbowtie()
+                    if maplog_file:
+                        result.printbowtie(logfile=maplog_file)
+        
+        if maplog_file:
+            maplog_file.close()
         
         # Write mapinfo
         if self.expinfo.mapinfo:
-            with open(self.expinfo.mapinfo, 'w') as mapinfo:
-                print("\t".join(samples), file=mapinfo)
-                print("unmap\t" + "\t".join(str(mapresults[s].unmaps) if s in mapresults else "0" for s in samples), file=mapinfo)
-                print("single\t" + "\t".join(str(mapresults[s].singlemaps) if s in mapresults else "0" for s in samples), file=mapinfo)
-                print("multi\t" + "\t".join(str(mapresults[s].multimaps) if s in mapresults else "0" for s in samples), file=mapinfo)
-                print("total\t" + "\t".join(str(mapresults[s].totalreads) if s in mapresults else "0" for s in samples), file=mapinfo)
-                print("bowtiecommand\t" + "\t".join(str(mapresults[s].bowtiecommand) if s in mapresults else "" for s in samples), file=mapinfo)
+            try:
+                with open(self.expinfo.mapinfo, 'w') as mapinfo:
+                    print("\t".join(samples), file=mapinfo)
+                    print("unmap\t" + "\t".join(str(mapresults[s].unmaps) if s in mapresults else "0" for s in samples), file=mapinfo)
+                    print("single\t" + "\t".join(str(mapresults[s].singlemaps) if s in mapresults else "0" for s in samples), file=mapinfo)
+                    print("multi\t" + "\t".join(str(mapresults[s].multimaps) if s in mapresults else "0" for s in samples), file=mapinfo)
+                    print("total\t" + "\t".join(str(mapresults[s].totalreads) if s in mapresults else "0" for s in samples), file=mapinfo)
+                    print("bowtiecommand\t" + "\t".join(str(mapresults[s].bowtiecommand) if s in mapresults else "" for s in samples), file=mapinfo)
+            except IOError as e:
+                print(f"Could not write mapinfo file {self.expinfo.mapinfo}: {e}", file=sys.stderr)
         
         # Write trna mapinfo
         if self.expinfo.trnamapfile and self.expinfo.mapinfo:
-            with open(self.expinfo.trnamapfile, 'w') as trnamapinfo:
-                print("\t".join(samples), file=trnamapinfo)
-                print("multtrans\t" + "\t".join(str(mapresults[s].trnamapinfo.multtrans) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("multac\t" + "\t".join(str(mapresults[s].trnamapinfo.multac) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("multamino\t" + "\t".join(str(mapresults[s].trnamapinfo.multamino) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("trna\t" + "\t".join(str(mapresults[s].trnamapinfo.trna) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("singlenon\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
-                print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+            try:
+                with open(self.expinfo.trnamapfile, 'w') as trnamapinfo:
+                    print("\t".join(samples), file=trnamapinfo)
+                    print("multtrans\t" + "\t".join(str(mapresults[s].trnamapinfo.multtrans) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("multac\t" + "\t".join(str(mapresults[s].trnamapinfo.multac) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("multamino\t" + "\t".join(str(mapresults[s].trnamapinfo.multamino) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("trna\t" + "\t".join(str(mapresults[s].trnamapinfo.trna) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("singlenon\t" + "\t".join(str(mapresults[s].trnamapinfo.singlenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+                    print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
+            except IOError as e:
+                print(f"Could not write trnamapinfo file {self.expinfo.trnamapfile}: {e}", file=sys.stderr)

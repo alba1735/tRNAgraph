@@ -502,41 +502,30 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
         #if currread.name == "NB501427:473:H3YJ2BGXG:3:11512:1635:4586":
         #    print >>sys.stderr, "**foundread"
         for currbed in trnaloci:
-            for currfeat in trnaloci[currbed].getbin(currread):
+            # Get all candidates first to allow prioritized checking
+            # Sort candidates to ensure deterministic behavior (tRAX uses set iteration which is random)
+            candidates = sorted(list(trnaloci[currbed].getbin(currread)), key=lambda x: (x.start, x.end, x.name if x.name else ""))
+            for currfeat in candidates:
                 expandfeat = currfeat.addmargin(30)
-                #if currread.name == "NB501427:473:H3YJ2BGXG:3:11512:1635:4586"  and currfeat.name == "tRNA-Val-AAC-5-1":
-                #    print >>sys.stderr, "**trnaread:" +str(currfeat.coverage(currread))
-                #    print >>sys.stderr, "**trnaread:" +str(currfeat.coverage(currread))
-                
-                cov = currfeat.coverage(currread)
-                if cov > 10: # and (currread.start + minpretrnaextend <= currfeat.start or currread.end - minpretrnaextend >= currfeat.end):
-                    #if currread.name == "NB501427:473:H3YJ2BGXG:3:11512:1635:4586":
-                    #    print >>sys.stderr, "**foundread:" +str(currfeat.name)
+                if currfeat.coverage(currread) > 10:
                     if currfeat.strand != currread.strand:
                         readtypecounts.addtrnaantilocuscounts(currbed)
                         break
-                    if (currread.start + minpretrnaextend <= currfeat.start or currread.end - minpretrnaextend >= currfeat.end):
-                        pass
+                    
                     readtypecounts.addpretrnareadlengths(readlength)
                     readtypecounts.addtrnalocuscounts(currbed)
                     if currread.start + fullpretrnathreshold <  currfeat.start and currread.end - fullpretrnathreshold + 3 >  currfeat.end:
-                        #fulltrnalocuscounts[currsample][currbed] += 1
                         readtypecounts.addfulllocuscounts(currbed)
-                    else:# currread.start + fullpretrnathreshold <  currfeat.start or currread.end - fullpretrnathreshold +3 >  currfeat.end:
-                        #partialtrnalocuscounts[currsample][currbed] += 1
+                    else:
                         readtypecounts.addpartiallocuscounts(currbed)
-                        #print >>sys.stderr, "***"
                     gotread = True
                     break
                 
                 if currfeat.getdownstream(30).coverage(currread) > 10:
                     readtypecounts.addtrnaantisense(currbed)
-                    #readtypecounts.addpretrnareadlengths(readlength)
-                    #print >>sys.stderr, currfeat.bedstring()
                     gotread = True
                     break
                 elif expandfeat.antisense().coverage(currread) > 5:
-                    #trnaantisense[currsample][currbed] += 1
                     readtypecounts.addtrnaantisense(currbed)
                     gotread = True
                     break

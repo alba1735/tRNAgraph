@@ -304,6 +304,7 @@ class demoPipeline:
             "--gtf references/vibrChol1/genes/GCF_000006745.1.gtf "
             "--pairs config/vibrChol1.pair.txt "
             "--bamdir processed/vibrChol1/bam "
+            "--uniqueonly "
             "-o vibrChol1.h5ad"
             f"{extra_flags}"
         )
