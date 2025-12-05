@@ -17,6 +17,8 @@ import time
 class visualizer():
     def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output):
         self.adata = adata
+        # Capture original positions for mapping refseq_full
+        self.original_positions = self.adata.var[self.adata.var['coverage'] == 'coverage']['positions'].tolist()
         self.adata = self.adata[:,self.adata.var['positions'] != '-1']
         self.output = output
         self.coverage_grp = grp
@@ -103,19 +105,15 @@ class visualizer():
         # Create a dictionary of the tRNA sequences for the map plot
         seq_dict = {}
         for j in trna_list:
-            if self.logosize == 'full' or self.logosize == 'noloop':
-                if self.ccatail:
-                    seq_dict[j] = self.adata.obs[self.adata.obs['trna'] == j].refseq_full.unique()[0][1:-3]
-                else:
-                    seq_dict[j] = self.adata.obs[self.adata.obs['trna'] == j].refseq_full.unique()[0][1:]
-            else:
-                if self.ccatail:
-                    seq_dict[j] = self.adata.obs[self.adata.obs['trna'] == j].refseq.unique()[0][:-3]
-                else:
-                    seq_dict[j] = self.adata.obs[self.adata.obs['trna'] == j].refseq.unique()[0]
+            # Get full sequence
+            full_seq = self.adata.obs[self.adata.obs['trna'] == j].refseq_full.unique()[0]
+            # Map sequence to positions
+            pos_char_map = dict(zip(self.original_positions, full_seq))
+            # Filter based on current positions_list
+            seq_dict[j] = [pos_char_map[p] for p in self.positions_list]
         # Create a df of the tRNA sequences for the map plot from the dictionary
         seq_df = pd.DataFrame(columns=['position']+trna_list)
-        for j in range(len(seq_dict[trna_list[0]])):
+        for j in range(len(self.positions_list)):
             seq_df.loc[j] = [self.positions_list[j]]+[seq_dict[k][j] for k in trna_list]
         seq_df['match'] = [True]*len(seq_df)
         # Iterate through the df and check if the base at each position matches the base in the first tRNA for that position
