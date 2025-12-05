@@ -113,6 +113,9 @@ class anndataCluster():
             adata = ad.AnnData(X=df, obs=df_obs, var=adata.var)
          # Filter out samples with low coverage
         adata = adata[adata.obs['nreads_total_unique_raw'] >= self.readcutoff, :]
+        # Convert view to copy to avoid ImplicitModificationWarning when modifying X
+        if adata.is_view:
+            adata = adata.copy()
         # Normalize the each read at each position by the total coverage - This would collapse the variation between positons so should only be used in certain cases depending on the var slice used
         # adata.X = Normalizer().fit_transform(adata.X)
         # Scale the data - Seems to perform well with the robust scaler compared to the standard scaler

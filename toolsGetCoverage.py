@@ -575,7 +575,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
          locibed: Optional[List[str]] = None, locistk: Optional[str] = None,
          sigmismatch: Optional[str] = None):
     
-    print("DEBUG: Starting main", file=sys.stderr)
+
     if mincoverage is None:
         mincoverage = 30
 

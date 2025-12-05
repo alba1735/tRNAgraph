@@ -226,6 +226,9 @@ The `build` command can also be used to run the full analysis pipeline (counting
 - `--dumpother`: Dump 'other' features when counting gene types.
 - `--bamdir`: Directory for placing bam files.
 - `--uniqueonly`: Show only unique coverage.
+- `--dispfittype`: DESeq2 dispersion fit type (default: `'mean'`). Options:
+  - `'mean'`: Uses a mean-based dispersion trend. Robust for small sample sizes (fewer than 5 replicates per condition).
+  - `'parametric'`: Uses parametric dispersion fitting. Recommended when you have 5+ replicates per condition for more accurate fitting (tRAX default setting).
 - `-n` or `--threads`: Number of threads to use (default: 8).
 
 ### Cluster

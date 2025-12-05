@@ -35,6 +35,7 @@ class AnalysisPipeline:
         self.hubonly = args.hubonly
         self.makehubs = args.hub
         self.dumpother = args.dumpother
+        self.dispfittype = getattr(args, 'dispfittype', 'mean')  # Default to 'mean' for robustness
         
         self.trnainfo = toolsMap.trnadatabase(self.dbname)
         self.expinfo = toolsMap.expdatabase(self.expname)
@@ -204,7 +205,7 @@ class AnalysisPipeline:
 
     def run_deseq2_on_file(self, counts_file, norm_counts_file, size_factors_file, output_dir, prefix):
         # Load counts
-        print(f"DEBUG: run_deseq2_on_file called with counts_file={counts_file}, prefix={prefix}, output_dir={output_dir}", file=sys.stderr)
+
         if not os.path.exists(counts_file):
             print(f"Warning: Counts file {counts_file} not found. Skipping DESeq2 for {prefix}.", file=sys.stderr)
             return
@@ -244,15 +245,10 @@ class AnalysisPipeline:
             return
 
         try:
-            dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition")
+            dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition", fit_type=self.dispfittype)
             dds.deseq2()
             
-            # DEBUG: Print dds structure
-            print(f"DEBUG: dds attributes: {dir(dds)}", file=sys.stderr)
-            if hasattr(dds, 'varm'):
-                print(f"DEBUG: dds.varm keys: {dds.varm.keys() if hasattr(dds.varm, 'keys') else 'no keys method'}", file=sys.stderr)
-            if hasattr(dds, 'var'):
-                print(f"DEBUG: dds.var columns: {dds.var.columns.tolist() if hasattr(dds.var, 'columns') else 'not a DataFrame'}", file=sys.stderr)
+
         except Exception as e:
             print(f"Warning: DESeq2 failed for {prefix}: {e}", file=sys.stderr)
             # Create dummy size factors
@@ -622,11 +618,30 @@ class trax2anndata():
                              'The --nofrag option combines fragment types into whole-reads and will not generate the necessary observations for a full database object.\n')
         # Add trnagraph version to trax run info bashed on github hash - Will be changed to git describe once the package is deployed
         trnagraphdir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Try to get git version info, with fallback for non-git installations
+        # Run git from the directory where this file is located, letting git find the .git folder in parent dirs
+        try:
+            import subprocess
+            git_version = subprocess.check_output(
+                ['git', 'describe', '--always'],
+                cwd=trnagraphdir,
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+            git_hash = subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'],
+                cwd=trnagraphdir,
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            git_version = 'unknown (not a git repository)'
+            git_hash = 'unknown'
+        
         self.trnagraph_run_info = {'expname': traxdir.split('/')[-1], 
                                    'time': os.popen('date').read().rstrip(),
                                    'trax_directory': traxdir,
-                                   'git version': os.popen('git --git-dir='+trnagraphdir+'/.git describe').read().rstrip(),
-                                   'git version hash': os.popen('git --git-dir='+trnagraphdir+'/.git rev-parse HEAD').read().rstrip()}
+                                   'git version': git_version,
+                                   'git version hash': git_hash}
         # Output file name
         self.output = output
         # Names of coverage types to add to adata object from coverage file
@@ -663,8 +678,7 @@ class trax2anndata():
             raise ValueError('The index of the obs and x dataframes are not the same. This means somthing went wrong in the sorting process.')
         # Build adata object
         adata = self._adata_build_(obs_df, x_df)
-        print(f"DEBUG: adata.X type: {type(adata.X)}")
-        print(f"DEBUG: adata.obs['deseq2_sizefactor'] type: {type(adata.obs['deseq2_sizefactor'])}")
+
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
         # Quality check adata by dropping NaN values and printing summary

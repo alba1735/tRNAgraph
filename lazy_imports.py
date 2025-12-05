@@ -1,6 +1,7 @@
 import importlib
 
 class LazyLoader:
+    """Lazy loader for internal tRNAgraph submodules."""
     def __init__(self, module_name):
         self.module_name = module_name
         self.module = None
@@ -9,6 +10,19 @@ class LazyLoader:
         if self.module is None:
             self.module = importlib.import_module(f'.{self.module_name}', package='tRNAgraph')
         return getattr(self.module, name)
+
+
+class ExternalLazyLoader:
+    """Lazy loader for external packages (not part of tRNAgraph)."""
+    def __init__(self, module_name):
+        self.module_name = module_name
+        self.module = None
+
+    def __getattr__(self, name):
+        if self.module is None:
+            self.module = importlib.import_module(self.module_name)
+        return getattr(self.module, name)
+
 
 # Plot modules
 plotsBar = LazyLoader('plotsBar')
@@ -26,9 +40,9 @@ plotsVolcano = LazyLoader('plotsVolcano')
 # Legacy plot modules
 plotsTrimmingStats = LazyLoader('plotsTrimmingStats')
 
-# Cluster modules
-umap = LazyLoader('umap')
-hdbscan = LazyLoader('hdbscan')
+# External cluster modules (umap-learn and hdbscan packages)
+umap = ExternalLazyLoader('umap')
+hdbscan = ExternalLazyLoader('hdbscan')
 
 # Tools modules
 toolsMap = LazyLoader('toolsMap')

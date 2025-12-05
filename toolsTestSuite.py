@@ -279,7 +279,7 @@ class demoPipeline:
         cmd = (
             f"python3 {self.trnagraph_path} preprocess map "
             "-e vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
-            "-s config/vibrChol1.metadata.cutadapt.txt "
+            "-s config/vibrChol1.metadata.txt "
             f"--bamdir processed/vibrChol1/bam"
         )
         self._run_command(cmd, "Running map command...")

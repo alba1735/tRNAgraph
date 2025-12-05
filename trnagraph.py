@@ -268,6 +268,7 @@ def build(
     dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: bam/<experimentname>)"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
+    dispfittype: str = typer.Option("mean", "--dispfittype", help="DESeq2 dispersion fit type: 'mean' (default, robust for small samples) or 'parametric' (for 5+ replicates per condition)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
@@ -278,7 +279,7 @@ def build(
         experiment=experiment, database=database, samples=samples, gtf=gtf, pairs=pairs,
         bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
         mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
-        dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, threads=threads,
+        dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
         log=log, quiet=quiet
     )
     run_logic(args)
