@@ -53,7 +53,6 @@
 
 ## Important to come back to
 
-- Remove the cutadapt stuff from the test suite once done
 - adata creation debug warnings
 - lazy remap?
 - remove de_results?

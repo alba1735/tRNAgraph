@@ -13,8 +13,8 @@ class AnalysisPipeline:
     def __init__(self, args):
         self.args = args
         self.dbname = args.database
-        self.expname = args.experiment
-        self.samplefilename = args.samples
+        self.expname = os.path.dirname(args.output)
+        self.samplefilename = args.input
         self.ensgtf = args.gtf
         self.bedfiles = args.bed
         self.nofrag = args.nofrag
@@ -45,23 +45,20 @@ class AnalysisPipeline:
         if not os.path.exists(self.expname):
             os.makedirs(self.expname)
         
-        results_dir = os.path.join(self.expname, "results")
-        graphs_dir = os.path.join(self.expname, "graphs")
-        
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
-        if not os.path.exists(graphs_dir):
-            os.makedirs(graphs_dir)
+        if not os.path.exists(self.expinfo.resultsdir):
+            os.makedirs(self.expinfo.resultsdir)
+        if not os.path.exists(self.expinfo.graphsdir):
+            os.makedirs(self.expinfo.graphsdir)
             
         # Subdirectories in results
         for subdir in ["mismatch", "pretRNAs", "unique", "trna"]:
-            path = os.path.join(results_dir, subdir)
+            path = os.path.join(self.expinfo.resultsdir, subdir)
             if not os.path.exists(path):
                 os.makedirs(path)
                 
         # Subdirectories in graphs
         for subdir in ["mismatch", "pretRNAs", "unique"]:
-            path = os.path.join(graphs_dir, subdir)
+            path = os.path.join(self.expinfo.graphsdir, subdir)
             if not os.path.exists(path):
                 os.makedirs(path)
         
@@ -102,7 +99,7 @@ class AnalysisPipeline:
         self.write_runinfo()
 
     def write_runinfo(self):
-        runinfo_file = os.path.join(self.expinfo.resultsdir, f"{self.expinfo.expname}-runinfo.txt")
+        runinfo_file = os.path.join(self.expinfo.resultsdir, f"{os.path.basename(self.expinfo.expname)}-runinfo.txt")
         import time
         import subprocess
         
@@ -111,7 +108,7 @@ class AnalysisPipeline:
             git_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             git_version = subprocess.check_output(["git", "describe", "--always"], cwd=git_dir).decode().strip()
             git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=git_dir).decode().strip()
-        except:
+        except Exception:
             git_version = "unknown"
             git_hash = "unknown"
 
@@ -179,8 +176,8 @@ class AnalysisPipeline:
         # 3. Unique tRNA Counts
         self.run_deseq2_on_file(
             counts_file=self.expinfo.trnauniqcountsfile,
-            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniquetrnas_normalizedreadcounts.txt"),
-            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniquetrnas_SizeFactors.txt"),
+            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniquetrnas_normalizedreadcounts.txt"),
+            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniquetrnas_SizeFactors.txt"),
             output_dir=os.path.join(self.expinfo.resultsdir, "unique"),
             prefix="uniquetrnas_"
         )
@@ -188,8 +185,8 @@ class AnalysisPipeline:
         # 4. Unique Amino Counts
         self.run_deseq2_on_file(
             counts_file=self.expinfo.trnauniqaminofile,
-            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniqueaminos_normalizedreadcounts.txt"),
-            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniqueaminos_SizeFactors.txt"),
+            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniqueaminos_normalizedreadcounts.txt"),
+            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniqueaminos_SizeFactors.txt"),
             output_dir=os.path.join(self.expinfo.resultsdir, "unique"),
             prefix="uniqueaminos_"
         )
@@ -197,8 +194,8 @@ class AnalysisPipeline:
         # 5. Unique Anticodon Counts
         self.run_deseq2_on_file(
             counts_file=self.expinfo.trnauniqanticodonfile,
-            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniqueanticodons_normalizedreadcounts.txt"),
-            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{self.expinfo.expname}-uniqueanticodons_SizeFactors.txt"),
+            norm_counts_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniqueanticodons_normalizedreadcounts.txt"),
+            size_factors_file=os.path.join(self.expinfo.resultsdir, "unique", f"{os.path.basename(self.expinfo.expname)}-uniqueanticodons_SizeFactors.txt"),
             output_dir=os.path.join(self.expinfo.resultsdir, "unique"),
             prefix="uniqueanticodons_"
         )
@@ -374,7 +371,7 @@ class AnalysisPipeline:
             dispersions = dds.dispersions
         
         if dispersions is not None:
-            disp_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}dispersions.txt")
+            disp_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}dispersions.txt")
             # Write without header, space-separated to match tRAX format
             with open(disp_file, 'w') as f:
                 for gene_name, disp_val in zip(dds.var_names, dispersions):
@@ -402,8 +399,8 @@ class AnalysisPipeline:
                 avgs_df[cond] = norm_counts[valid_samples].mean(axis=1)
                 medians_df[cond] = norm_counts[valid_samples].median(axis=1)
                 
-        avgs_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}avgs.txt")
-        medians_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}medians.txt")
+        avgs_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}avgs.txt")
+        medians_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}medians.txt")
         avgs_df.to_csv(avgs_file, sep='\t')
         medians_df.to_csv(medians_file, sep='\t')
         
@@ -422,8 +419,8 @@ class AnalysisPipeline:
             if 'log2FoldChange' in res_df.columns:
                 logvals_df[comp_name] = res_df['log2FoldChange']
             
-        padjs_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}padjs.txt")
-        logvals_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}logvals.txt")
+        padjs_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}padjs.txt")
+        logvals_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}logvals.txt")
         padjs_df.to_csv(padjs_file, sep='\t')
         logvals_df.to_csv(logvals_file, sep='\t')
         
@@ -443,7 +440,7 @@ class AnalysisPipeline:
         for col in avgs_df.columns:
             combine_df[col] = avgs_df[col]
             
-        combine_file = os.path.join(output_dir, f"{self.expinfo.expname}-{prefix}combine.txt")
+        combine_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}combine.txt")
         combine_df.to_csv(combine_file, sep='\t')
 
     def counttypes(self):

@@ -639,7 +639,12 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
     locicoveragetable_file = open(locicoverage, "w")
     print("\t".join(["tRNA_name","sample","position","coverage", "total"]), file=locicoveragetable_file)
     
-    mismatchcomparetable = open("mismatchcompare.txt", "w")
+    # Place mismatchcompare.txt in the same directory as the coverage output file
+    if allcoverage != "stdout":
+        mismatchcompare_path = os.path.join(os.path.dirname(allcoverage), "mismatchcompare.txt")
+    else:
+        mismatchcompare_path = "mismatchcompare.txt"
+    mismatchcomparetable = open(mismatchcompare_path, "w")
     print("\t".join(["pos","firsample","secsample","firmismatches","firtotal","secmismatches","sectotal",
                      "firmismatchestrim","firtotaltrim","secmismatchestrim","sectotaltrim"]), file=mismatchcomparetable)
 

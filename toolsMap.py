@@ -360,88 +360,93 @@ class trnadatabase:
 
 class expdatabase:
     def __init__(self, expname):
-        self.expname = expname
-        self.resultsdir = os.path.join(expname, "results")
-        self.graphsdir = os.path.join(expname, "graphs")
+        self.expname = expname.rstrip(os.sep)
+        basename = os.path.basename(self.expname)
+        self.resultsdir = os.path.join(self.expname, "results")
+        self.graphsdir = os.path.join(self.expname, "graphs")
         
         # Helper to join paths
         def res_path(path): return os.path.join(self.resultsdir, path)
         def graph_path(path): return os.path.join(self.graphsdir, path)
+        
+        print(f"DEBUG: expname='{self.expname}', basename='{basename}'", file=sys.stderr)
+        print(f"DEBUG: resultsdir='{self.resultsdir}'", file=sys.stderr)
 
-        self.uniquename = res_path("unique/"+expname+"-unique")
-        self.allfeats = res_path(expname+"-allfeats.bed")
-        
-        self.mapinfo = res_path(expname+"-mapinfo.txt")
-        self.mapplot = graph_path(expname+"-mapinfo.pdf")
 
-        self.trnamapfile = res_path(expname+"-trnamapinfo.txt")
-        self.trnamapplot = graph_path(expname+"-trnamapinfo.pdf")
+        self.uniquename = res_path("unique/"+basename+"-unique")
+        self.allfeats = res_path(basename+"-allfeats.bed")
         
-        self.maplog = res_path(expname+"-mapstats.txt")
-        self.genetypes = res_path(expname+"-genetypes.txt")
-        self.genecounts = res_path(expname+"-readcounts.txt")
-        self.trnacounts = res_path(expname+"-trnacounts.txt")
-        
-        self.normalizedcounts = res_path(expname+"-normalizedreadcounts.txt")
-        self.normalizedtrnacounts = res_path("trna/"+expname+"-trna_normalizedreadcounts.txt")
-        self.sizefactors = res_path(expname+"-SizeFactors.txt")
-        self.trnasizefactors = res_path("trna/"+expname+"-trna_SizeFactors.txt")
+        self.mapinfo = res_path(basename+"-mapinfo.txt")
+        self.mapplot = graph_path(basename+"-mapinfo.pdf")
 
-        self.genetypecounts=res_path(expname+"-typecounts.txt")
-        self.genetypeplot=graph_path(expname+"-typecounts.pdf")
+        self.trnamapfile = res_path(basename+"-trnamapinfo.txt")
+        self.trnamapplot = graph_path(basename+"-trnamapinfo.pdf")
+        
+        self.maplog = res_path(basename+"-mapstats.txt")
+        self.genetypes = res_path(basename+"-genetypes.txt")
+        self.genecounts = res_path(basename+"-readcounts.txt")
+        self.trnacounts = res_path(basename+"-trnacounts.txt")
+        
+        self.normalizedcounts = res_path(basename+"-normalizedreadcounts.txt")
+        self.normalizedtrnacounts = res_path("trna/"+basename+"-trna_normalizedreadcounts.txt")
+        self.sizefactors = res_path(basename+"-SizeFactors.txt")
+        self.trnasizefactors = res_path("trna/"+basename+"-trna_SizeFactors.txt")
 
-        self.genetyperealcounts=res_path(expname+"-typerealcounts.txt")
-        self.genetyperealplot=graph_path(expname+"-typerealcounts.pdf")
-        
-        self.trnaaminofile=res_path(expname+"-aminocounts.txt")
-        self.trnauniqaminofile=res_path("unique/"+expname+"-unique-aminos.txt") 
+        self.genetypecounts=res_path(basename+"-typecounts.txt")
+        self.genetypeplot=graph_path(basename+"-typecounts.pdf")
 
-        self.trnaaminoplot=graph_path(expname+"-aminocounts.pdf")
-        self.trnaaminorealplot=graph_path(expname+"-aminorealcounts.pdf")
+        self.genetyperealcounts=res_path(basename+"-typerealcounts.txt")
+        self.genetyperealplot=graph_path(basename+"-typerealcounts.pdf")
         
-        self.trnaanticodonfile=res_path(expname+"-anticodoncounts.txt")
-        self.trnauniqanticodonfile=res_path("unique/"+expname+"-unique-anticodons.txt")
-        self.trnauniqcountsfile=res_path("unique/"+expname+"-unique-trnas.txt")
-        
-        self.trnalengthfile=res_path(expname+"-readlengths.txt")
-        self.trnalengthplot=graph_path(expname+"-readlengths.pdf")
-        
-        self.mismatchcountfile=res_path(expname+"-mismatches.txt")
-        self.mismatchcountplot=graph_path(expname+"-mismatches.pdf")
-        
-        self.trnacoveragefile=res_path(expname+"-coverage.txt")
-        self.trnacoverageplot=graph_path(expname+"-coverage.pdf")
-        self.trnacombinecoverageplot=graph_path(expname+"-combinecoverage.pdf")
-        
-        self.trnauniqcoveragefile=res_path(expname+"-uniqcoverage.txt")
+        self.trnaaminofile=res_path(basename+"-aminocounts.txt")
+        self.trnauniqaminofile=res_path("unique/"+basename+"-unique-aminos.txt") 
 
-        self.locicoveragefile=res_path("pretRNAs/"+expname+"-pretRNAcoverage.txt")
-        self.locicoverageplot=graph_path("pretRNAs/"+expname+"-pretRNAcoverage.pdf")
-        self.locicombinecoverageplot=graph_path("pretRNAs/"+expname+"-pretRNAcombinecoverage.pdf")
+        self.trnaaminoplot=graph_path(basename+"-aminocounts.pdf")
+        self.trnaaminorealplot=graph_path(basename+"-aminorealcounts.pdf")
         
-        self.trnamismatchfile = res_path("mismatch/"+expname+"-mismatchcoverage.txt")
-        self.sigmismatchfile = res_path("mismatch/"+expname+"-sigmismatch.txt")
-        self.trnamismatchplot = graph_path("mismatch/"+expname+"-mismatchcoverage.pdf")
+        self.trnaanticodonfile=res_path(basename+"-anticodoncounts.txt")
+        self.trnauniqanticodonfile=res_path("unique/"+basename+"-unique-anticodons.txt")
+        self.trnauniqcountsfile=res_path("unique/"+basename+"-unique-trnas.txt")
         
-        self.trnadeletefile = res_path("mismatch/"+expname+"-deletecoverage.txt")
-        self.trnadeleteplot = graph_path("mismatch/"+expname+"-deletecoverage.pdf")
+        self.trnalengthfile=res_path(basename+"-readlengths.txt")
+        self.trnalengthplot=graph_path(basename+"-readlengths.pdf")
         
-        self.trnamismatchreport = res_path("mismatch/"+expname+"-mismatchreport.txt")
-        self.trnauniquefile=res_path("unique/"+expname+"-trnauniquecounts.txt")
-        self.trnaendfile=res_path(expname+"-trnaendcounts.txt")
+        self.mismatchcountfile=res_path(basename+"-mismatches.txt")
+        self.mismatchcountplot=graph_path(basename+"-mismatches.pdf")
         
-        self.pcaplot = graph_path(expname+"-pca.pdf")
-        self.pcatrnaplot = graph_path(expname+"-pcatrna.pdf")
-        self.pcaacplot = graph_path("unique/"+expname+"-pcaac.pdf")
+        self.trnacoveragefile=res_path(basename+"-coverage.txt")
+        self.trnacoverageplot=graph_path(basename+"-coverage.pdf")
+        self.trnacombinecoverageplot=graph_path(basename+"-combinecoverage.pdf")
+        
+        self.trnauniqcoveragefile=res_path(basename+"-uniqcoverage.txt")
 
-        self.qaoutputname = res_path(expname+"-qa.html")
+        self.locicoveragefile=res_path("pretRNAs/"+basename+"-pretRNAcoverage.txt")
+        self.locicoverageplot=graph_path("pretRNAs/"+basename+"-pretRNAcoverage.pdf")
+        self.locicombinecoverageplot=graph_path("pretRNAs/"+basename+"-pretRNAcombinecoverage.pdf")
+        
+        self.trnamismatchfile = res_path("mismatch/"+basename+"-mismatchcoverage.txt")
+        self.sigmismatchfile = res_path("mismatch/"+basename+"-sigmismatch.txt")
+        self.trnamismatchplot = graph_path("mismatch/"+basename+"-mismatchcoverage.pdf")
+        
+        self.trnadeletefile = res_path("mismatch/"+basename+"-deletecoverage.txt")
+        self.trnadeleteplot = graph_path("mismatch/"+basename+"-deletecoverage.pdf")
+        
+        self.trnamismatchreport = res_path("mismatch/"+basename+"-mismatchreport.txt")
+        self.trnauniquefile=res_path("unique/"+basename+"-trnauniquecounts.txt")
+        self.trnaendfile=res_path(basename+"-trnaendcounts.txt")
+        
+        self.pcaplot = graph_path(basename+"-pca.pdf")
+        self.pcatrnaplot = graph_path(basename+"-pcatrna.pdf")
+        self.pcaacplot = graph_path("unique/"+basename+"-pcaac.pdf")
+
+        self.qaoutputname = res_path(basename+"-qa.html")
 
 class MapSamples:
     def __init__(self, args):
         self.args = args
         self.dbname = args.database
-        self.expname = args.experiment
-        self.samplefilename = args.samples
+        self.expname = args.output
+        self.samplefilename = args.input
         self.lazyremap = args.lazy
         self.bamdir = args.bamdir if args.bamdir else os.path.join("bam", self.expname)
         if args.threads:

@@ -61,27 +61,20 @@ def _main_logic(args):
         print('Done!\n')
     # Read database object or create one from trax run if none provided
     elif args.mode == 'build':
-        # If experiment is provided, we are running analysis
-        if hasattr(args, 'experiment') and args.experiment:
-            if not args.database or not args.samples:
-                raise Exception('Error: database and samples are required for analysis.')
-            args.traxdir = args.experiment # Output of analysis is in experiment directory
-        elif not args.traxdir:
-             raise Exception('Error: traxdir is required if not running analysis.')
-
-        # Clean the path to the trax directory
-        args.traxdir = os.path.abspath(args.traxdir)
-        
         # Raise exception if metadata file is empty or doesn't exist
-        if args.metadata:
-            if not os.path.isfile(args.metadata):
-                raise Exception('Error: metadata file does not exist.')
+        if not os.path.isfile(args.input):
+            raise Exception('Error: metadata file does not exist.')
         print('Building AnnData object...')
-        # Create path to output directory if it doesn't exist
-        print(toolsTG.builder(args.output))
+        # Output is a directory path - h5ad filename is based on the directory basename
+        # e.g., -o a/b/c creates a/b/c/c.h5ad
+        output_dir = os.path.abspath(args.output)
+        h5ad_filename = os.path.basename(output_dir) + '.h5ad'
+        print(toolsTG.builder(output_dir))
+        # Update args.output to be the full h5ad path inside the directory
+        args.output = os.path.join(output_dir, h5ad_filename)
         # Create AnnData object
-        analysis_args = args if hasattr(args, 'experiment') and args.experiment else None
-        trax2anndata(args.traxdir, args.metadata, args.output, analysis_args).create()
+        analysis_args = args if hasattr(args, 'database') and args.database else None
+        trax2anndata(output_dir, args.input, args.output, analysis_args).create()
         print('Done!\n')
     elif args.mode == 'merge':
         # Raise exception if h5ad file is empty or doesn't exist
@@ -89,8 +82,11 @@ def _main_logic(args):
             raise Exception('Error: first h5ad file does not exist.')
         if not os.path.isfile(args.anndata2):
             raise Exception('Error: second h5ad file does not exist.')
-        # Create path to output directory if it doesn't exist
-        print(toolsTG.builder(args.output))
+        # Output is a h5ad file path - create parent directory if needed
+        args.output = os.path.abspath(args.output)
+        output_dir = os.path.dirname(args.output)
+        if output_dir:
+            print(toolsTG.builder(output_dir))
         # Merge AnnData objects
         print('Merging database objects...\n')
         anndataMerger(args).merge()
@@ -99,8 +95,11 @@ def _main_logic(args):
         # Raise exception if h5ad file is empty or doesn't exist
         if not os.path.isfile(args.anndata):
             raise Exception('Error: h5ad file does not exist.')
-        # Create path to output directory if it doesn't exist
-        print(toolsTG.builder(args.output))
+        # Output is a h5ad file path - create parent directory if needed
+        args.output = os.path.abspath(args.output)
+        output_dir = os.path.dirname(args.output)
+        if output_dir:
+            print(toolsTG.builder(output_dir))
         print('Clustering data from database object...\n')
         anndataCluster(args).main()
         print('Done!\n')
@@ -207,8 +206,8 @@ def makedb(
 
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
-    runname: str = typer.Option(..., "-r", "--runname", help="Name of the run (used for output filenames)"),
-    manifest: str = typer.Option(..., "-i", "--manifest", help="Tab-delimited file: SampleName <tab> R1_Path [<tab> R2_Path]"),
+    output: str = typer.Option(..., "-o", "--output", help="Name of the run (used for output filenames)"),
+    manifest: str = typer.Option(..., "-i", "--manifest", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
     adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
     adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
     length: int = typer.Option(15, "-l", "--length", help="Minimum length of sequence after trimming"),
@@ -220,16 +219,16 @@ def trim(
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
     args = SimpleNamespace(
-        mode='trim', runname=runname, manifest=manifest, adapter1=adapter1, adapter2=adapter2,
+        mode='trim', output=output, manifest=manifest, adapter1=adapter1, adapter2=adapter2,
         length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
     )
     run_logic(args)
 
 @preprocess_app.command("map", help="Map reads to tRNA database")
 def map_cmd(
-    experiment: str = typer.Option(..., "-e", "--experiment", help="Experiment name to be used"),
+    output: str = typer.Option(..., "-o", "--output", help="Experiment name to be used"),
     database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
-    samples: str = typer.Option(..., "-s", "--samples", help="Sample file"),
+    input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
     lazy: bool = typer.Option(False, "--lazy", help="Skip mapping reads if bam files exist"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
@@ -240,21 +239,18 @@ def map_cmd(
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     args = SimpleNamespace(
-        mode='map', experiment=experiment, database=database, samples=samples,
+        mode='map', output=output, database=database, input=input,
         lazy=lazy, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
         bamdir=bamdir, log=log, quiet=quiet
     )
     run_logic(args)
 
-@app.command("build", help="Build a h5ad AnnData object from a tRAX run")
+@app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
 def build(
-    traxdir: Optional[str] = typer.Option(None, "-i", "--traxdir", help="Specify location of trax directory (required if not running analysis)"),
-    metadata: str = typer.Option(..., "-m", "--metadata", help="Specify a metadata file to create annotations, you can also use the sample file used to generate tRAX DB"),
-    output: str = typer.Option("h5ad/trnagraph.h5ad", "-o", "--output", help="Specify output h5ad file"),
+    input: str = typer.Option(..., "-i", "--input", "--metadata", help="Specify a metadata file to create annotations"),
+    output: str = typer.Option("h5ad", "-o", "--output", help="Specify output directory (h5ad file named <dirname>.h5ad will be created inside)"),
+    database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
     # Analysis arguments
-    experiment: Optional[str] = typer.Option(None, "-e", "--experiment", help="Experiment name (required for analysis)"),
-    database: Optional[str] = typer.Option(None, "-d", "--database", help="Name of the tRNA database (required for analysis)"),
-    samples: Optional[str] = typer.Option(None, "-s", "--samples", help="Sample file (required for analysis)"),
     gtf: Optional[str] = typer.Option(None, "--gtf", help="The ensembl gene list for that species"),
     pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
     bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
@@ -268,15 +264,15 @@ def build(
     dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: bam/<experimentname>)"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
-    dispfittype: str = typer.Option("mean", "--dispfittype", help="DESeq2 dispersion fit type: 'mean' (default, robust for small samples) or 'parametric' (for 5+ replicates per condition)"),
+    dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     args = SimpleNamespace(
-        mode='build', traxdir=traxdir, metadata=metadata, output=output,
-        experiment=experiment, database=database, samples=samples, gtf=gtf, pairs=pairs,
+        mode='build', input=input, output=output,
+        database=database, gtf=gtf, pairs=pairs,
         bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
         mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
         dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
@@ -290,7 +286,7 @@ def merge(
     anndata2: str = typer.Option(..., "-i2", "--anndata2", help="Specify location of second h5ad object"),
     dropno: bool = typer.Option(False, "--dropno", help="Drop non tRNAs genes that are not present in both AnnData objects"),
     droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
-    output: str = typer.Option("h5ad/trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file"),
+    output: str = typer.Option("trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
@@ -322,7 +318,7 @@ def cluster(
     hdbstatsmetrics: str = typer.Option("euclidean", "-uh", "--hdbstatsmetrics", help="Specify hdbscan statistics metrics to use for feature selection with UMAP"),
     clusterobsexperimental: List[str] = typer.Option([], "--clusterobsexperimental", help="This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
-    output: str = typer.Option("h5ad/trnagraph.cluster.h5ad", "-o", "--output", help="Specify output directory"),
+    output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):

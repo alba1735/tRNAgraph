@@ -29,10 +29,10 @@ def builder(directory: Union[str, Path]) -> str:
          dir_path = Path('./') / dir_path
 
     if not dir_path.exists():
-        output = f'Creating output directory: {dir_path.parent}'
-        dir_path.parent.mkdir(parents=True, exist_ok=True)
+        output = f'Creating output directory: {dir_path}'
+        dir_path.mkdir(parents=True, exist_ok=True)
     else:
-        output = f'Output directory already exists: {dir_path.parent}'
+        output = f'Output directory already exists: {dir_path}'
     return output
 
 class adataLog2FC:

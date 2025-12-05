@@ -239,7 +239,7 @@ class FastpTrimmer:
             output_dir = os.path.dirname(first_output_prefix)
             
             # Create manifest update file (Sample -> Final Output)
-            manifest_out = os.path.join(output_dir, f"{self.args.runname}_trim_manifest_updated.txt")
+            manifest_out = os.path.join(output_dir, f"{self.args.output}_trim_manifest_updated.txt")
             with open(manifest_out, 'w') as f:
                 for output_prefix in self.samples:
                     # Logic to determine the 'primary' output file
@@ -251,13 +251,13 @@ class FastpTrimmer:
                     f.write(f"{os.path.basename(output_prefix)}\t{outfile}\n")
 
             # Save Stats
-            stats_out = os.path.join(output_dir, f"{self.args.runname}_trim_stats.csv")
+            stats_out = os.path.join(output_dir, f"{self.args.output}_trim_stats.csv")
             df.to_csv(stats_out, index=False)
             print(f"Summary statistics written to {stats_out}")
             print(f"Updated manifest written to {manifest_out}")
             
             # Generate Plot
-            plot_out = os.path.join(output_dir, f"{self.args.runname}_trim_feature_types.pdf")
+            plot_out = os.path.join(output_dir, f"{self.args.output}_trim_feature_types.pdf")
             print("Generating feature types plot...")
             plotsTrimmingStats.visualizer(stats_out, plot_out).plot()
         else:

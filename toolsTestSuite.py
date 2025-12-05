@@ -87,12 +87,15 @@ class demoPipeline:
             raise e
 
     def _cleanup_workspace(self) -> None:
-        """Removes generated files to ensure a clean run."""
-        dirs_to_remove = "raw processed references vibrChol1-tRNAgraph vibrChol1_graphs"
-        files_to_remove = "mismatchcompare.txt vibrChol1-tRNAs.tar.gz vibrChol1.*.txt VC_*.bam VC_*.bai vibrChol1.h5ad vibrChol1.cluster.h5ad"
-        
-        self._run_command(f"rm -rf {dirs_to_remove}", "Cleaning directories...")
-        self._run_command(f"rm -f {files_to_remove}", "Cleaning files...")
+        """Removes generated files to ensure a clean run, keeping only the log file."""
+        self.logger.info("Cleaning up workspace...")
+        # Remove all files and directories in the current working directory (the test directory)
+        # except for the log file.
+        self._run_command(
+            'find . -maxdepth 1 -mindepth 1 -not -name "toolsTestSuite.log" -exec rm -rf {} +',
+            "Removing all contents from test directory except log file..."
+        )
+        self.logger.info("Workspace cleaned.")
 
     def download_metadata(self) -> None:
         """Downloads metadata from SRA using pysradb."""
@@ -241,7 +244,7 @@ class demoPipeline:
         
         cmd = (
             f"python3 {self.trnagraph_path} preprocess trim "
-            "-r vibrChol1 -i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
+            "-o vibrChol1 -i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
         )
         self._run_command(cmd, "Running trim command...")
         
@@ -278,8 +281,8 @@ class demoPipeline:
         
         cmd = (
             f"python3 {self.trnagraph_path} preprocess map "
-            "-e vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
-            "-s config/vibrChol1.metadata.txt "
+            "-o vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
+            "-i config/vibrChol1.metadata.txt "
             f"--bamdir processed/vibrChol1/bam"
         )
         self._run_command(cmd, "Running map command...")
@@ -298,14 +301,13 @@ class demoPipeline:
 
         cmd = (
             f"python3 {self.trnagraph_path} build "
-            "-e vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
-            "-s config/vibrChol1.metadata.txt "
-            "-m config/vibrChol1.metadata.txt "
+            "-i config/vibrChol1.metadata.txt "
+            "-d references/vibrChol1/trnadb/vibrChol1_db "
             "--gtf references/vibrChol1/genes/GCF_000006745.1.gtf "
             "--pairs config/vibrChol1.pair.txt "
             "--bamdir processed/vibrChol1/bam "
             "--uniqueonly "
-            "-o vibrChol1.h5ad"
+            "-o vibrChol1"
             f"{extra_flags}"
         )
         self._run_command(cmd, "Running build command...")
@@ -320,7 +322,7 @@ class demoPipeline:
         
         cmd = (
             f"python3 {self.trnagraph_path} cluster "
-            "-i vibrChol1.h5ad -o vibrChol1.cluster.h5ad"
+            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --overwrite"
         )
         self._run_command(cmd, "Running cluster command...")
         
@@ -334,7 +336,7 @@ class demoPipeline:
         
         cmd = (
             f"python3 {self.trnagraph_path} graph "
-            "-i vibrChol1.cluster.h5ad -o vibrChol1_graphs"
+            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs"
         )
         self._run_command(cmd, "Running graph command...")
         
@@ -389,4 +391,24 @@ class demoPipeline:
             print(f"Error: {e}")
 
 if __name__ == "__main__":
-    pass
+    parser = argparse.ArgumentParser(description="Run tRNAgraph test suite")
+    parser.add_argument("--directory", help="Working directory")
+    parser.add_argument("--all", action="store_true", help="Run all tests")
+    parser.add_argument("--cleanrun", action="store_true", help="Clean up after run")
+    parser.add_argument("--metadata", action="store_true", help="Run metadata download")
+    parser.add_argument("--fastq", action="store_true", help="Run fastq download")
+    parser.add_argument("--trna", action="store_true", help="Run tRNA download")
+    parser.add_argument("--genome", action="store_true", help="Run genome download")
+    parser.add_argument("--trim", action="store_true", help="Run trim")
+    parser.add_argument("--makedb", action="store_true", help="Run makedb")
+    parser.add_argument("--map", action="store_true", help="Run map")
+    parser.add_argument("--build", action="store_true", help="Run build")
+    parser.add_argument("--cluster", action="store_true", help="Run cluster")
+    parser.add_argument("--graph", action="store_true", help="Run graph")
+    parser.add_argument("--merge", action="store_true", help="Run merge")
+    parser.add_argument("--hubonly", action="store_true", help="Run hubonly")
+    parser.add_argument("--maponly", action="store_true", help="Run map only")
+    
+    args = parser.parse_args()
+    pipeline = demoPipeline(args)
+    pipeline.main()
