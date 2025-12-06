@@ -50,8 +50,8 @@ def _main_logic(args):
         if shutil.which('fastp') is None:
             raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
         # Validate manifest existence
-        if not os.path.isfile(args.manifest):
-            raise Exception(f'Error: Manifest file does not exist: {args.manifest}')
+        if not os.path.isfile(args.input):
+            raise Exception(f'Error: Manifest file does not exist: {args.input}')
         print('Starting fastp trimming pipeline...')
         toolsTrim.FastpTrimmer(args).process()
         print('Done!\n')
@@ -207,7 +207,7 @@ def makedb(
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
     output: str = typer.Option(..., "-o", "--output", help="Name of the run (used for output filenames)"),
-    manifest: str = typer.Option(..., "-i", "--manifest", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
+    manifest: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
     adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
     adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
     length: int = typer.Option(15, "-l", "--length", help="Minimum length of sequence after trimming"),
@@ -219,7 +219,7 @@ def trim(
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
     args = SimpleNamespace(
-        mode='trim', output=output, manifest=manifest, adapter1=adapter1, adapter2=adapter2,
+        mode='trim', output=output, input=input, adapter1=adapter1, adapter2=adapter2,
         length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
     )
     run_logic(args)
@@ -247,7 +247,7 @@ def map_cmd(
 
 @app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
 def build(
-    input: str = typer.Option(..., "-i", "--input", "--metadata", help="Specify a metadata file to create annotations"),
+    input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
     output: str = typer.Option("h5ad", "-o", "--output", help="Specify output directory (h5ad file named <dirname>.h5ad will be created inside)"),
     database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
     # Analysis arguments
@@ -334,7 +334,7 @@ def cluster(
 
 @app.command("graph", help="Graph data from an existing h5ad AnnData object")
 def graph(
-    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
     graphtypes: List[str] = typer.Option(["all"], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),

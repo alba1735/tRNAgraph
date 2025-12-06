@@ -1,59 +1,39 @@
-# Features to add
+# Project Roadmap
 
-## General
+This document outlines the planned features and current areas of focus for tRNAgraph development.
 
-- Add options to compute with RAW counts and alternative normalization methods
+## Planned Features
 
-## trnagraph.py
+### Analysis & Statistics
 
-- Allow for new DeSeq2 or other analysis to be run on the combined object
-- Add validation that sample names match samples so it can actually write the adatafile
+- **Alternative Normalization**: Add options to compute with RAW counts and normalization methods other than DESeq2 size factors.
+- **External Analysis Integration**: Allow new DESeq2 or other analyses to be run directly on the combined object.
+- **Correlation**: Add function to plot correlation with smallRNAs included.
+- **PCA**: Add function to plot PCA with smallRNAs included.
 
-## pca_tools.py
+### Visualization Enhancements
 
-- Add a function to plot the PCA with smallRNAs included
+- **Sorting**: Add functionality to sort combined coverage plots from most to least abundant.
+- **Radar Plots**: Improve amino acid dictionary generation to be species-universal (currently uses a subset).
+- **Styling**: Cleanup `trim` plots to match the general tRNAgraph aesthetic.
 
-## correlation_tools.py
+### Data Validation
 
-- Add a function to plot the correlation with smallRNAs
+- **Metadata Check**: Add validation to ensure `sample` names in metadata match those in the samples file before writing the AnnData object.
+- **Parameter Fallback**: Add checks for graphing parameters; default to `sample` if the requested column does not exist in `adata`.
 
-## coverage_tools.py
+## Known Issues & Refactoring Targets
 
-- add a function to sort the combined coverage from most to least abundant
-
-## All plots
-
-- Add a function to check if the parameter exisits in adata columns and if not default to samples
-
-## radar_tools.py
-
-- Add total amino dict not just the subset one I am using now also generate a list of all the amino acids from the adata object so it works universal to all species.
-
-## Priority
-
-- Fix the acceptor stems not being labeled in adata.var and other missing info with those positions
-  - Shows up in CVS exports
-- Move all flag validation in adata obs or var into the trnagraph.py script from the graphing scripts
-- Prevent merging of adata objects with different trax/trnagraph runinfo
-
-## toolTrim.py
-
-- Add log file output and quiet mode to trimmer
-- Cleanup plot to match tRNAgraph style better
-- Test UMI handling more thoroughly
-
-<!-- # Verify adata is valid for chosen coverage group or obs
-#if adata.obs[self.coverage_grp].isna().any():
-#    raise ValueError('Coverage group contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
-#                     'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage group.')
-# if self.coverage_obs:
-#     if adata.obs[self.coverage_obs].isna().any().any():
-#         raise ValueError('Coverage obs contains NaN values.\nThis most likely means that you forgot to include samples in your metadata file that are present in your trax directory.\n' \
-#                         'Try adding the samples to your metadata file and rebuilding the AnnData object or selecting a different coverage obs.') -->
-
-## Important to come back to
-
-- adata creation debug warnings
-- lazy remap?
-- remove de_results?
-- log2 shift to deseq2?
+- **Acceptor Stems**: Fix labeling issues with acceptor stems in `adata.var` (affects CSV exports).
+- **Flag Validation**: Move flag validation logic from individual graphing scripts into the main `trnagraph.py` entry point.
+- **Merge Logic**: Prevent merging of AnnData objects if they have conflicting tRNAgraph run info.
+- **Trimmer**: Add log file output and quiet mode to `toolTrim.py`.
+- **Trimmer UMI Handling**: Test that UMI handling in `toolTrim.py` works as expected.
+- **logging**: Standardize logging across all scripts for better traceability. Improve log messages for clarity.
+- **Warnings**: Address remaining `FutureWarnings` during AnnData creation.
+- **Implement BAM splitting and (frags/full-length) logic in `toolMap.py`**: Currently all reads are mapped together without distinction.
+- **Rename de_results**: Change `de_results` in `adata.uns` to `log2FC` for clarity.
+- **Replace log2FC with deseq implementation**: Use DESeq2 results directly instead of calculating log2FC manually.
+- **--lazy flag**: Decide to remove this flag since mapping is now seperate from processing.
+- **--nofrag flag**: Currently unsure if this is needed as the plan is to replace fragment logic with a more general approach of spliting BAMs by size.
+- **--nosizefactors flag**: Since both normalized and raw counts are stored, this flag may be redundant. Maybe implement into graphs instead to plot raw counts directly.

@@ -1,21 +1,21 @@
 # tRNAgraph Test Suite
 
-This document outlines the automated test suite for the tRNAgraph project. The test suite, implemented in `toolsTestSuite.py`, is designed to validate the functionality of the entire tRNAgraph pipeline, from data acquisition to read mapping. It is based on the original tRAX tutorial notebook but has been integrated directly into the package to ensure legacy feature support and regression testing.
+This document outlines the automated test suite for the tRNAgraph project. The suite validates the functionality of the entire pipeline, from raw data acquisition to high-dimensional visualization. It is designed to ensure reproducibility and regression testing by running a complete "end-to-end" workflow.
 
 ## Overview
 
-The test suite automates the following steps:
+The test suite automates the following workflow:
 
-1. **Metadata Retrieval**: Downloads experiment metadata from SRA.
-2. **Data Acquisition**: Downloads FASTQ files for specific accessions.
-3. **Reference Preparation**: Downloads and prepares tRNA sequences and the reference genome (Vibrio cholerae).
-4. **Preprocessing**: Trims adapters from raw reads.
-5. **Database Creation**: Builds a Bowtie2 index for the tRNA database.
-6. **Alignment**: Maps reads to the generated database.
+1.  **Metadata Retrieval**: Downloads and filters experiment metadata from SRA.
+2.  **Data Acquisition**: Downloads FASTQ files and subsamples them for speed.
+3.  **Reference Preparation**: Fetches _Vibrio cholerae_ genome/annotations and prepares tRNA sequences.
+4.  **Preprocessing**: Trims adapters, builds the database, and maps reads.
+5.  **Database Construction**: compiles mapping results into an AnnData object.
+6.  **Analysis & Visualization**: Performs clustering and generates a full suite of graphs.
 
 ## Usage
 
-The test suite is typically invoked via the `trnagraph.py` CLI.
+Invoke the test suite via the CLI:
 
 ```bash
 python trnagraph.py tools test [options]
@@ -23,51 +23,62 @@ python trnagraph.py tools test [options]
 
 ### Options
 
-- `--all`: Run the complete pipeline from scratch (cleans existing test data first).
-- `--metadata`: Only download metadata.
-- `--fastq`: Only download FASTQ files.
-- `--trna`: Only download tRNA sequences.
-- `--genome`: Only download reference genome.
-- `--trim`: Only run adapter trimming.
-- `--makedb`: Only create the tRNA database.
-- `--map`: Only map reads.
+- `--all`: Run the complete pipeline (cleans existing test data first).
 - `--cleanrun`: Clean up all generated files after the run completes.
+- `--directory`: Specify a custom working directory (Default: `tests/`).
+- `--maponly`: Stop after the mapping step.
+
+**Step-specific flags:**
+
+- `--metadata`: Download metadata.
+- `--fastq`: Download FASTQ files.
+- `--trna`: Download tRNA sequences.
+- `--genome`: Download reference genome.
+- `--trim`: Run adapter trimming.
+- `--makedb`: Create tRNA database.
+- `--map`: Run read mapping.
+- `--build`: Build the AnnData object.
+- `--cluster`: Run clustering algorithms.
+- `--graph`: Generate visualization plots.
+- `--hubonly`: Generate UCSC track hubs without building the full database.
 
 ## Dataset Details
 
-The test suite uses RNAseq data from ["Comparative tRNA sequencing and RNA mass spectrometry for surveying tRNA modifications"](https://www.nature.com/articles/s41589-020-0558-1) by Kimura et. al, 2020 (GEO: [GSE147614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE147614)).
+The suite uses data from:
 
-### Samples
+- **Study**: Kimura et. al, 2020 ["Comparative tRNA sequencing and RNA mass spectrometry for surveying tRNA modifications"](https://www.nature.com/articles/s41589-020-0558-1)
+- **Organism**: _Vibrio cholerae_
+- **Accessions**: SRP254278 (Filtered subset)
+- **Optimization**: FASTQ downloads are subsampled to the first 100,000 reads (`-X 100000`) to ensure rapid execution.
 
-The suite downloads a subset of samples (Vibrio cholerae) to ensure quick execution while still providing comprehensive coverage of the pipeline's features.
+## Pipeline Breakdown
 
-Accessions used:
+### 1. Data & Metadata Acquisition
 
-- SRR11431928 - SRR11431937
+- **Metadata**: Uses `pysradb` to fetch metadata for SRP254278. It specifically filters out non-_Vibrio_ entries (e.g., _E. coli_ controls) and specific gene knockouts to create a clean test dataset.
+- **FASTQ**: Uses `prefetch` and `fastq-dump` to retrieve raw sequencing data based on the filtered metadata.
 
-**Note**: For testing purposes, the pipeline subsamples reads to the first 100,000 reads (`-X 100000`) to speed up execution.
+### 2. Reference Preparation
 
-## Pipeline Steps
+- **Genome**: Downloads the _Vibrio cholerae_ genome (GCF_000006745.1) from NCBI.
+  - Converts GFF annotations to GTF using `gffread`.
+  - Standardizes chromosome names (e.g., changing NCBI RefSeq IDs to `chrI`, `chrII`) in both FASTA and GTF files to match gtRNAdb conventions.
+- **tRNAs**: Extracts pre-packaged tRNA sequences from the local `assets` directory (simulating a gtRNAdb download).
 
-### 1. Metadata & Fastq Download
+### 3. Preprocessing
 
-Uses `pysradb` to fetch metadata and `fastq-dump` (via `sra-tools`) to download raw sequencing data.
+- **Trimming**: Runs `preprocess trim` using `fastp` with specific adapter sequences to clean raw reads.
+- **Database Generation**: Runs `preprocess makedb` to create a Bowtie2 index using the standardized genome and tRNA sequences (`-s bact` mode).
+- **Mapping**: Runs `preprocess map` to align trimmed reads to the generated index, producing BAM files in `processed/vibrChol1/bam`.
 
-### 2. Reference Genome & tRNA Database
+### 4. Database Construction (Build)
 
-- Downloads _Vibrio cholerae_ tRNA sequences from [gtRNAdb](http://gtrnadb.ucsc.edu/).
-- Downloads the reference genome from NCBI.
-- Converts GFF annotations to GTF format using `gffread`.
-- Standardizes chromosome names (e.g., changing NCBI accessions to `chrI`, `chrII`) to match gtRNAdb conventions.
+Runs `trnagraph.py build` to aggregate the coverage data.
 
-### 3. Trimming
+- **Inputs**: Uses the generated BAM files, the downloaded GTF for non-tRNA features, and a pairs file (`config/vibrChol1.pair.txt`).
+- **Configuration**: Runs with `--uniqueonly` to test strict filtering capabilities.
 
-Uses the internal `preprocess trim` command (wrapping `fastp` or `cutadapt`) to remove adapters.
+### 5. Post-Processing & Visualization
 
-### 4. Database Generation
-
-Runs `preprocess makedb` to generate a Bowtie2 index from the fetched tRNA sequences and genome.
-
-### 5. Mapping
-
-Runs `preprocess map` to align the trimmed reads to the custom tRNA database, generating BAM files and coverage statistics.
+- **Clustering**: Runs `trnagraph.py cluster` to perform dimensionality reduction (UMAP) and density-based clustering on the AnnData object.
+- **Graphing**: Runs `trnagraph.py graph` to generate the full suite of visualizations (Heatmaps, PCA, Coverage, etc.) in the `vibrChol1/graphs` directory.
