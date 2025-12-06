@@ -207,7 +207,7 @@ def makedb(
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
     output: str = typer.Option(..., "-o", "--output", help="Name of the run (used for output filenames)"),
-    manifest: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
+    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
     adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
     adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
     length: int = typer.Option(15, "-l", "--length", help="Minimum length of sequence after trimming"),

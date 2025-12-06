@@ -14,7 +14,7 @@ class FastpTrimmer:
     '''
     def __init__(self, args):
         self.args = args
-        self.manifest = args.manifest
+        self.manifest = args.input
         
         # Parse Manifest
         self.samples = self._parse_manifest()

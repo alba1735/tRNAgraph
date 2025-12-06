@@ -37,3 +37,6 @@ This document outlines the planned features and current areas of focus for tRNAg
 - **--lazy flag**: Decide to remove this flag since mapping is now seperate from processing.
 - **--nofrag flag**: Currently unsure if this is needed as the plan is to replace fragment logic with a more general approach of spliting BAMs by size.
 - **--nosizefactors flag**: Since both normalized and raw counts are stored, this flag may be redundant. Maybe implement into graphs instead to plot raw counts directly.
+- **map makes extra directories**: both graph and results directories are created when only results is needed at this step.
+- **-maponly flag**: Consider removing this flag since mapping is now seperate from processing.
+- **fatal: not a git repository**: Fix git version retrieval in `toolBuild.py` to avoid errors when not in a git repo.
