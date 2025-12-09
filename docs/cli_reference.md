@@ -23,7 +23,7 @@ Builds a Bowtie2 index from gtRNAdb/tRNAScan-SE output and a reference genome. T
 **Usage:**
 
 ```bash
-python trnagraph.py preprocess makedb -g <genome> -t <trnaout> -r <trnafa> -m <namemap> [options]
+trnagraph preprocess makedb -g <genome> -t <trnaout> -r <trnafa> -m <namemap> [options]
 ```
 
 **Flags:**
@@ -46,7 +46,7 @@ Trims adapters and processes UMIs using `fastp`.
 **Usage:**
 
 ```bash
-python trnagraph.py preprocess trim -i <manifest> -o <output> [options]
+trnagraph preprocess trim -i <manifest> -o <output> [options]
 ```
 
 **Flags:**
@@ -70,7 +70,7 @@ Maps reads to the tRNA database using Bowtie2.
 **Usage:**
 
 ```bash
-python trnagraph.py preprocess map -i <metadata> -d <database> -o <output> [options]
+trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 ```
 
 **Flags:**
@@ -99,7 +99,7 @@ Constructs the AnnData object from mapping outputs.
 **Usage:**
 
 ```bash
-python trnagraph.py build -i <metadata> -d <database> -o <out_dir> [options]
+trnagraph build -i <metadata> -d <database> -o <out_dir> [options]
 ```
 
 **Flags:**
@@ -136,7 +136,7 @@ Performs clustering (UMAP, HDBSCAN) on an existing AnnData object.
 **Usage:**
 
 ```bash
-python trnagraph.py cluster -i <input.h5ad> [options]
+trnagraph cluster -i <input.h5ad> [options]
 ```
 
 **Flags:**
@@ -172,7 +172,7 @@ Merges two existing AnnData objects into a single file. This is useful for combi
 **Usage:**
 
 ```bash
-python trnagraph.py merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
+trnagraph merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
 ```
 
 **Flags:**
@@ -192,7 +192,7 @@ Generates a wide variety of visualizations from the AnnData file.
 **Usage:**
 
 ```bash
-python trnagraph.py graph -i <input.h5ad> -o <output_dir> [options]
+trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 ```
 
 **General Flags:**
@@ -263,7 +263,7 @@ Computes log2 fold change for specified groups and read types.
 **Usage:**
 
 ```bash
-python trnagraph.py tools log2fc -i <input.h5ad> [options]
+trnagraph tools log2fc -i <input.h5ad> [options]
 ```
 
 - **`-i`, `--anndata`** (Required): Input file.
@@ -279,7 +279,7 @@ Exports the AnnData object to a set of CSV files (obs, var, X).
 **Usage:**
 
 ```bash
-python trnagraph.py tools csv -i <input.h5ad> -o <output_dir>
+trnagraph tools csv -i <input.h5ad> -o <output_dir>
 ```
 
 - **`-i`, `--anndata`** (Required): Input file.
@@ -292,7 +292,7 @@ Runs the internal automated test suite.
 **Usage:**
 
 ```bash
-python trnagraph.py tools test [options]
+trnagraph tools test [options]
 ```
 
 - **`--all`**: Run all tests.

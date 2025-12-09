@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tRNAgraph"
+dynamic = ["version"]
+description = "Comprehensive toolkit for analyzing tRNA-seq data"
+readme = "README.md"
+authors = [
+    {name = "Alex Bagi", email = "abagi@ucsc.edu"}
+]
+license = {text = "GPL-3.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "anndata>=0.11.4",
+    "typer",
+    "pandas>=2.2.2",
+    "numpy>=1.26.4,<2.0.0",
+    "pyarrow>=15.0.0",
+    "scipy>=1.14.0",
+    "scikit-learn>=1.5.1",
+    "matplotlib>=3.8.3",
+    "seaborn>=0.13.2",
+    "umap-learn>=0.5.7",
+    "hdbscan>=0.8.38",
+    "logomaker>=0.8.6",
+    "pysradb",
+    "pydeseq2",
+    "pysam"
+]
+
+[project.scripts]
+trnagraph = "trnagraph.cli:app"
+
+[tool.setuptools.dynamic]
+version = {attr = "trnagraph.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+trnagraph = ["assets/**/*"]

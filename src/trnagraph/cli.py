@@ -6,18 +6,19 @@ import sys
 import json
 import contextlib
 import typer
+from .runner import CommandRunner
 from typing import Optional, List
 from types import SimpleNamespace
 # Custom functions
 try:
-    from . import toolsTestSuite
-    from .lazy_imports import (
+    from .modules import toolsTestSuite
+    from .modules.lazy_imports import (
         toolsMap, toolsTDatabase, toolsTrim, toolsTG
     )
-    from .adataGraph import anndataGrapher
-    from .adataMerge import anndataMerger
-    from .adataCluster import anndataCluster
-    from .adataBuild import trax2anndata
+    from .modules.adataGraph import anndataGrapher
+    from .modules.adataMerge import anndataMerger
+    from .modules.adataCluster import anndataCluster
+    from .modules.adataBuild import trax2anndata
 except ImportError:
     # Fallback for script execution: add parent directory to path and import as package
     # This ensures that relative imports inside sub-modules (like adataGraph) work correctly
@@ -25,14 +26,14 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    from tRNAgraph import toolsTestSuite
-    from tRNAgraph.lazy_imports import (
+    from tRNAgraph.modules import toolsTestSuite
+    from tRNAgraph.modules.lazy_imports import (
         toolsMap, toolsTDatabase, toolsTrim, toolsTG
     )
-    from tRNAgraph.adataGraph import anndataGrapher
-    from tRNAgraph.adataMerge import anndataMerger
-    from tRNAgraph.adataCluster import anndataCluster
-    from tRNAgraph.adataBuild import trax2anndata
+    from tRNAgraph.modules.adataGraph import anndataGrapher
+    from tRNAgraph.modules.adataMerge import anndataMerger
+    from tRNAgraph.modules.adataCluster import anndataCluster
+    from tRNAgraph.modules.adataBuild import trax2anndata
 
 def _main_logic(args):
     '''
@@ -234,7 +235,7 @@ def map_cmd(
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
     skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
-    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: bam/<experimentname>)"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
@@ -262,7 +263,7 @@ def build(
     hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
     dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
-    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: bam/<experimentname>)"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),

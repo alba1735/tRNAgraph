@@ -42,3 +42,5 @@ This document outlines the planned features and current areas of focus for tRNAg
 - **fatal: not a git repository**: Fix git version retrieval in `toolBuild.py` to avoid errors when not in a git repo.
 - **bad imports**: On other machines the . import stuff breaks the entire pipeline.
 - **tqdm**: implement this for progress updates.
+- **Unit Tests**: Expand unit tests to cover more functions and edge cases.
+- **dir Structure**: Standardize directory structure creation across all modules for consistency and update readme/docs accordingly.

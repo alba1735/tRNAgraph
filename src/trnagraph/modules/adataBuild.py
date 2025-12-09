@@ -19,7 +19,7 @@ class AnalysisPipeline:
         self.bedfiles = args.bed
         self.nofrag = args.nofrag
         self.nosizefactors = args.nosizefactors
-        self.bamdir = args.bamdir if args.bamdir else os.path.join("bam", self.expname)
+        self.bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
         if args.threads:
             self.cores = args.threads
         else:

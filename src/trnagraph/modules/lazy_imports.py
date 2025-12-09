@@ -8,7 +8,7 @@ class LazyLoader:
 
     def __getattr__(self, name):
         if self.module is None:
-            self.module = importlib.import_module(f'.{self.module_name}', package='tRNAgraph')
+            self.module = importlib.import_module(f'.{self.module_name}', package='trnagraph.modules')
         return getattr(self.module, name)
 
 

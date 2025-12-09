@@ -448,7 +448,7 @@ class MapSamples:
         self.expname = args.output
         self.samplefilename = args.input
         self.lazyremap = args.lazy
-        self.bamdir = args.bamdir if args.bamdir else os.path.join("bam", self.expname)
+        self.bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
         if args.threads:
             self.cores = args.threads
         else:

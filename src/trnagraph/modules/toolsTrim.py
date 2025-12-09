@@ -6,7 +6,7 @@ import json
 import subprocess
 import pandas as pd
 import multiprocessing
-import plotsTrimmingStats
+from . import plotsTrimmingStats
 
 class FastpTrimmer:
     '''
@@ -73,6 +73,11 @@ class FastpTrimmer:
         # Determine output directory and base name
         output_dir = os.path.dirname(output_prefix)
         
+        # Default to processed/trimmed if no directory specified
+        if not output_dir:
+            output_dir = "processed/trimmed"
+            output_prefix = os.path.join(output_dir, output_prefix)
+
         # Ensure output directory exists
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)

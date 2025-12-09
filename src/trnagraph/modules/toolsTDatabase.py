@@ -39,7 +39,8 @@ class tRNADatabaseBuilder:
         self.orgmode = args.orgmode or "euk"
         self.threads = args.threads
         
-        self.script_dir = os.path.dirname(os.path.realpath(__file__)) + "/"
+        # Point to the package root (src/trnagraph) instead of modules/
+        self.script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "/"
         
         # Initialize Sprinzl positions
         self._init_positions()
@@ -89,12 +90,33 @@ class tRNADatabaseBuilder:
 
     def get_git_hash(self):
         '''Retrieve git version info matching trnagraph style'''
+        version_str = "Unknown"
+        hash_str = "Unknown"
+
+        # Try to get version from package metadata
         try:
-            git_version = subprocess.check_output(['git', '--git-dir='+self.script_dir+'.git', 'describe'], text=True).strip()
-            git_hash = subprocess.check_output(['git', '--git-dir='+self.script_dir+'.git', 'rev-parse', 'HEAD'], text=True).strip()
-            return git_version, git_hash
+            from importlib.metadata import version
+            version_str = version("tRNAgraph")
         except Exception:
-            return "Unknown", "Unknown"
+            pass
+
+        # Try to get git info
+        try:
+            # Assuming script_dir is src/trnagraph/, repo root is two levels up
+            repo_root = os.path.dirname(os.path.dirname(self.script_dir.rstrip('/')))
+            git_dir = os.path.join(repo_root, '.git')
+            
+            if os.path.exists(git_dir):
+                # Get hash
+                hash_str = subprocess.check_output(['git', '--git-dir='+git_dir, 'rev-parse', 'HEAD'], text=True).strip()
+                
+                # If version is still unknown, try git describe
+                if version_str == "Unknown":
+                     version_str = subprocess.check_output(['git', '--git-dir='+git_dir, 'describe'], text=True).strip()
+        except Exception:
+            pass
+            
+        return version_str, hash_str
 
     def get_trna_nums(self, trna_align, margin=0, mode="transcript"):
         '''

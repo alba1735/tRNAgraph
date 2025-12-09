@@ -22,8 +22,8 @@ class demoPipeline:
             args (argparse.Namespace): Parsed command-line arguments.
         """
         self.args = args
-        self.repo_root = os.path.abspath(os.path.dirname(__file__))
-        self.trnagraph_path = os.path.join(self.repo_root, "trnagraph.py")
+        self.repo_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+        self.trnagraph_path = "trnagraph"
         
         # Set up working directory
         if self.args.directory:
@@ -48,7 +48,7 @@ class demoPipeline:
             self._cleanup_workspace()
 
         # Copy assets
-        self.assets_dir = os.path.join(self.repo_root, "assets")
+        self.assets_dir = os.path.join(self.repo_root, "src/trnagraph/assets")
         os.makedirs("config", exist_ok=True)
         self._run_command(f"cp --update {self.assets_dir}/*.txt config/.", "Copying assets...")
 
@@ -174,12 +174,12 @@ class demoPipeline:
 
     def download_genome(self) -> None:
         """Downloads Vibrio cholerae genome and GFF annotation, converting to GTF."""
-        os.makedirs("references/vibrChol1/genes", exist_ok=True)
+        os.makedirs("references/vibrChol1/annotations", exist_ok=True)
         os.makedirs("references/vibrChol1/genomes", exist_ok=True)
         self.logger.info("Downloading Vibrio cholerae genome and GFF annotation...")
         print("Downloading Vibrio cholerae genome and GFF annotation...")
         
-        if os.path.exists("references/vibrChol1/genes/GCF_000006745.1.gtf"):
+        if os.path.exists("references/vibrChol1/annotations/GCF_000006745.1.gtf"):
             self.logger.info("Vibrio cholerae genome already exists, skipping download.")
             return
 
@@ -224,7 +224,7 @@ class demoPipeline:
 
         # Move files
         os.rename(fna_path, "references/vibrChol1/genomes/GCF_000006745.1_ASM674v1_genomic.fna")
-        os.rename(f"{base_path}/genomic.gtf", "references/vibrChol1/genes/GCF_000006745.1.gtf")
+        os.rename(f"{base_path}/genomic.gtf", "references/vibrChol1/annotations/GCF_000006745.1.gtf")
         
         # Cleanup
         self._run_command("rm -rf references/vibrChol1/temp_extract", "Removing temporary extraction directory...")
@@ -234,7 +234,7 @@ class demoPipeline:
 
     def trim_fastq(self) -> None:
         """Trims adapters from FASTQ files using the tRNAgraph preprocess trim tool."""
-        if os.path.exists("processed/vibrChol1/fastq_trimmed_fastp/vibrChol1_trim_manifest_updated.txt"):
+        if os.path.exists("processed/trimmed/vibrChol1_trim_manifest_updated.txt"):
             self.logger.info("Trimmed fastq files already exist, skipping trimming.")
             print("Trimmed fastq files already exist, skipping trimming.")
             return
@@ -243,7 +243,7 @@ class demoPipeline:
         print("Trimming fastq files with fastp...")
         
         cmd = (
-            f"python3 {self.trnagraph_path} preprocess trim "
+            f"{self.trnagraph_path} preprocess trim "
             "-o vibrChol1 -i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
         )
         self._run_command(cmd, "Running trim command...")
@@ -262,7 +262,7 @@ class demoPipeline:
         print("Creating bowtie2 index...")
         
         cmd = (
-            f"python3 {self.trnagraph_path} preprocess makedb "
+            f"{self.trnagraph_path} preprocess makedb "
             "-g references/vibrChol1/genomes/GCF_000006745.1_ASM674v1_genomic.fna "
             "-t references/vibrChol1/trnas/vibrChol1-tRNAs.out "
             "-r references/vibrChol1/trnas/vibrChol1-tRNAs.fa "
@@ -280,7 +280,7 @@ class demoPipeline:
         print("Mapping reads to tRNA genes...")
         
         cmd = (
-            f"python3 {self.trnagraph_path} preprocess map "
+            f"{self.trnagraph_path} preprocess map "
             "-o vibrChol1 -d references/vibrChol1/trnadb/vibrChol1_db "
             "-i config/vibrChol1.metadata.txt "
             f"--bamdir processed/vibrChol1/bam"
@@ -300,10 +300,10 @@ class demoPipeline:
             extra_flags += " --hubonly"
 
         cmd = (
-            f"python3 {self.trnagraph_path} build "
+            f"{self.trnagraph_path} build "
             "-i config/vibrChol1.metadata.txt "
             "-d references/vibrChol1/trnadb/vibrChol1_db "
-            "--gtf references/vibrChol1/genes/GCF_000006745.1.gtf "
+            "--gtf references/vibrChol1/annotations/GCF_000006745.1.gtf "
             "--pairs config/vibrChol1.pair.txt "
             "--bamdir processed/vibrChol1/bam "
             "--uniqueonly "
@@ -321,7 +321,7 @@ class demoPipeline:
         print("Clustering AnnData object...")
         
         cmd = (
-            f"python3 {self.trnagraph_path} cluster "
+            f"{self.trnagraph_path} cluster "
             "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --overwrite"
         )
         self._run_command(cmd, "Running cluster command...")
@@ -335,7 +335,7 @@ class demoPipeline:
         print("Generating graphs...")
         
         cmd = (
-            f"python3 {self.trnagraph_path} graph "
+            f"{self.trnagraph_path} graph "
             "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs"
         )
         self._run_command(cmd, "Running graph command...")
@@ -391,24 +391,4 @@ class demoPipeline:
             print(f"Error: {e}")
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description="Run tRNAgraph test suite")
-    # parser.add_argument("--directory", help="Working directory")
-    # parser.add_argument("--all", action="store_true", help="Run all tests")
-    # parser.add_argument("--cleanrun", action="store_true", help="Clean up after run")
-    # parser.add_argument("--metadata", action="store_true", help="Run metadata download")
-    # parser.add_argument("--fastq", action="store_true", help="Run fastq download")
-    # parser.add_argument("--trna", action="store_true", help="Run tRNA download")
-    # parser.add_argument("--genome", action="store_true", help="Run genome download")
-    # parser.add_argument("--trim", action="store_true", help="Run trim")
-    # parser.add_argument("--makedb", action="store_true", help="Run makedb")
-    # parser.add_argument("--map", action="store_true", help="Run map")
-    # parser.add_argument("--build", action="store_true", help="Run build")
-    # parser.add_argument("--cluster", action="store_true", help="Run cluster")
-    # parser.add_argument("--graph", action="store_true", help="Run graph")
-    # parser.add_argument("--merge", action="store_true", help="Run merge")
-    # parser.add_argument("--hubonly", action="store_true", help="Run hubonly")
-    # parser.add_argument("--maponly", action="store_true", help="Run map only")
-    
-    # args = parser.parse_args()
-    # pipeline = demoPipeline(args)
-    # pipeline.main()
+    pass
