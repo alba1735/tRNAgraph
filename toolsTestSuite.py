@@ -50,7 +50,7 @@ class demoPipeline:
         # Copy assets
         self.assets_dir = os.path.join(self.repo_root, "assets")
         os.makedirs("config", exist_ok=True)
-        self._run_command(f"cp --update=none {self.assets_dir}/*.txt config/.", "Copying assets...")
+        self._run_command(f"cp --update {self.assets_dir}/*.txt config/.", "Copying assets...")
 
     def _run_command(self, command: str, description: str = "", check: bool = True) -> subprocess.CompletedProcess:
         """
@@ -153,7 +153,7 @@ class demoPipeline:
     def download_trna(self) -> None:
         """Downloads and extracts Vibrio cholerae tRNA sequences."""
         os.makedirs("references/vibrChol1/trnas", exist_ok=True)
-        self._run_command(f"cp --update=none {self.assets_dir}/*.gz .", "Copying assets...")
+        self._run_command(f"cp --update {self.assets_dir}/*.gz .", "Copying assets...")
         self.logger.info("Downloading Vibrio cholerae tRNA sequences...")
         print("Downloading Vibrio cholerae tRNA sequences...")
         
@@ -391,24 +391,24 @@ class demoPipeline:
             print(f"Error: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run tRNAgraph test suite")
-    parser.add_argument("--directory", help="Working directory")
-    parser.add_argument("--all", action="store_true", help="Run all tests")
-    parser.add_argument("--cleanrun", action="store_true", help="Clean up after run")
-    parser.add_argument("--metadata", action="store_true", help="Run metadata download")
-    parser.add_argument("--fastq", action="store_true", help="Run fastq download")
-    parser.add_argument("--trna", action="store_true", help="Run tRNA download")
-    parser.add_argument("--genome", action="store_true", help="Run genome download")
-    parser.add_argument("--trim", action="store_true", help="Run trim")
-    parser.add_argument("--makedb", action="store_true", help="Run makedb")
-    parser.add_argument("--map", action="store_true", help="Run map")
-    parser.add_argument("--build", action="store_true", help="Run build")
-    parser.add_argument("--cluster", action="store_true", help="Run cluster")
-    parser.add_argument("--graph", action="store_true", help="Run graph")
-    parser.add_argument("--merge", action="store_true", help="Run merge")
-    parser.add_argument("--hubonly", action="store_true", help="Run hubonly")
-    parser.add_argument("--maponly", action="store_true", help="Run map only")
+    # parser = argparse.ArgumentParser(description="Run tRNAgraph test suite")
+    # parser.add_argument("--directory", help="Working directory")
+    # parser.add_argument("--all", action="store_true", help="Run all tests")
+    # parser.add_argument("--cleanrun", action="store_true", help="Clean up after run")
+    # parser.add_argument("--metadata", action="store_true", help="Run metadata download")
+    # parser.add_argument("--fastq", action="store_true", help="Run fastq download")
+    # parser.add_argument("--trna", action="store_true", help="Run tRNA download")
+    # parser.add_argument("--genome", action="store_true", help="Run genome download")
+    # parser.add_argument("--trim", action="store_true", help="Run trim")
+    # parser.add_argument("--makedb", action="store_true", help="Run makedb")
+    # parser.add_argument("--map", action="store_true", help="Run map")
+    # parser.add_argument("--build", action="store_true", help="Run build")
+    # parser.add_argument("--cluster", action="store_true", help="Run cluster")
+    # parser.add_argument("--graph", action="store_true", help="Run graph")
+    # parser.add_argument("--merge", action="store_true", help="Run merge")
+    # parser.add_argument("--hubonly", action="store_true", help="Run hubonly")
+    # parser.add_argument("--maponly", action="store_true", help="Run map only")
     
-    args = parser.parse_args()
-    pipeline = demoPipeline(args)
-    pipeline.main()
+    # args = parser.parse_args()
+    # pipeline = demoPipeline(args)
+    # pipeline.main()

@@ -40,3 +40,5 @@ This document outlines the planned features and current areas of focus for tRNAg
 - **map makes extra directories**: both graph and results directories are created when only results is needed at this step.
 - **-maponly flag**: Consider removing this flag since mapping is now seperate from processing.
 - **fatal: not a git repository**: Fix git version retrieval in `toolBuild.py` to avoid errors when not in a git repo.
+- **bad imports**: On other machines the . import stuff breaks the entire pipeline.
+- **tqdm**: implement this for progress updates.
