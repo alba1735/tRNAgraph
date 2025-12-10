@@ -25,11 +25,13 @@ graph TD
         DB[Make Database]
         TR[Trim Reads]
         MP[Map Reads]
+        SP[Split BAMs]
 
         G & T --> DB
         FQ & M --> TR
         TR --> MP
         DB --> MP
+        MP --> SP
     end
 
     subgraph Analyze
@@ -39,6 +41,7 @@ graph TD
         MG[Merge Datasets]
 
         MP & MD --> B
+        SP --> B
         B --> C
         B --> MG
     end
@@ -76,7 +79,7 @@ graph TD
 
     %% Apply Classes
     class M,MD,FQ,G,T input;
-    class DB,TR,MP,B,C,MG,L2FC,CSV,V process;
+    class DB,TR,MP,SP,B,C,MG,L2FC,CSV,V process;
     class H5,H5C storage;
     class FIG,CSVO output;
 ```
@@ -90,6 +93,7 @@ The preprocessing module handles raw data preparation.
 - **[makedb](cli_reference.md#makedb)**: Creates a Bowtie2 index from a reference genome and tRNA predictions.
 - **[trim](cli_reference.md#trim)**: Uses `fastp` to remove adapters and process UMIs from raw FASTQ files.
 - **[map](cli_reference.md#map)**: Aligns trimmed reads to the tRNA database using Bowtie2.
+- **[split](cli_reference.md#split)**: Splits BAM files based on read length (e.g., <60bp and >=60bp).
 
 ### 2. Analyze
 

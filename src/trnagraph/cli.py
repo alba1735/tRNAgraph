@@ -16,7 +16,7 @@ from types import SimpleNamespace
 try:
     from .modules import toolsTestSuite
     from .modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit
     )
     from .modules.adataGraph import anndataGrapher
     from .modules.adataMerge import anndataMerger
@@ -31,7 +31,7 @@ except ImportError:
     
     from tRNAgraph.modules import toolsTestSuite
     from tRNAgraph.modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit
     )
     from tRNAgraph.modules.adataGraph import anndataGrapher
     from tRNAgraph.modules.adataMerge import anndataMerger
@@ -58,6 +58,17 @@ def _main_logic(args):
             raise Exception(f'Error: Manifest file does not exist: {args.input}')
         print('Starting fastp trimming pipeline...')
         toolsTrim.FastpTrimmer(args).process()
+        print('Done!\n')
+    elif args.mode == 'split':
+        # Check for samtools
+        import shutil
+        if shutil.which('samtools') is None:
+            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
+        # Validate manifest existence
+        if not os.path.isfile(args.input):
+            raise Exception(f'Error: Manifest file does not exist: {args.input}')
+        print('Splitting BAM files...')
+        toolsSplit.BamSplitter(args).process()
         print('Done!\n')
     elif args.mode == 'map':
         print('Mapping samples...')
@@ -228,6 +239,21 @@ def trim(
     args = SimpleNamespace(
         mode='trim', output=output, input=input, adapter1=adapter1, adapter2=adapter2,
         length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
+    )
+    run_logic(args)
+
+@preprocess_app.command("split", help="Split BAM files based on read length")
+def split(
+    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file"),
+    cutoff: int = typer.Option(60, "-c", "--cutoff", help="Read length cutoff for splitting"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory containing input BAM files (default: current directory)"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Number of threads to use (0 = 1 thread per sample)"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    args = SimpleNamespace(
+        mode='split', input=input, cutoff=cutoff, bamdir=bamdir,
+        threads=threads, log=log, quiet=quiet
     )
     run_logic(args)
 
@@ -443,6 +469,7 @@ def test(
     trim: bool = typer.Option(False, "--trim", help="Run trim test"),
     makedb: bool = typer.Option(False, "--makedb", help="Run makedb test"),
     map: bool = typer.Option(False, "--map", help="Run map test"),
+    split: bool = typer.Option(False, "--split", help="Run split test"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Run map test with hubonly flag"),
     maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
     build: bool = typer.Option(False, "--build", help="Run build test"),
@@ -457,7 +484,7 @@ def test(
 ):
     args = SimpleNamespace(
         mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
+        makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
     )
     run_logic(args)
 

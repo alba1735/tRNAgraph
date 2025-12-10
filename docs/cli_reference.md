@@ -63,6 +63,23 @@ trnagraph preprocess trim -i <manifest> -o <output> [options]
 > [!NOTE]
 > If R2_Path is omitted in the manifest file, the sample will be treated as single-end.
 
+### `split`
+
+Splits BAM files based on read length. This is useful for separating tRNAs into different size fractions (fragments vs full-length) (e.g., <60bp and >=60bp) for separate analysis. This function generates new metadata files for the split datasets in addition to the split BAM files.
+
+**Usage:**
+
+```bash
+trnagraph preprocess split -i <metadata> [options]
+```
+
+**Flags:**
+
+- **`-i`, `--input`** (Required): Tab-delimited metadata file.
+- **`-c`, `--cutoff`**: Read length cutoff for splitting. Reads with length < cutoff go to one file, >= cutoff to another. Default: `60`.
+- **`--bamdir`**: Directory containing input BAM files. Default: current directory.
+- **`-n`, `--threads`**: Number of threads to use. Default: `0` (1 thread per sample).
+
 ### `map`
 
 Maps reads to the tRNA database using Bowtie2.
