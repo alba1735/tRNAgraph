@@ -8,7 +8,7 @@ dependencies:
   - "bowtie2=2.5.4"
   - "fastp=1.0.1"
   - "gffread=0.12.7"
-  - "git=2.52.0"
+  - "git>=2.49.0"
   - "hdbscan=0.8.39"
   - "infernal=1.1.5"
   - "logomaker=0.8.6"
