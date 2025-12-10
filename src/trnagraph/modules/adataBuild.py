@@ -121,7 +121,7 @@ class AnalysisPipeline:
             f.write(f"git version\t{git_version}\n")
             f.write(f"git version hash\t{git_hash}\n")
             # Reconstruct command line roughly (can be improved if we pass args string)
-            cmd = f"tRNAgraph analyze build --experiment={self.expname} --database={self.dbname} --samples={self.samplefilename}"
+            cmd = f"trnagraph analyze build --experiment={self.expname} --database={self.dbname} --samples={self.samplefilename}"
             if self.pairfile:
                 cmd += f" --pairs={self.pairfile}"
             f.write(f"command\t{cmd}\n")
@@ -494,13 +494,13 @@ class AnalysisPipeline:
         )
         hub_builder.run()
 
-class trax2anndata():
+class AnnDataBuilder():
     '''
-    Create h5ad AnnData object from a trax run
+    Create h5ad AnnData object
     '''
-    def __init__(self, traxdir, metadata, output, analysis_args=None):
+    def __init__(self, resultsdir, metadata, output, analysis_args=None):
         '''
-        Initialize trax2anndata object by loading various files from tRAX run
+        Initialize AnnDataBuilder object
         '''
         # Run analysis pipeline if args are provided
         if analysis_args:
@@ -509,19 +509,19 @@ class trax2anndata():
             pipeline.run()
             
         # Add unique feature column to coverage file for alignment and sorting
-        traxcoverage = traxdir + '/results/' + traxdir.split('/')[-1] + '-coverage.txt'
-        self.coverage = pd.read_csv(traxcoverage, sep='\t', header=0)
+        coverageresults = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-coverage.txt'
+        self.coverage = pd.read_csv(coverageresults, sep='\t', header=0)
         self.coverage['uniquefeat'] = self.coverage['Feature'] + '_' + self.coverage['Sample']
         self.positions = pd.unique(self.coverage['position'])
         # Add size factors to coverage file
-        sizefactors = traxdir + '/results/' + traxdir.split('/')[-1] + '-SizeFactors.txt'
+        sizefactors = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-SizeFactors.txt'
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.size_factors_list = None
         # For adding unique counts to coverage file
-        trnauniquecounts = traxdir + '/results/unique/' + traxdir.split('/')[-1] + '-unique-trnas.txt' #'-trnauniquecounts.txt'
+        trnauniquecounts = resultsdir + '/results/unique/' + resultsdir.split('/')[-1] + '-unique-trnas.txt' #'-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
         # For adding normalized read counts to coverage file split by read type
-        normalizedreadcounts = traxdir + '/results/' + traxdir.split('/')[-1] + '-normalizedreadcounts.txt'
+        normalizedreadcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-normalizedreadcounts.txt'
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
 
         # Fallback for different file formats where index is not automatically detected - aka tRAX generates tsv/csv strangely sometimes
@@ -540,15 +540,15 @@ class trax2anndata():
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
         # For adding anticoodon counts to coverage file
-        anticodoncounts = traxdir + '/results/' + traxdir.split('/')[-1] + '-anticodoncounts.txt'
+        anticodoncounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-anticodoncounts.txt'
         self.anticodon_counts = pd.read_csv(anticodoncounts, sep='\t')
         # For adding type counts to coverage file
-        typecounts = traxdir + '/results/' + traxdir.split('/')[-1] + '-typecounts.txt'
+        typecounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-typecounts.txt'
         self.type_counts = pd.read_csv(typecounts, sep='\t')
-        typerealcounts = traxdir + '/results/' + traxdir.split('/')[-1] + '-typerealcounts.txt'
+        typerealcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-typerealcounts.txt'
         self.type_real_counts = pd.read_csv(typerealcounts, sep='\t')
         # For adding amino acid counts to coverage file
-        aminoacidcounts = traxdir + '/results/' + traxdir.split('/')[-1] + '-aminocounts.txt'
+        aminoacidcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-aminocounts.txt'
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
@@ -578,10 +578,10 @@ class trax2anndata():
         # Make sure that sample and group are the first two observations
         if self.observations[0] != 'sample' or self.observations[1] != 'group':
             raise ValueError(f'The first two observation categories must be "sample" and "group" please reorder your observation categories to match the following: ["sample", "group", ...]: {self.observations}')
-        # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the trax coverage file
+        # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the coverage file
         if len(self.observations) != len(self.metadata.columns):
             diff_obs_count = len(self.metadata.columns)-len(self.observations)
-            print(f'Number of observations does not match number of parameters in trax coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
+            print(f'Number of observations does not match number of parameters in coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
             if diff_obs_count > 0:
                 print(f'Adding {diff_obs_count} observations to the end of the list')
                 self.observations += ['obs_' + str(x) for x in range(diff_obs_count)]
@@ -592,28 +592,7 @@ class trax2anndata():
         self.metadata.columns = self.observations
         self.metadata.set_index('sample', inplace=True)
         self.metadata = self.metadata.to_dict()
-        # For adding the tRAX runinfo
-        try:
-            runinfo_path = traxdir + '/results/' + traxdir.split('/')[-1] + '-runinfo.txt'
-            if not os.path.exists(runinfo_path):
-                runinfo_path = traxdir + '/' + traxdir.split('/')[-1] + '-runinfo.txt'
-                
-            with open(runinfo_path, 'r') as f:
-                runinfo = f.readlines()
-            # Split the strings and convert to dictionary
-            runinfo = [x.rstrip().split('\t') for x in runinfo]
-            self.trax_run_info = {x[0]: x[1] for x in runinfo if len(x) == 2}
-        except FileNotFoundError:
-            print(f"Warning: runinfo file not found. Using default runinfo.")
-            self.trax_run_info = {'git version': 'unknown', 'command': ''}
-        if self.trax_run_info['git version'] == 'Cannot find git version':
-            print('WARNING: Could not find git version in trax runinfo file. This is likely because the version of trax was not from a git repository or downloaded directly.\n'+ \
-                  'Please make sure that the version of trax is at least v1.1.0-beta or later. Merging datasets may not work properly without matching git versions.\n')
-        # Search self.trax_run_info['command'] for '--nofrag' and raise a warning if present
-        if '--nofrag' in self.trax_run_info['command']:
-            raise ValueError('The --nofrag option was used in the trax run, please rerun trax without this flag. This option is not recommended for generating a database object for use with trnagraph.\n' + \
-                             'The --nofrag option combines fragment types into whole-reads and will not generate the necessary observations for a full database object.\n')
-        # Add trnagraph version to trax run info bashed on github hash - Will be changed to git describe once the package is deployed
+        # Add trnagraph version to run info based on github hash - Will be changed to git describe once the package is deployed
         trnagraphdir = os.path.dirname(os.path.abspath(__file__))
         
         # Try to get git version info, with fallback for non-git installations
@@ -634,9 +613,9 @@ class trax2anndata():
             git_version = 'unknown (not a git repository)'
             git_hash = 'unknown'
         
-        self.trnagraph_run_info = {'expname': traxdir.split('/')[-1], 
+        self.trnagraph_run_info = {'expname': resultsdir.split('/')[-1], 
                                    'time': os.popen('date').read().rstrip(),
-                                   'trax_directory': traxdir,
+                                   'trnagraph_directory': resultsdir,
                                    'git version': git_version,
                                    'git version hash': git_hash}
         # Output file name
@@ -706,7 +685,7 @@ class trax2anndata():
 
     def _x_build_(self, cov_type):
         '''
-        Build x dataframe from trax coverage file
+        Build x dataframe from coverage file
         '''
         x_df = self.coverage.pivot(index='uniquefeat', values=[cov_type], columns='position')
         cols = x_df.columns.get_level_values(1).values
@@ -718,9 +697,9 @@ class trax2anndata():
     
     def _obs_build_(self, x_df):
         '''
-        Build obs dataframe from trax coverage file derived x dataframe
+        Build obs dataframe from coverage file derived x dataframe
         '''
-        # Create obs dataframe from trax coverage file derived x dataframe
+        # Create obs dataframe from coverage file derived x dataframe
         obs_df = pd.DataFrame([[x.split('_')[0], '_'.join(x.split('_')[1:])] for x in x_df.index.values], columns=['trna','sample'], index=x_df.index)
         # Add metadata to obs dataframe
         for i in self.metadata:
@@ -735,7 +714,7 @@ class trax2anndata():
         obs_df['sizefactor'] = [self.size_factors.get('_'.join(x.split('_')[1:])) for x in x_df.index.values]
         # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         # Create unique counts for each tRNA split by type
-        for rt in ['fiveprime','threeprime','wholecounts','other']: # Changed whole to wholecounts in recent trax versions
+        for rt in ['fiveprime','threeprime','wholecounts','other']:
             obs_df[f'nreads_{rt}_unique_raw'] = [self.unique_counts.get(i[0]+f'_{rt}').get('_'.join(i[1:])) if self.unique_counts.get(i[0]+f'_{rt}') else 0 for i in [x.split('_') for x in x_df.index.values]]
             obs_df[f'nreads_{rt}_unique_norm'] = obs_df[f'nreads_{rt}_unique_raw']/obs_df['sizefactor']
         # Add total unique read counts to obs dataframe
@@ -889,7 +868,6 @@ class trax2anndata():
         # Add non tRNA counts as uns
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
-        adata.uns['traxruninfo'] = self.trax_run_info
         adata.uns['trnagraphruninfo'] = self.trnagraph_run_info
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
         for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq

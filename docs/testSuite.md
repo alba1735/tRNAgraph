@@ -37,6 +37,7 @@ python trnagraph.py tools test [options]
 - `--trim`: Run adapter trimming.
 - `--makedb`: Create tRNA database.
 - `--map`: Run read mapping.
+- `--split`: Run BAM splitting.
 - `--build`: Build the AnnData object.
 - `--cluster`: Run clustering algorithms.
 - `--graph`: Generate visualization plots.
@@ -70,6 +71,7 @@ The suite uses data from:
 - **Trimming**: Runs `preprocess trim` using `fastp` with specific adapter sequences to clean raw reads.
 - **Database Generation**: Runs `preprocess makedb` to create a Bowtie2 index using the standardized genome and tRNA sequences (`-s bact` mode).
 - **Mapping**: Runs `preprocess map` to align trimmed reads to the generated index, producing BAM files in `processed/vibrChol1/bam`.
+- **Splitting**: Runs `preprocess split` to separate BAM files based on read length (e.g. <60bp and >=60bp).
 
 ### 4. Database Construction (Build)
 

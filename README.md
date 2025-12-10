@@ -88,7 +88,7 @@ Dependencies can be installed using conda/mamba, and the package itself is insta
 ```bash
 # 1. Create the environment with non-Python dependencies (bowtie2, etc.)
 conda env create -f requirements.yaml
-conda activate tRNAgraph
+conda activate trnagraph
 
 # 2. Install tRNAgraph in editable mode
 pip install -e .
@@ -143,7 +143,7 @@ trnagraph preprocess map -i manifest.txt -d database -o output
 Convert coverage files into a tRNAgraph AnnData object, attaching your metadata:
 
 ```bash
-trnagraph analyze build -i metadata.tsv -o results_dir -d db_name
+trnagraph analyze build -i metadata.tsv -o results -d db_name
 ```
 
 ### 4. Generate Graphs
@@ -151,7 +151,7 @@ trnagraph analyze build -i metadata.tsv -o results_dir -d db_name
 Create a standard suite of visualizations:
 
 ```bash
-trnagraph graph -i results_dir/data.h5ad -o figures -g all
+trnagraph graph -i results/data.h5ad -o figures -g all
 ```
 
 ## Output Structure

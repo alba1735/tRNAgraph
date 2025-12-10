@@ -1,181 +1,55 @@
 #!/usr/bin/env python3
 
-import matplotlib
-matplotlib.use('Agg')
-
-import anndata as ad
 import os
 import sys
 import json
 import contextlib
 import typer
-from .runner import CommandRunner
 from typing import Optional, List
 from types import SimpleNamespace
-# Custom functions
+
+# Lazy imports are handled via the lazy_imports module to improve startup time
+# These objects are proxies that only import the actual module when an attribute is accessed
 try:
-    from .modules import toolsTestSuite
     from .modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit,
+        toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
+        anndata, matplotlib
     )
-    from .modules.adataGraph import anndataGrapher
-    from .modules.adataMerge import anndataMerger
-    from .modules.adataCluster import anndataCluster
-    from .modules.adataBuild import trax2anndata
 except ImportError:
     # Fallback for script execution: add parent directory to path and import as package
-    # This ensures that relative imports inside sub-modules (like adataGraph) work correctly
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    from tRNAgraph.modules import toolsTestSuite
     from tRNAgraph.modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit,
+        toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
+        anndata, matplotlib
     )
-    from tRNAgraph.modules.adataGraph import anndataGrapher
-    from tRNAgraph.modules.adataMerge import anndataMerger
-    from tRNAgraph.modules.adataCluster import anndataCluster
-    from tRNAgraph.modules.adataBuild import trax2anndata
 
-def _main_logic(args):
-    '''
-    Main function for running the logic and calling the appropriate class
-    '''
-    if args.mode == 'makedb':
-        if not os.path.isfile(args.genome):
-            raise Exception('Error: genome fasta file does not exist.')
-        print('Building tRNA database...')
-        toolsTDatabase.tRNADatabaseBuilder(args).main()
-        print('Done!\n')
-    elif args.mode == 'trim':
-        # Check for fastp
-        import shutil
-        if shutil.which('fastp') is None:
-            raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
-        # Validate manifest existence
-        if not os.path.isfile(args.input):
-            raise Exception(f'Error: Manifest file does not exist: {args.input}')
-        print('Starting fastp trimming pipeline...')
-        toolsTrim.FastpTrimmer(args).process()
-        print('Done!\n')
-    elif args.mode == 'split':
-        # Check for samtools
-        import shutil
-        if shutil.which('samtools') is None:
-            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
-        # Validate manifest existence
-        if not os.path.isfile(args.input):
-            raise Exception(f'Error: Manifest file does not exist: {args.input}')
-        print('Splitting BAM files...')
-        toolsSplit.BamSplitter(args).process()
-        print('Done!\n')
-    elif args.mode == 'map':
-        print('Mapping samples...')
-        toolsMap.MapSamples(args).main()
-        print('Done!\n')
-    # Read database object or create one from trax run if none provided
-    elif args.mode == 'build':
-        # Raise exception if metadata file is empty or doesn't exist
-        if not os.path.isfile(args.input):
-            raise Exception('Error: metadata file does not exist.')
-        print('Building AnnData object...')
-        # Output is a directory path - h5ad filename is based on the directory basename
-        # e.g., -o a/b/c creates a/b/c/c.h5ad
-        output_dir = os.path.abspath(args.output)
-        h5ad_filename = os.path.basename(output_dir) + '.h5ad'
-        print(toolsTG.builder(output_dir))
-        # Update args.output to be the full h5ad path inside the directory
-        args.output = os.path.join(output_dir, h5ad_filename)
-        # Create AnnData object
-        analysis_args = args if hasattr(args, 'database') and args.database else None
-        trax2anndata(output_dir, args.input, args.output, analysis_args).create()
-        print('Done!\n')
-    elif args.mode == 'merge':
-        # Raise exception if h5ad file is empty or doesn't exist
-        if not os.path.isfile(args.anndata1):
-            raise Exception('Error: first h5ad file does not exist.')
-        if not os.path.isfile(args.anndata2):
-            raise Exception('Error: second h5ad file does not exist.')
-        # Output is a h5ad file path - create parent directory if needed
-        args.output = os.path.abspath(args.output)
-        output_dir = os.path.dirname(args.output)
-        if output_dir:
-            print(toolsTG.builder(output_dir))
-        # Merge AnnData objects
-        print('Merging database objects...\n')
-        anndataMerger(args).merge()
-        print('Done!\n')
-    elif args.mode == 'cluster':
-        # Raise exception if h5ad file is empty or doesn't exist
-        if not os.path.isfile(args.anndata):
-            raise Exception('Error: h5ad file does not exist.')
-        # Output is a h5ad file path - create parent directory if needed
-        args.output = os.path.abspath(args.output)
-        output_dir = os.path.dirname(args.output)
-        if output_dir:
-            print(toolsTG.builder(output_dir))
-        print('Clustering data from database object...\n')
-        anndataCluster(args).main()
-        print('Done!\n')
-    elif args.mode == 'graph':
-        # Create output directory if it doesn't exist
-        args.output = os.path.abspath(args.output)
-        print(toolsTG.builder(args.output))
-        # Raise exception if h5ad file is empty or doesn't exist
-        if not os.path.isfile(args.anndata):
-            raise Exception('Error: h5ad file does not exist.')
-        print('Graphing data from database object...\n')
-        anndataGrapher(args).main()
-        print('Done!\n')
-    elif args.mode == 'log2fc':
-        # Raise exception if h5ad file is empty or doesn't exist
-        if not os.path.isfile(args.anndata):
-            raise Exception('Error: h5ad file does not exist.')
-        # Load the AnnData object
-        adata = ad.read_h5ad(args.anndata)
-        # Load config file for name if specified
-        config_name = 'default'
-        if args.config:
-            with open(args.config, 'r') as f:
-                args.config = json.load(f)
-            if 'name' in args.config:
-                # self.args.output += '/' + self.args.config['name']
-                config_name = args.config['name']
-                # print(toolsTG.builder(self.args.output))
-            else:
-                raise ValueError('Config file must contain a "name" field')
-        print('Calculating log2FC for database object...\n')
-        adata_copy = adata.copy()
-        log2FC_dict = adata.uns['log2FC']
-        for readtype in [f'nreads_{i}_norm' for i in args.readtypes]:
-            for cutoff in args.cutoff:
-                toolsTG.adataLog2FC(adata_copy, args.group, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=True).main()
-        # if log2FC_dict.items() != adata_copy.uns['log2FC'].items(): # Can fix this to be more efficient later
-        print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + args.anndata)
-        adata_copy.write(args.anndata)
-        # else:
-        # print('The log2FC uns dictionary has not been updated.\n')
-        print('Done!\n')
-    elif args.mode == 'csv':
-        args.output = os.path.abspath(args.output)
-        # Add the name of the h5ad file to the output directory minus the extension account for periods in the name removing just .h5ad
-        args.output += '/' + '.'.join(os.path.basename(args.anndata).split('.')[:-1]) + '/'
-        print(toolsTG.builder(args.output))
-        adata = ad.read_h5ad(args.anndata)
-        print('Writing csv files to: ' + args.output)
-        adata.write_csvs(args.output, skip_data=False)
-        print('Done!\n')
-    elif args.mode == 'test':
-        toolsTestSuite.demoPipeline(args).main()
-        print('Done!\n')
-
-
+@contextlib.contextmanager
+def handle_output(log_file: Optional[str] = None, quiet: bool = False):
+    """
+    Context manager to handle output redirection for logging and quiet mode.
+    """
+    if log_file:
+        # Redirect stdout to the log file
+        # We use 'w' mode to overwrite the log file, consistent with original behavior
+        with open(log_file, 'w') as f:
+            with contextlib.redirect_stdout(f):
+                yield
+    elif quiet:
+        # Redirect stdout to devnull
+        with open(os.devnull, 'w') as f:
+            with contextlib.redirect_stdout(f):
+                yield
+    else:
+        # Normal execution - output to stdout
+        yield
 
 app = typer.Typer(
-    help="tRNAgraph is a tool for analyzing tRNA-seq data generated from tRAX. It can be used to create an AnnData database object from \
-            a trax output folder, or to analyze an existing database object and generate expanded visulizations. The database object can also be used to \
-            perform further multivariate analysis such as clustering and classification of readcoverages.",
+    help="tRNAgraph is a tool for for advanced analysis of tRNA-seq data.",
     add_completion=False,
     no_args_is_help=True
 )
@@ -188,17 +62,6 @@ app.add_typer(analyze_app, name="analyze")
 
 tools_app = typer.Typer(help="Extra utilities for working with tRNAgraph objects", no_args_is_help=True)
 app.add_typer(tools_app, name="tools")
-
-def run_logic(args):
-    # Set log file if specified
-    if args.log:
-        sys.stdout = open(args.log, 'w')
-    # Run main function
-    if args.quiet:
-        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
-            _main_logic(args)
-    else:
-        _main_logic(args)
 
 @preprocess_app.command("makedb", help="Build bowtie2 index from gtRNAdb/tRNAScan-SE output and reference genome")
 def makedb(
@@ -215,12 +78,19 @@ def makedb(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='makedb', genome=genome, trnaout=trnaout, trnafa=trnafa, namemap=namemap,
-        addtrna=addtrna, addseqs=addseqs, orgmode=orgmode, forcecca=forcecca,
-        threads=threads, output=output, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        if not os.path.isfile(genome):
+            raise Exception('Error: genome fasta file does not exist.')
+        
+        args = SimpleNamespace(
+            mode='makedb', genome=genome, trnaout=trnaout, trnafa=trnafa, namemap=namemap,
+            addtrna=addtrna, addseqs=addseqs, orgmode=orgmode, forcecca=forcecca,
+            threads=threads, output=output, log=log, quiet=quiet
+        )
+        
+        print('Building tRNA database...')
+        toolsTDatabase.tRNADatabaseBuilder(args).main()
+        print('Done!\n')
 
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
@@ -236,11 +106,21 @@ def trim(
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
-    args = SimpleNamespace(
-        mode='trim', output=output, input=input, adapter1=adapter1, adapter2=adapter2,
-        length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        import shutil
+        if shutil.which('fastp') is None:
+            raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
+        if not os.path.isfile(input):
+            raise Exception(f'Error: Manifest file does not exist: {input}')
+            
+        args = SimpleNamespace(
+            mode='trim', output=output, input=input, adapter1=adapter1, adapter2=adapter2,
+            length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
+        )
+        
+        print('Starting fastp trimming pipeline...')
+        toolsTrim.FastpTrimmer(args).process()
+        print('Done!\n')
 
 @preprocess_app.command("split", help="Split BAM files based on read length")
 def split(
@@ -251,11 +131,21 @@ def split(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='split', input=input, cutoff=cutoff, bamdir=bamdir,
-        threads=threads, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        import shutil
+        if shutil.which('samtools') is None:
+            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
+        if not os.path.isfile(input):
+            raise Exception(f'Error: Manifest file does not exist: {input}')
+            
+        args = SimpleNamespace(
+            mode='split', input=input, cutoff=cutoff, bamdir=bamdir,
+            threads=threads, log=log, quiet=quiet
+        )
+        
+        print('Splitting BAM files...')
+        toolsSplit.BamSplitter(args).process()
+        print('Done!\n')
 
 @preprocess_app.command("map", help="Map reads to tRNA database")
 def map_cmd(
@@ -271,12 +161,16 @@ def map_cmd(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='map', output=output, database=database, input=input,
-        lazy=lazy, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
-        bamdir=bamdir, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        args = SimpleNamespace(
+            mode='map', output=output, database=database, input=input,
+            lazy=lazy, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
+            bamdir=bamdir, log=log, quiet=quiet
+        )
+        
+        print('Mapping samples...')
+        toolsMap.MapSamples(args).main()
+        print('Done!\n')
 
 @analyze_app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
 def build(
@@ -303,15 +197,31 @@ def build(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='build', input=input, output=output,
-        database=database, gtf=gtf, pairs=pairs,
-        bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
-        mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
-        dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
-        log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        if not os.path.isfile(input):
+            raise Exception('Error: metadata file does not exist.')
+            
+        print('Building AnnData object...')
+        # Output is a directory path - h5ad filename is based on the directory basename
+        output_dir = os.path.abspath(output)
+        h5ad_filename = os.path.basename(output_dir) + '.h5ad'
+        print(toolsTG.builder(output_dir))
+        
+        # Update output to be the full h5ad path inside the directory
+        full_output_path = os.path.join(output_dir, h5ad_filename)
+        
+        args = SimpleNamespace(
+            mode='build', input=input, output=full_output_path,
+            database=database, gtf=gtf, pairs=pairs,
+            bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
+            mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
+            dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
+            log=log, quiet=quiet
+        )
+        
+        # Create AnnData object
+        adataBuild.AnnDataBuilder(output_dir, input, full_output_path, args).create()
+        print('Done!\n')
 
 @analyze_app.command("merge", help="Merge data from two existing h5ad AnnData objects")
 def merge(
@@ -323,11 +233,26 @@ def merge(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
-        output=output, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        if not os.path.isfile(anndata1):
+            raise Exception('Error: first h5ad file does not exist.')
+        if not os.path.isfile(anndata2):
+            raise Exception('Error: second h5ad file does not exist.')
+            
+        # Output is a h5ad file path - create parent directory if needed
+        output_path = os.path.abspath(output)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            print(toolsTG.builder(output_dir))
+            
+        args = SimpleNamespace(
+            mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
+            output=output_path, log=log, quiet=quiet
+        )
+        
+        print('Merging database objects...\n')
+        adataMerge.anndataMerger(args).merge()
+        print('Done!\n')
 
 @analyze_app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
 def cluster(
@@ -355,15 +280,27 @@ def cluster(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='cluster', anndata=anndata, randomstate=randomstate, readcutoff=readcutoff, coveragetype=coveragetype,
-        ncomponentsmp=ncomponentsmp, ncomponentgrp=ncomponentgrp, neighborclusmp=neighborclusmp, neighborclusgrp=neighborclusgrp,
-        neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
-        hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
-        umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
-        overwrite=overwrite, output=output, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        if not os.path.isfile(anndata):
+            raise Exception('Error: h5ad file does not exist.')
+            
+        output_path = os.path.abspath(output)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            print(toolsTG.builder(output_dir))
+            
+        args = SimpleNamespace(
+            mode='cluster', anndata=anndata, randomstate=randomstate, readcutoff=readcutoff, coveragetype=coveragetype,
+            ncomponentsmp=ncomponentsmp, ncomponentgrp=ncomponentgrp, neighborclusmp=neighborclusmp, neighborclusgrp=neighborclusgrp,
+            neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
+            hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
+            umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
+            overwrite=overwrite, output=output_path, log=log, quiet=quiet
+        )
+        
+        print('Clustering data from database object...\n')
+        adataCluster.anndataCluster(args).main()
+        print('Done!\n')
 
 @app.command("graph", help="Graph data from an existing h5ad AnnData object")
 def graph(
@@ -393,7 +330,7 @@ def graph(
     corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
     covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),
     covobs: str = typer.Option("trna", "--covobs", help="Specify the basis for each individual coverage plot"),
-    covtype: str = typer.Option("uniquecoverage", "--covtype", help="Specify a coverage type for coverage plots corresponding to trax coverage file outputs"),
+    covtype: str = typer.Option("uniquecoverage", "--covtype", help="Specify a coverage type for coverage plots corresponding to coverage file outputs"),
     covgap: bool = typer.Option(False, "--covgap", help="Specify wether to include gaps in coverage plots"),
     covmethod: str = typer.Option("mean", "--covmethod", help="Specify method to use for coverage plots when combining multiple groups"),
     combinedpdfonly: bool = typer.Option(False, "--combinedpdfonly", help="Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output"),
@@ -419,23 +356,36 @@ def graph(
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
 ):
-    args = SimpleNamespace(
-        mode='graph', anndata=anndata, output=output, graphtypes=graphtypes, config=config, colormap=colormap,
-        regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, barcol=barcol, bargrp=bargrp,
-        barsubgrp=barsubgrp, barsort=barsort, barlabel=barlabel, clustergrp=clustergrp, clusterlabels=clusterlabels,
-        clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
-        comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
-        covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
-        heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, pcamarkers=pcamarkers, pcacolors=pcacolors,
-        pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
-        logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
-        ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, volgrp=volgrp, volcutoff=volcutoff
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        # Set matplotlib backend to Agg to avoid display issues
+        matplotlib.use('Agg')
+        
+        if not os.path.isfile(anndata):
+            raise Exception('Error: h5ad file does not exist.')
+            
+        output_path = os.path.abspath(output)
+        print(toolsTG.builder(output_path))
+        
+        args = SimpleNamespace(
+            mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, colormap=colormap,
+            regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, barcol=barcol, bargrp=bargrp,
+            barsubgrp=barsubgrp, barsort=barsort, barlabel=barlabel, clustergrp=clustergrp, clusterlabels=clusterlabels,
+            clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
+            comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
+            covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
+            heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, pcamarkers=pcamarkers, pcacolors=pcacolors,
+            pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
+            logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
+            ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, volgrp=volgrp, volcutoff=volcutoff
+        )
+        
+        print('Graphing data from database object...\n')
+        adataGraph.anndataGrapher(args).main()
+        print('Done!\n')
 
 @tools_app.command("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
 def log2fc(
-    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    anndata_path: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     group: str = typer.Option("group", "-g", "--group", help="Specify group to use for log2fc from obs"),
     readtypes: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "-r", "--readtypes", help="Specify readtypes to generate log2fc for"),
     cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
@@ -443,22 +393,57 @@ def log2fc(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='log2fc', anndata=anndata, group=group, readtypes=readtypes, cutoff=cutoff, config=config, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        if not os.path.isfile(anndata_path):
+            raise Exception('Error: h5ad file does not exist.')
+            
+        # Load the AnnData object
+        # Note: using anndata.read_h5ad from lazy_imports
+        adata = anndata.read_h5ad(anndata_path)
+        
+        # Load config file for name if specified
+        config_name = 'default'
+        config_data = None
+        if config:
+            with open(config, 'r') as f:
+                config_data = json.load(f)
+            if 'name' in config_data:
+                config_name = config_data['name']
+            else:
+                raise ValueError('Config file must contain a "name" field')
+        
+        print('Calculating log2FC for database object...\n')
+        adata_copy = adata.copy()
+        
+        # Note: args.config in original code was replaced by the loaded dict.
+        # We need to replicate that for the tool call if it expects it.
+        # But toolsTG.adataLog2FC takes config_name, not the config dict itself.
+        
+        for readtype in [f'nreads_{i}_norm' for i in readtypes]:
+            for c in cutoff:
+                toolsTG.adataLog2FC(adata_copy, group, readtype, readcount_cutoff=c, config_name=config_name, overwrite=True).main()
+        
+        print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + anndata_path)
+        adata_copy.write(anndata_path)
+        print('Done!\n')
 
 @tools_app.command("csv", help="Output .h5ad to CSV")
 def csv_cmd(
-    anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
+    anndata_path: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     output: str = typer.Option("csv", "-o", "--output", help="Specify output directory"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='csv', anndata=anndata, output=output, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        output_path = os.path.abspath(output)
+        # Add the name of the h5ad file to the output directory minus the extension
+        output_path += '/' + '.'.join(os.path.basename(anndata_path).split('.')[:-1]) + '/'
+        print(toolsTG.builder(output_path))
+        
+        adata = anndata.read_h5ad(anndata_path)
+        print('Writing csv files to: ' + output_path)
+        adata.write_csvs(output_path, skip_data=False)
+        print('Done!\n')
 
 @tools_app.command("test", help="Run pipeline demo tests")
 def test(
@@ -482,11 +467,13 @@ def test(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    args = SimpleNamespace(
-        mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-        makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
-    )
-    run_logic(args)
+    with handle_output(log, quiet):
+        args = SimpleNamespace(
+            mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
+            makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
+        )
+        toolsTestSuite.demoPipeline(args).main()
+        print('Done!\n')
 
 if __name__ == '__main__':
     app()
