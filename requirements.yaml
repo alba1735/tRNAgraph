@@ -27,3 +27,4 @@ dependencies:
   - "typer=0.20.0"
   - "ucsc-bedgraphtobigwig=482"
   - "umap-learn=0.5.9.post2"
+  - "umi_tools=1.1.6"

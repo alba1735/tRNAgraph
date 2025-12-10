@@ -111,6 +111,7 @@ def check_python_package(package: str, requirement: Tuple[str, str]) -> Tuple[bo
         "git": None, # Binary
         "infernal": None, # Binary
         "ucsc-bedgraphtobigwig": None, # Binary
+        "umi_tools": None, # Binary
         "python": "python", # Special case
     }
     
@@ -180,6 +181,7 @@ def check_binary_package(package: str, requirement: Tuple[str, str]) -> Tuple[bo
         "sra-tools": {"cmd": "fastq-dump", "flag": "--version", "regex": r": ([\d\.]+)"},
         "ucsc-bedgraphtobigwig": {"cmd": "bedGraphToBigWig", "flag": "", "regex": r"v ([\d\.]+)"},
         "infernal": {"cmd": "cmscan", "flag": "-h", "regex": r"INFERNAL ([\d\.]+)"},
+        "umi_tools": {"cmd": "umi_tools", "flag": "--version", "regex": r": ([\d\.]+)"},
     }
 
     if package not in bin_map:
@@ -219,7 +221,7 @@ def validate_environment():
     # Define which are binaries
     binaries = [
         "bedtools", "bowtie2", "fastp", "gffread", "git", 
-        "samtools", "sra-tools", "ucsc-bedgraphtobigwig", "infernal"
+        "samtools", "sra-tools", "ucsc-bedgraphtobigwig", "infernal", "umi_tools"
     ]
 
     print("Validating environment...")
