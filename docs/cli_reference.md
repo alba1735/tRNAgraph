@@ -11,6 +11,7 @@ These options apply to most commands in the toolkit.
 | `--log <file>`    | Redirects all output logging to the specified file.            | `None` (Stdout) |
 | `-q`, `--quiet`   | Suppresses standard output (stdout). Errors are still printed. | `False`         |
 | `-v`, `--verbose` | Enables detailed execution logs.                               | `False`         |
+| `--skip-env-check`| Skips the environment validation checks (dependencies and versions). | `False` |
 
 ---
 

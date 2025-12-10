@@ -16,6 +16,7 @@ try:
         toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
+    from .modules import env_check
 except ImportError:
     # Fallback for script execution: add parent directory to path and import as package
     import sys
@@ -27,6 +28,7 @@ except ImportError:
         toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
+    from tRNAgraph.modules import env_check
 
 @contextlib.contextmanager
 def handle_output(log_file: Optional[str] = None, quiet: bool = False):
@@ -53,6 +55,22 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True
 )
+
+def validate_environment():
+    """
+    Validates that the environment is set up correctly.
+    """
+    env_check.validate_environment()
+
+@app.callback()
+def main_callback(
+    skip_env_check: bool = typer.Option(False, "--skip-env-check", help="Skip environment validation checks")
+):
+    """
+    tRNAgraph is a tool for for advanced analysis of tRNA-seq data.
+    """
+    if not skip_env_check:
+        validate_environment()
 
 preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
 app.add_typer(preprocess_app, name="preprocess")
