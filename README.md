@@ -12,9 +12,8 @@ tRNAgraph is a comprehensive toolkit for analyzing tRNA-seq data. Built upon the
 tRNAgraph bridges the gap between raw alignment data and biological insight. It allows users to:
 
 1. **Preprocess** raw FASTQ files (Trim, Map, Index).
-2. **Build** a structured database (AnnData) containing experimental metadata.
-3. **Analyze** data via clustering (UMAP, HDBSCAN) and differential expression.
-4. **Visualize** results using a suite of built-in graphing tools (Heatmaps, PCA, Coverage Plots, etc.).
+2. **Analyze** data by building a structured database (AnnData) and performing clustering.
+3. **Graph** results using a suite of built-in visualization tools (Heatmaps, PCA, Coverage Plots, etc.).
 
 ```mermaid
 flowchart LR
@@ -29,15 +28,15 @@ flowchart LR
   P2[Make Database]
   P3[Map Reads]
   B1[Build AnnData]
+  C1[Cluster Data]
 
   %% Data/Storage Nodes
   D1[("Bowtie2 Index")]
   D2[("tRNAgraph.h5ad")]
+  D3[("Clustered .h5ad")]
 
   %% Output Nodes
   O1[Visualizations]
-  O2[Clustering]
-  O3[Statistics]
 
   %% Flow
   subgraph Step1 [1. Preprocess]
@@ -48,16 +47,17 @@ flowchart LR
     I1 -.-> P3
   end
 
-  subgraph Step2 [2. Build]
+  subgraph Step2 [2. Analyze]
     P3 --> B1
     I4 --> B1
     B1 --> D2
+    D2 --> C1
+    C1 --> D3
   end
 
-  subgraph Step3 [3. Output]
+  subgraph Step3 [3. Graph]
+    D3 --> O1
     D2 --> O1
-    D2 --> O2
-    D2 --> O3
   end
 
   %% Styling
@@ -67,9 +67,9 @@ flowchart LR
   classDef output fill:#000000,stroke:#7b1fa2,stroke-width:2px;
 
   class I1,I2,I3,I4 input;
-  class P1,P2,P3,B1 process;
-  class D1,D2 storage;
-  class O1,O2,O3 output;
+  class P1,P2,P3,B1,C1 process;
+  class D1,D2,D3 storage;
+  class O1 output;
 ```
 
 ## Documentation
@@ -143,7 +143,7 @@ trnagraph preprocess map -i manifest.txt -d database -o output
 Convert coverage files into a tRNAgraph AnnData object, attaching your metadata:
 
 ```bash
-trnagraph build -i metadata.tsv -o results_dir -d db_name
+trnagraph analyze build -i metadata.tsv -o results_dir -d db_name
 ```
 
 ### 4. Generate Graphs

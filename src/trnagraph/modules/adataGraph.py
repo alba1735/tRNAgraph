@@ -2,6 +2,8 @@ import anndata as ad
 import os
 import multiprocessing
 import json
+import warnings
+warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
 from . import toolsTG
 from .lazy_imports import (
     plotsBar, plotsCount, plotsCluster, plotsCompare, plotsCorrelation,

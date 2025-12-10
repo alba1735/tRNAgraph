@@ -121,7 +121,7 @@ class AnalysisPipeline:
             f.write(f"git version\t{git_version}\n")
             f.write(f"git version hash\t{git_hash}\n")
             # Reconstruct command line roughly (can be improved if we pass args string)
-            cmd = f"tRNAgraph build --experiment={self.expname} --database={self.dbname} --samples={self.samplefilename}"
+            cmd = f"tRNAgraph analyze build --experiment={self.expname} --database={self.dbname} --samples={self.samplefilename}"
             if self.pairfile:
                 cmd += f" --pairs={self.pairfile}"
             f.write(f"command\t{cmd}\n")

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import matplotlib
+matplotlib.use('Agg')
+
 import anndata as ad
 import os
 import sys
@@ -169,6 +172,9 @@ app = typer.Typer(
 preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
 app.add_typer(preprocess_app, name="preprocess")
 
+analyze_app = typer.Typer(help="Analyze tRNA-seq data (Build, Merge, Cluster)", no_args_is_help=True)
+app.add_typer(analyze_app, name="analyze")
+
 tools_app = typer.Typer(help="Extra utilities for working with tRNAgraph objects", no_args_is_help=True)
 app.add_typer(tools_app, name="tools")
 
@@ -246,7 +252,7 @@ def map_cmd(
     )
     run_logic(args)
 
-@app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
+@analyze_app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
 def build(
     input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
     output: str = typer.Option("h5ad", "-o", "--output", help="Specify output directory (h5ad file named <dirname>.h5ad will be created inside)"),
@@ -281,7 +287,7 @@ def build(
     )
     run_logic(args)
 
-@app.command("merge", help="Merge data from two existing h5ad AnnData objects")
+@analyze_app.command("merge", help="Merge data from two existing h5ad AnnData objects")
 def merge(
     anndata1: str = typer.Option(..., "-i1", "--anndata1", help="Specify location of first h5ad object"),
     anndata2: str = typer.Option(..., "-i2", "--anndata2", help="Specify location of second h5ad object"),
@@ -297,7 +303,7 @@ def merge(
     )
     run_logic(args)
 
-@app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
+@analyze_app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
 def cluster(
     anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     randomstate: Optional[int] = typer.Option(None, "-r", "--randomstate", help="Specify random state for UMAP if you want to have a static seed"),

@@ -186,7 +186,7 @@ A nested dictionary containing pre-computed Differential Expression results.
 
 ### Clustering Results
 
-If `trnagraph cluster` has been run, dimensionality reduction coordinates are stored here (and usually mapped back to `obs` for plotting).
+If `trnagraph analyze cluster` has been run, dimensionality reduction coordinates are stored here (and usually mapped back to `obs` for plotting).
 
 - `sample_cluster_umap`: UMAP coordinates (n_samples x 2).
 - `group_cluster_umap`: Centroid UMAP coordinates for sample groups.
@@ -205,7 +205,7 @@ Pre-summed tables useful for bar charts and high-level overviews.
 
 Provenance metadata for reproducibility.
 
-- `trnagraphruninfo`: Parameters used during the `trnagraph build` command.
+- `trnagraphruninfo`: Parameters used during the `trnagraph analyze build` command.
 
 ---
 
@@ -235,4 +235,4 @@ tRNAgraph (via tRAX) categorizes reads into specific fragment classes based on a
 
 ### Non-tRNA Features
 
-If an Ensembl GTF file was provided during `trnagraph build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`).
+If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`).

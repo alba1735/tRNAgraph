@@ -23,7 +23,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
     for i in df.columns[2:]:
         df_corr = df.pivot_table(index='trna', columns=corr_group, values=i, observed=True)
         # Only plot correlation matrices with more than 20 samples will be generated
-        if df_corr.max().max() < 20:
+        if df_corr.empty or df_corr.max().max() < 20:
             if threaded:
                 threaded += f'Not enough samples to generate correlation matrix for {i}\n'
             else:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import subprocess
 import logging
 import zipfile
@@ -68,13 +69,20 @@ class demoPipeline:
             self.logger.info(description)
             print(description)
         
+        # Ensure the current python environment's bin directory is in the PATH
+        env = os.environ.copy()
+        python_bin_dir = os.path.dirname(sys.executable)
+        if python_bin_dir not in env.get("PATH", ""):
+            env["PATH"] = f"{python_bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
         try:
             result = subprocess.run(
                 command,
                 shell=True,
                 check=check,
                 capture_output=True,
-                text=True
+                text=True,
+                env=env
             )
             # Log output if verbose or on error (though check=True handles error)
             if result.stdout:
@@ -300,7 +308,7 @@ class demoPipeline:
             extra_flags += " --hubonly"
 
         cmd = (
-            f"{self.trnagraph_path} build "
+            f"{self.trnagraph_path} analyze build "
             "-i config/vibrChol1.metadata.txt "
             "-d references/vibrChol1/trnadb/vibrChol1_db "
             "--gtf references/vibrChol1/annotations/GCF_000006745.1.gtf "
@@ -321,7 +329,7 @@ class demoPipeline:
         print("Clustering AnnData object...")
         
         cmd = (
-            f"{self.trnagraph_path} cluster "
+            f"{self.trnagraph_path} analyze cluster "
             "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --overwrite"
         )
         self._run_command(cmd, "Running cluster command...")

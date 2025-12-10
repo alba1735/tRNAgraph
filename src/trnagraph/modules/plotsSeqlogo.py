@@ -178,6 +178,8 @@ class visualizer():
         return df_seqinfo, df_consensus, seq_df
 
     def consensus_plot(self, df_seqinfo, df_consensus, unit):
+        if df_consensus.empty:
+            return
         # Create a figure with 4 subplots
         fig = plt.figure(figsize=(20, 3))
         # Create 4 subplots with the first 3 stacked on top of each other and the last one spanning all 3 on the right
@@ -280,6 +282,8 @@ class visualizer():
 
     def map_plot(self, seq_df, unit):
         trna_list = seq_df.columns[1:-1].tolist()
+        if len(trna_list) == 0 or len(seq_df) == 0:
+            return
         # Make a all white heatmap in the shape of the sequence
         fig = plt.figure(figsize=(18,len(trna_list)))
 
@@ -293,7 +297,7 @@ class visualizer():
                 if row['match']:
                     plt.text(i+0.5, trna_list.index(j)+0.5, row[j], ha='center', va='center', fontsize=12, color='lightgray')
                 else:
-                    plt.text(i+0.5, trna_list.index(j)+0.5, row[j], ha='center', va='center', fontsize=16, color=self.pal_dict[row[j]], weight='bold')
+                    plt.text(i+0.5, trna_list.index(j)+0.5, row[j], ha='center', va='center', fontsize=16, color=self.pal_dict.get(row[j], 'black'), weight='bold')
                     tick_pos.append(i+0.5)
                     tick_names.append(row['position'])
 

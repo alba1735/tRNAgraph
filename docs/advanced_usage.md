@@ -1,5 +1,115 @@
 # Advanced Usage and Configuration
 
+## Workflow Overview
+
+The following diagram illustrates the comprehensive workflow of tRNAgraph, detailing the flow of data from raw inputs through preprocessing, analysis, and visualization.
+
+```mermaid
+graph TD
+    %% Classes
+    classDef input fill:#000000,stroke:#01579b,stroke-width:2px;
+    classDef process fill:#000000,stroke:#2e7d32,stroke-width:2px;
+    classDef storage fill:#000000,stroke:#ef6c00,stroke-width:2px;
+    classDef output fill:#000000,stroke:#7b1fa2,stroke-width:2px;
+
+    subgraph Inputs
+        M[Manifest File]
+        MD[Metadata File]
+        FQ[FASTQ Files]
+        G[Genome FASTA]
+        T[tRNA Scan Output]
+    end
+
+    subgraph Preprocess
+        direction TB
+        DB[Make Database]
+        TR[Trim Reads]
+        MP[Map Reads]
+
+        G & T --> DB
+        FQ & M --> TR
+        TR --> MP
+        DB --> MP
+    end
+
+    subgraph Analyze
+        direction TB
+        B[Build AnnData]
+        C[Cluster Data]
+        MG[Merge Datasets]
+
+        MP & MD --> B
+        B --> C
+        B --> MG
+    end
+
+    subgraph Tools
+        direction TB
+        L2FC[Log2 Fold Change]
+        CSV[Export CSV]
+
+        B --> L2FC
+        B --> CSV
+    end
+
+    subgraph Graph
+        direction TB
+        V[Generate Graphs]
+
+        C --> V
+        B --> V
+        L2FC --> V
+    end
+
+    subgraph Outputs
+        H5[AnnData .h5ad]
+        H5C[Clustered .h5ad]
+        FIG[Figures PDF/PNG]
+        CSVO[CSV Files]
+    end
+
+    B --> H5
+    C --> H5C
+    V --> FIG
+    CSV --> CSVO
+    L2FC -.-> H5
+
+    %% Apply Classes
+    class M,MD,FQ,G,T input;
+    class DB,TR,MP,B,C,MG,L2FC,CSV,V process;
+    class H5,H5C storage;
+    class FIG,CSVO output;
+```
+
+## Workflow Steps
+
+### 1. Preprocess
+
+The preprocessing module handles raw data preparation.
+
+- **[makedb](cli_reference.md#makedb)**: Creates a Bowtie2 index from a reference genome and tRNA predictions.
+- **[trim](cli_reference.md#trim)**: Uses `fastp` to remove adapters and process UMIs from raw FASTQ files.
+- **[map](cli_reference.md#map)**: Aligns trimmed reads to the tRNA database using Bowtie2.
+
+### 2. Analyze
+
+The analysis module builds and refines the core database.
+
+- **[build](cli_reference.md#build)**: Aggregates alignment data (BAMs) and metadata into a structured AnnData object (`.h5ad`).
+- **[cluster](cli_reference.md#cluster)**: Performs dimensionality reduction (UMAP) and density-based clustering (HDBSCAN) on the dataset.
+- **[merge](cli_reference.md#merge)**: Combines multiple AnnData objects into a single dataset.
+
+### 3. Graph
+
+- **[graph](cli_reference.md#graph)**: Generates a comprehensive suite of visualizations (Heatmaps, PCA, Coverage Plots, etc.) from the AnnData object.
+
+### 4. Tools
+
+Utility functions for specific data operations.
+
+- **[log2fc](cli_reference.md#log2fc)**: Calculates Log2 Fold Change statistics for differential expression analysis.
+- **[csv](cli_reference.md#csv)**: Exports the internal data structures (obs, var, X) to CSV format for external use.
+
 ## Configuration Files
 
 You can control filtering and coloring in `trnagraph.py graph` using JSON files.

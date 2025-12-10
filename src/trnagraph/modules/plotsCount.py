@@ -165,7 +165,7 @@ def stacked_barplots(df, count_type, output, title=None, percent=False, threaded
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     # Legend - Reverse order to match barplot
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(reversed(handles), reversed(labels), loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
+    ax.legend(list(reversed(handles)), list(reversed(labels)), loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
     ax.legend_.set_title(f'{count_type} Group')
     # Set the box aspect ratio to 1 so the plot is square
     plt.gca().set_box_aspect(1)

@@ -90,7 +90,7 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 
 ---
 
-## Core Commands
+## Analyze Modules
 
 ### `build`
 
@@ -99,7 +99,7 @@ Constructs the AnnData object from mapping outputs.
 **Usage:**
 
 ```bash
-trnagraph build -i <metadata> -d <database> -o <out_dir> [options]
+trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 ```
 
 **Flags:**
@@ -136,7 +136,7 @@ Performs clustering (UMAP, HDBSCAN) on an existing AnnData object.
 **Usage:**
 
 ```bash
-trnagraph cluster -i <input.h5ad> [options]
+trnagraph analyze cluster -i <input.h5ad> [options]
 ```
 
 **Flags:**
@@ -172,7 +172,7 @@ Merges two existing AnnData objects into a single file. This is useful for combi
 **Usage:**
 
 ```bash
-trnagraph merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
+trnagraph analyze merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
 ```
 
 **Flags:**
