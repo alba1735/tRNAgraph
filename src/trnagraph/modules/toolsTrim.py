@@ -244,25 +244,27 @@ class FastpTrimmer:
             output_dir = os.path.dirname(first_output_prefix)
             
             # Create manifest update file (Sample -> Final Output)
-            manifest_out = os.path.join(output_dir, f"{self.args.output}_trim_manifest_updated.txt")
+            manifest_out = os.path.join(output_dir, "trim_metadata.tsv")
             with open(manifest_out, 'w') as f:
+                # write header
+                f.write("fastq\tsample\tgroup\n")
                 for output_prefix in self.samples:
                     # Logic to determine the 'primary' output file
                     if self.samples[output_prefix]['r2']:
                          # If paired, primary for tRNA is usually the merged file
-                         outfile = f"{output_prefix}_merged.fastq.gz"
+                         outfile = f"{output_prefix}_merged_trimmed.fastq.gz"
                     else:
                          outfile = f"{output_prefix}_trimmed.fastq.gz"
-                    f.write(f"{os.path.basename(output_prefix)}\t{outfile}\n")
+                    f.write(f"{outfile}\t{os.path.basename(output_prefix)}\t{os.path.basename(output_prefix)}\n")
 
             # Save Stats
-            stats_out = os.path.join(output_dir, f"{self.args.output}_trim_stats.csv")
+            stats_out = os.path.join(output_dir, "trim_stats.csv")
             df.to_csv(stats_out, index=False)
             print(f"Summary statistics written to {stats_out}")
             print(f"Updated manifest written to {manifest_out}")
             
             # Generate Plot
-            plot_out = os.path.join(output_dir, f"{self.args.output}_trim_feature_types.pdf")
+            plot_out = os.path.join(output_dir, "trim_feature_types.pdf")
             print("Generating feature types plot...")
             plotsTrimmingStats.visualizer(stats_out, plot_out).plot()
         else:

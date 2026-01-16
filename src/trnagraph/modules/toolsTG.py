@@ -1358,14 +1358,23 @@ class samplefile:
             replicatelist = list()
             for i, line in enumerate(samplefile):
                 fields = line.split()
-                if len(fields) < 2:
+                if len(fields) < 3:
                     continue
-                samplefiles[fields[0]] = fields[2]
-                replicatename[fields[0]] = fields[1]
+                # Skip header if present
+                if i == 0 and fields[0].lower() == 'fastq':
+                    continue
+                    
+                # New format: fastq (0), sample (1), group (2)
+                sample_name = fields[1]
+                fastq_path = fields[0]
+                group_name = fields[2]
                 
-                samplelist.append(fields[0])
-                if fields[1] not in set(replicatelist):
-                    replicatelist.append(fields[1])
+                samplefiles[sample_name] = fastq_path
+                replicatename[sample_name] = group_name
+                
+                samplelist.append(sample_name)
+                if group_name not in set(replicatelist):
+                    replicatelist.append(group_name)
             
             #bamlist = list(curr + "_sort.bam" for curr in samplefiles.iterkeys())
             #samplenames = list(curr  for curr in samplefiles.keys())

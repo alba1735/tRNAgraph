@@ -214,7 +214,21 @@ class AnalysisPipeline:
         # Load sample info
         try:
             # Use sep=None to auto-detect delimiter (handles tabs or spaces)
-            sample_df = pd.read_csv(self.samplefilename, sep=None, engine='python', header=None, names=['sample', 'condition', 'replicate'])
+            sample_df = pd.read_csv(self.samplefilename, sep=None, engine='python', header=None)
+            
+            # Drop header if present
+            if str(sample_df.iloc[0, 0]).lower() == 'fastq':
+                sample_df = sample_df.iloc[1:]
+                
+            # Select columns 1 and 2
+            if len(sample_df.columns) >= 3:
+                sample_df = sample_df.iloc[:, [1, 2]]
+                sample_df.columns = ['sample', 'condition']
+                sample_df['replicate'] = sample_df['condition'] # Assign replicate same as condition
+            else:
+                 print(f"Error: Metadata file must have at least 3 columns (fastq, sample, group)", file=sys.stderr)
+                 return
+
             sample_df.set_index('sample', inplace=True)
         except Exception as e:
             print(f"Error reading sample file {self.samplefilename}: {e}", file=sys.stderr)
@@ -556,6 +570,12 @@ class AnnDataBuilder():
             self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None, engine='python' if metadata_type is None else None)
         except:
             raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
+            
+        # Validate and drop fastq column
+        if len(self.metadata.columns) < 3:
+             raise ValueError(f'Metadata file must have at least 3 columns (fastq, sample, group): {metadata}')
+        # Drop the first column (fastq)
+        self.metadata = self.metadata.iloc[:, 1:]
         # turn first row into a list then remove it from the dataframe
         first_row = self.metadata.iloc[0].dropna().values.tolist()
         if len(first_row) >= 2 and first_row[0] == 'sample' and first_row[1] == 'group':

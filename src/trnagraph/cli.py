@@ -112,7 +112,6 @@ def makedb(
 
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
-    output: str = typer.Option(..., "-o", "--output", help="Name of the run (used for output filenames)"),
     input: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
     adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
     adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
@@ -132,7 +131,7 @@ def trim(
             raise Exception(f'Error: Manifest file does not exist: {input}')
             
         args = SimpleNamespace(
-            mode='trim', output=output, input=input, adapter1=adapter1, adapter2=adapter2,
+            mode='trim', input=input, adapter1=adapter1, adapter2=adapter2,
             length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
         )
         
@@ -142,7 +141,7 @@ def trim(
 
 @preprocess_app.command("split", help="Split BAM files based on read length")
 def split(
-    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file"),
+    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited metadata file"),
     cutoff: int = typer.Option(60, "-c", "--cutoff", help="Read length cutoff for splitting"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory containing input BAM files (default: current directory)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Number of threads to use (0 = 1 thread per sample)"),
@@ -154,7 +153,7 @@ def split(
         if shutil.which('samtools') is None:
             raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
         if not os.path.isfile(input):
-            raise Exception(f'Error: Manifest file does not exist: {input}')
+            raise Exception(f'Error: Metadata file does not exist: {input}')
             
         args = SimpleNamespace(
             mode='split', input=input, cutoff=cutoff, bamdir=bamdir,

@@ -100,27 +100,30 @@ pip install -e .
 
 You need two tab-delimited files to begin:
 
-**manifest.tsv** (For trimming and mapping):
+**manifest.tsv** (For trimming and merging reads):
 _Format: SampleName `<tab>` R1_Path `<tab>` R2_Path (optional)_
 
 > [!NOTE]
 > If single-end reads are used, only provide the R1 column.
 
 ```text
-SampleA   raw_data/SampleA_R1.fastq.gz   raw_data/SampleA_R2.fastq.gz
-SampleB   raw_data/SampleB_R1.fastq.gz   raw_data/SampleB_R2.fastq.gz
+<path_to_fastq>/SampleA   <path_to_fastq>/VC_24h_1_R1.fastq.gz   <path_to_fastq>/VC_24h_1_R2.fastq.gz
+<path_to_fastq>/SampleB   <path_to_fastq>/VC_24h_2_R1.fastq.gz   <path_to_fastq>/VC_24h_2_R2.fastq.gz
 ```
 
-**metadata.tsv** (For building the database):
-_Format: Must contain `sample` and `group` columns. Add other columns as needed._
+> [!TIP]
+> A `trim_metadata.tsv` template is automatically generated in the output directory after trimming. While this simplifies metadata creation, it defaults to setting `group` names identical to `sample` names. **You must update this file** with your actual experimental groups to ensure accurate normalization and downstream analysis.
+
+**metadata.tsv** (For mapping reads and building the database):
+_Format: Must contain `fastq`, `sample` and `group` columns. Add other metadata columns as needed._
 
 > [!TIP]
 > More metadata columns allow for richer analysis and visualization.
 
 ```text
-sample    group     treatment
-SampleA   Control   None
-SampleB   Treated   DrugX
+fastq	sample	group	treatment
+<path_to_fastq>/SampleA_merged_trimmed.fastq.gz	SampleA	Control	None
+<path_to_fastq>/SampleB_merged_trimmed.fastq.gz	SampleB	Treated	DrugX
 ```
 
 ### 2. Preprocess Data

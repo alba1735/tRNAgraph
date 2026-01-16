@@ -47,13 +47,12 @@ Trims adapters and processes UMIs using `fastp`.
 **Usage:**
 
 ```bash
-trnagraph preprocess trim -i <manifest> -o <output> [options]
+trnagraph preprocess trim -i <manifest> [options]
 ```
 
 **Flags:**
 
 - **`-i`, `--manifest`** (Required): Tab-delimited file (`SampleName <tab> R1 <tab> R2`).
-- **`-o`, `--output`** (Required): Name of the run. This is used to prefix output filenames and directories.
 - **`-a1`, `--adapter1`**: Adapter sequence for R1 (Auto-detect if omitted).
 - **`-a2`, `--adapter2`**: Adapter sequence for R2 (for paired-end data, Auto-detect if omitted).
 - **`-l`, `--length`**: Minimum sequence length allowed after trimming. Reads shorter than this will be discarded. Default: `15`.
