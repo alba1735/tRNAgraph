@@ -42,3 +42,4 @@ This document outlines the planned features and current areas of focus for tRNAg
 - **dir Structure**: Standardize directory structure creation across all modules for consistency and update readme/docs accordingly.
 - **heatmap.csv**: Redirect these to the results directory instead of graph directory.
 - **validate if warnings in adataGraph are critical**: Currently suppressed, need to ensure they are not hiding important issues.
+- **split files have small variances**: Currently unknown cause, need to investigate, very very small variances are not expected with raw layers.

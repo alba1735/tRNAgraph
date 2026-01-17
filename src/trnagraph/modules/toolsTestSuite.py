@@ -191,24 +191,27 @@ class demoPipeline:
             self.logger.info("Vibrio cholerae genome already exists, skipping download.")
             return
 
-        # Download genome
-        download_cmd = (
-            'curl -s -OJX GET "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/accession/'
-            'GCF_000006745.1/download?include_annotation_type=GENOME_FASTA,GENOME_GFF,RNA_FASTA,'
-            'CDS_FASTA,PROT_FASTA,SEQUENCE_REPORT&filename=GCF_000006745.1.zip" '
-            '-H "Accept: application/zip"'
+        # Download genome and GFF from FTP (API is flaky)
+        ftp_base = "ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/006/745/GCF_000006745.1_ASM674v1"
+        
+        # Download fna.gz
+        self._run_command(
+            f"curl -s -o references/vibrChol1/genomes/genomic.fna.gz {ftp_base}/GCF_000006745.1_ASM674v1_genomic.fna.gz",
+            "Downloading genome FASTA..."
         )
-        self._run_command(download_cmd, "Downloading genome zip...")
+        self._run_command("gunzip -f references/vibrChol1/genomes/genomic.fna.gz", "Extracting genome FASTA...")
+        
+        # Download gff.gz
+        self._run_command(
+            f"curl -s -o references/vibrChol1/annotations/genomic.gff.gz {ftp_base}/GCF_000006745.1_ASM674v1_genomic.gff.gz",
+            "Downloading genome GFF..."
+        )
+        self._run_command("gunzip -f references/vibrChol1/annotations/genomic.gff.gz", "Extracting genome GFF...")
 
-        # Extract
-        with zipfile.ZipFile("GCF_000006745.1.zip", "r") as zip_ref:
-            zip_ref.extractall("references/vibrChol1/temp_extract")
-        os.remove("GCF_000006745.1.zip")
+        fna_path = "references/vibrChol1/genomes/genomic.fna"
+        gff_path = "references/vibrChol1/annotations/genomic.gff"
 
         # Modify FASTA headers
-        base_path = "references/vibrChol1/temp_extract/ncbi_dataset/data/GCF_000006745.1"
-        fna_path = f"{base_path}/GCF_000006745.1_ASM674v1_genomic.fna"
-        
         sed_cmd = (
             f'sed -i -e "/NC_002505.1/c\\>chrI" {fna_path} && '
             f'sed -i -e "/NC_002506.1/c\\>chrII" {fna_path}'
@@ -216,26 +219,24 @@ class demoPipeline:
         self._run_command(sed_cmd, "Modifying FASTA headers...")
 
         # Convert GFF to GTF
-        gff_path = f"{base_path}/genomic.gff"
-        gtf_path = f"{base_path}/genomic.gtf"
+        gtf_path = "references/vibrChol1/annotations/genomic.gtf"
         self._run_command(f"gffread -E {gff_path} -T -o {gtf_path}", "Converting GFF to GTF...")
 
-        # Modify GTF and filter safely (write to a temporary file first to avoid truncation)
-        filtered_gtf_path = f"{base_path}/genomic.filtered.gtf"
+        # Modify GTF and filter safely
+        filtered_gtf_path = "references/vibrChol1/annotations/genomic.filtered.gtf"
         final_gtf_cmd = (
             f"cat {gtf_path} | sed 's/NC_002505.1/chrI/g' | "
             f"sed 's/NC_002506.1/chrII/g' | grep -v '^#' > {filtered_gtf_path}"
         )
         self._run_command(final_gtf_cmd, "Finalizing GTF file...")
         # Atomically replace the original GTF with the filtered version
-        os.replace(filtered_gtf_path, f"{base_path}/genomic.gtf")
+        os.replace(filtered_gtf_path, gtf_path)
 
-        # Move files
         os.rename(fna_path, "references/vibrChol1/genomes/GCF_000006745.1_ASM674v1_genomic.fna")
-        os.rename(f"{base_path}/genomic.gtf", "references/vibrChol1/annotations/GCF_000006745.1.gtf")
+        os.rename(gtf_path, "references/vibrChol1/annotations/GCF_000006745.1.gtf")
         
-        # Cleanup
-        self._run_command("rm -rf references/vibrChol1/temp_extract", "Removing temporary extraction directory...")
+        # Cleanup GFF
+        os.remove(gff_path)
         
         self.logger.info("Done.")
         print("Done.")
@@ -304,9 +305,9 @@ class demoPipeline:
         print("Splitting BAM files...")
         
         cmd = (
-            f"{self.trnagraph_path} preprocess split "
+            f"{self.trnagraph_path} tools split "
             "-i config/vibrChol1.metadata.txt "
-            "-c 60 "
+            "--readlengthsplit 60 "
             "--bamdir processed/vibrChol1/bam"
         )
         self._run_command(cmd, "Running split command...")
@@ -322,6 +323,9 @@ class demoPipeline:
         extra_flags = ""
         if self.args.hubonly:
             extra_flags += " --hubonly"
+        # Only add readlengthsplit if split_build is requested
+        if getattr(self.args, 'split_build', False):
+            extra_flags += " --readlengthsplit 60"
 
         cmd = (
             f"{self.trnagraph_path} analyze build "
@@ -349,6 +353,24 @@ class demoPipeline:
             "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --overwrite"
         )
         self._run_command(cmd, "Running cluster command...")
+
+        self.logger.info("Clustering AnnData object for under split...")
+        print("Clustering AnnData object for under split...")
+        
+        cmd = (
+            f"{self.trnagraph_path} analyze cluster "
+            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/vibrChol1_u60.h5ad --overwrite"
+        )
+        self._run_command(cmd, "Running cluster command for under split...")
+
+        self.logger.info("Clustering AnnData object for over split...")
+        print("Clustering AnnData object for over split...")
+        
+        cmd = (
+            f"{self.trnagraph_path} analyze cluster "
+            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/vibrChol1_o60.h5ad --overwrite"
+        )
+        self._run_command(cmd, "Running cluster command for over split...") 
         
         self.logger.info("Done.")
         print("Done.")
@@ -367,6 +389,29 @@ class demoPipeline:
         self.logger.info("Done.")
         print("Done.")
 
+    def graph_split_db(self) -> None:
+        """Generates graphs from the split AnnData objects."""
+        self.logger.info("Generating graphs for under split...")
+        print("Generating graphs for under split...")
+        
+        cmd = (
+            f"{self.trnagraph_path} graph "
+            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/graphs_u60"
+        )
+        self._run_command(cmd, "Running graph command for under split...")
+
+        self.logger.info("Generating graphs for over split...")
+        print("Generating graphs for over split...")
+        
+        cmd = (
+            f"{self.trnagraph_path} graph "
+            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/graphs_o60"
+        )
+        self._run_command(cmd, "Running graph command for over split...")
+        
+        self.logger.info("Done.")
+        print("Done.")
+
     def main(self) -> None:
         """Main execution logic for the pipeline."""
         try:
@@ -376,7 +421,8 @@ class demoPipeline:
             specific_flags = [
                 self.args.metadata, self.args.fastq, self.args.trna,
                 self.args.genome, self.args.trim, self.args.makedb, self.args.map,
-                self.args.split, self.args.build, self.args.cluster, self.args.merge, self.args.graph,
+                self.args.split, self.args.build, getattr(self.args, 'split_build', False),
+                self.args.cluster, self.args.merge, self.args.graph, getattr(self.args, 'split_graph', False),
                 self.args.hubonly, self.args.maponly
             ]
             run_all = self.args.all or not any(specific_flags)
@@ -399,10 +445,17 @@ class demoPipeline:
                 self.split_bam()
             if (run_all and not self.args.maponly) or self.args.build or self.args.hubonly:
                 self.build_db()
+            # split_build runs build with readlengthsplit
+            if getattr(self.args, 'split_build', False):
+                self.args.split_build = True  # Ensure flag is set
+                self.build_db()
             if (run_all and not self.args.maponly) or self.args.cluster:
                 self.cluster_db()
             if (run_all and not self.args.maponly) or self.args.graph:
                 self.graph_db()
+            # split_graph runs graphs for split h5ad files
+            if getattr(self.args, 'split_graph', False):
+                self.graph_split_db()
                 
             if self.args.cleanrun:
                 self.logger.info("Cleaning up test files...")

@@ -23,7 +23,7 @@ python trnagraph.py tools test [options]
 
 ### Options
 
-- `--all`: Run the complete pipeline (cleans existing test data first).
+- `--all`: Run the complete pipeline including split analysis (cleans existing test data first).
 - `--cleanrun`: Clean up all generated files after the run completes.
 - `--directory`: Specify a custom working directory (Default: `tests/`).
 - `--maponly`: Stop after the mapping step.
@@ -37,10 +37,12 @@ python trnagraph.py tools test [options]
 - `--trim`: Run adapter trimming.
 - `--makedb`: Create tRNA database.
 - `--map`: Run read mapping.
-- `--split`: Run BAM splitting.
-- `--build`: Build the AnnData object.
+- `--split`: Run BAM splitting (creates u60/o60 BAM files).
+- `--build`: Build the AnnData object (no split analysis).
+- `--split-build`: Build with read length split enabled (creates main + u60/o60 h5ad files).
 - `--cluster`: Run clustering algorithms.
-- `--graph`: Generate visualization plots.
+- `--graph`: Generate visualization plots (main h5ad only).
+- `--split-graph`: Generate plots for split h5ad files (u60/o60).
 - `--hubonly`: Generate UCSC track hubs without building the full database.
 
 ## Dataset Details
@@ -71,7 +73,7 @@ The suite uses data from:
 - **Trimming**: Runs `preprocess trim` using `fastp` with specific adapter sequences to clean raw reads.
 - **Database Generation**: Runs `preprocess makedb` to create a Bowtie2 index using the standardized genome and tRNA sequences (`-s bact` mode).
 - **Mapping**: Runs `preprocess map` to align trimmed reads to the generated index, producing BAM files in `processed/vibrChol1/bam`.
-- **Splitting**: Runs `preprocess split` to separate BAM files based on read length (e.g. <60bp and >=60bp).
+- **Splitting**: Runs `preprocess split` to separate BAM files based on read length. Reads < N bp go to `uN/`, reads >= N bp go to `oN/`.
 
 ### 4. Database Construction (Build)
 

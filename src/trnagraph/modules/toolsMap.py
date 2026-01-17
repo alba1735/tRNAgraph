@@ -359,11 +359,11 @@ class trnadatabase:
         return orgtype
 
 class expdatabase:
-    def __init__(self, expname):
+    def __init__(self, expname, results_dir_name="results", graphs_dir_name="graphs"):
         self.expname = expname.rstrip(os.sep)
         basename = os.path.basename(self.expname)
-        self.resultsdir = os.path.join(self.expname, "results")
-        self.graphsdir = os.path.join(self.expname, "graphs")
+        self.resultsdir = os.path.join(self.expname, results_dir_name)
+        self.graphsdir = os.path.join(self.expname, graphs_dir_name)
         
         # Helper to join paths
         def res_path(path): return os.path.join(self.resultsdir, path)

@@ -3,6 +3,7 @@ import anndata as ad
 import os
 import sys
 import numpy as np
+from types import SimpleNamespace
 from multiprocessing import cpu_count
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
@@ -10,10 +11,13 @@ from . import toolsTG
 from .lazy_imports import toolsMap, toolsCountReads, toolsGetCoverage, toolsTrackHub
 
 class AnalysisPipeline:
-    def __init__(self, args):
+    def __init__(self, args, expname=None):
         self.args = args
         self.dbname = args.database
-        self.expname = os.path.dirname(args.output)
+        if expname:
+            self.expname = expname
+        else:
+            self.expname = os.path.dirname(args.output)
         self.samplefilename = args.input
         self.ensgtf = args.gtf
         self.bedfiles = args.bed
@@ -38,7 +42,12 @@ class AnalysisPipeline:
         self.dispfittype = getattr(args, 'dispfittype', 'mean')  # Default to 'mean' for robustness
         
         self.trnainfo = toolsMap.trnadatabase(self.dbname)
-        self.expinfo = toolsMap.expdatabase(self.expname)
+        
+        # Determine results and graphs directory names
+        results_dir_name = getattr(args, 'results_dir_name', 'results')
+        graphs_dir_name = getattr(args, 'graphs_dir_name', 'graphs')
+        
+        self.expinfo = toolsMap.expdatabase(self.expname, results_dir_name, graphs_dir_name)
 
     def run(self):
         # Create directories
@@ -518,24 +527,81 @@ class AnnDataBuilder():
         '''
         # Run analysis pipeline if args are provided
         if analysis_args:
-            print("Running analysis pipeline...")
+            # Handle auto-mapping and splitting if needed
+            self._handle_preprocessing(analysis_args)
+            
+            print("Running analysis pipeline (Full Dataset)...")
             pipeline = AnalysisPipeline(analysis_args)
             pipeline.run()
             
+            # If readlengthsplit is set, run for under and over
+            if hasattr(analysis_args, 'readlengthsplit') and analysis_args.readlengthsplit:
+                cutoff = analysis_args.readlengthsplit
+                print(f"Running analysis pipeline (Under {cutoff})...")
+                
+                args_under = SimpleNamespace(**vars(analysis_args))
+                args_under.bamdir = os.path.join(analysis_args.bamdir if analysis_args.bamdir else os.path.join("processed", "bam"), f"u{cutoff}")
+                # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
+                args_under.readlengthsplit = None
+   
+                abs_output = os.path.abspath(analysis_args.output)
+                base_output_dir = os.path.dirname(abs_output)
+                base_output_filename = os.path.basename(abs_output)
+                base_name_no_ext = os.path.splitext(base_output_filename)[0]
+                
+                args_under.results_dir_name = f"results_u{cutoff}"
+                args_under.graphs_dir_name = f"graphs_u{cutoff}"
+                
+                under_h5ad_name = f"{base_name_no_ext}_u{cutoff}.h5ad"
+                args_under.output = os.path.join(base_output_dir, under_h5ad_name)
+                
+                pipeline_under = AnalysisPipeline(args_under, expname=base_output_dir)
+                pipeline_under.run()
+                
+                print(f"Building AnnData object (Under {cutoff})...")
+                AnnDataBuilder(base_output_dir, metadata, args_under.output, analysis_args=args_under).create()
+                
+                print(f"Running analysis pipeline (Over {cutoff})...")
+                args_over = SimpleNamespace(**vars(analysis_args))
+                args_over.bamdir = os.path.join(analysis_args.bamdir if analysis_args.bamdir else os.path.join("processed", "bam"), f"o{cutoff}")
+                # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
+                args_over.readlengthsplit = None
+                
+                args_over.results_dir_name = f"results_o{cutoff}"
+                args_over.graphs_dir_name = f"graphs_o{cutoff}"
+                
+                over_h5ad_name = f"{base_name_no_ext}_o{cutoff}.h5ad"
+                args_over.output = os.path.join(base_output_dir, over_h5ad_name)
+                
+                pipeline_over = AnalysisPipeline(args_over, expname=base_output_dir)
+                pipeline_over.run()
+                
+                print(f"Building AnnData object (Over {cutoff})...")
+                AnnDataBuilder(base_output_dir, metadata, args_over.output, analysis_args=args_over).create()
+        
+        # Initialize expdatabase to get file paths
+        results_dir_name = "results"
+        graphs_dir_name = "graphs"
+        if analysis_args:
+             results_dir_name = getattr(analysis_args, 'results_dir_name', 'results')
+             graphs_dir_name = getattr(analysis_args, 'graphs_dir_name', 'graphs')
+        
+        self.expinfo = toolsMap.expdatabase(resultsdir, results_dir_name, graphs_dir_name)
+
         # Add unique feature column to coverage file for alignment and sorting
-        coverageresults = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-coverage.txt'
+        coverageresults = self.expinfo.trnacoveragefile
         self.coverage = pd.read_csv(coverageresults, sep='\t', header=0)
         self.coverage['uniquefeat'] = self.coverage['Feature'] + '_' + self.coverage['Sample']
         self.positions = pd.unique(self.coverage['position'])
         # Add size factors to coverage file
-        sizefactors = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-SizeFactors.txt'
+        sizefactors = self.expinfo.sizefactors
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.size_factors_list = None
         # For adding unique counts to coverage file
-        trnauniquecounts = resultsdir + '/results/unique/' + resultsdir.split('/')[-1] + '-unique-trnas.txt' #'-trnauniquecounts.txt'
+        trnauniquecounts = self.expinfo.trnauniqcountsfile #'-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
         # For adding normalized read counts to coverage file split by read type
-        normalizedreadcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-normalizedreadcounts.txt'
+        normalizedreadcounts = self.expinfo.normalizedcounts
         normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
 
         # Fallback for different file formats where index is not automatically detected - aka tRAX generates tsv/csv strangely sometimes
@@ -554,15 +620,15 @@ class AnnDataBuilder():
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
         # For adding anticoodon counts to coverage file
-        anticodoncounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-anticodoncounts.txt'
+        anticodoncounts = self.expinfo.trnaanticodonfile
         self.anticodon_counts = pd.read_csv(anticodoncounts, sep='\t')
         # For adding type counts to coverage file
-        typecounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-typecounts.txt'
+        typecounts = self.expinfo.genetypecounts
         self.type_counts = pd.read_csv(typecounts, sep='\t')
-        typerealcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-typerealcounts.txt'
+        typerealcounts = self.expinfo.genetyperealcounts
         self.type_real_counts = pd.read_csv(typerealcounts, sep='\t')
         # For adding amino acid counts to coverage file
-        aminoacidcounts = resultsdir + '/results/' + resultsdir.split('/')[-1] + '-aminocounts.txt'
+        aminoacidcounts = self.expinfo.trnaaminofile
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
         # For adding metadata to adata object
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
@@ -731,7 +797,22 @@ class AnnDataBuilder():
         obs_df['iso'] = trna_obs[2]
         obs_df['refseq'] = self.seqs
         obs_df['refseq_full'] = self.seqs_full
-        obs_df['sizefactor'] = [self.size_factors.get('_'.join(x.split('_')[1:])) for x in x_df.index.values]
+        # Build size factors list, warning about missing samples and defaulting to 1.0
+        sizefactor_list = []
+        missing_samples = set()
+        for x in x_df.index.values:
+            sample_key = '_'.join(x.split('_')[1:])
+            sf = self.size_factors.get(sample_key)
+            if sf is None:
+                missing_samples.add(sample_key)
+                sf = 1.0  # Default to 1.0 when size factor is not found
+            sizefactor_list.append(sf)
+        
+        if missing_samples:
+            print(f"WARNING: Size factors not found for {len(missing_samples)} samples. Using default value of 1.0.", file=sys.stderr)
+            print(f"  Missing samples: {list(missing_samples)[:5]}{'...' if len(missing_samples) > 5 else ''}", file=sys.stderr)
+        
+        obs_df['sizefactor'] = sizefactor_list
         # obs_df['nreads_unique_raw'] = [self.unique_counts.get(i[0]).get('_'.join(i[1:])) if self.unique_counts.get(i[0]) else 0 for i in [x.split('_') for x in x_df.index.values]] # Some samples may not have any reads for a given tRNA in the unique_counts dictionary might want to double check this
         # Create unique counts for each tRNA split by type
         for rt in ['fiveprime','threeprime','wholecounts','other']:
@@ -895,3 +976,71 @@ class AnnDataBuilder():
             toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
         
         return adata
+
+    def _handle_preprocessing(self, args):
+        '''
+        Handles auto-mapping and splitting based on args.
+        '''
+        bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
+        overwrite = getattr(args, 'overwritebams', False)
+        
+        # Check if we need to map
+        try:
+            sf = toolsTG.samplefile(args.input)
+            samples = sf.samples
+        except Exception:
+            print("Warning: Could not parse metadata to check for existing BAMs. Proceeding with mapping check...", file=sys.stderr)
+            samples = []
+
+        missing_bams = False
+        if not os.path.exists(bamdir):
+            missing_bams = True
+        else:
+            for s in samples:
+                if not os.path.isfile(os.path.join(bamdir, f"{s}.bam")):
+                    missing_bams = True
+                    break
+        
+        if missing_bams or overwrite:
+            print("Running mapping step...", file=sys.stderr)
+            map_args = SimpleNamespace(**vars(args))
+            map_args.output = os.path.basename(os.path.dirname(args.output)) # Experiment name
+            map_args.lazy = not overwrite 
+            map_args.local = False 
+            map_args.skipcheck = False
+            
+            from . import toolsMap
+            toolsMap.MapSamples(map_args).main()
+        else:
+            print("BAM files found. Skipping mapping (use --overwritebams to force).", file=sys.stderr)
+
+        # Splitting Logic
+        if hasattr(args, 'readlengthsplit') and args.readlengthsplit:
+            cutoff = args.readlengthsplit
+            # Check if split BAMs exist
+            missing_split = False
+            u_dir = os.path.join(bamdir, f"u{cutoff}")
+            o_dir = os.path.join(bamdir, f"o{cutoff}")
+            
+            if not os.path.exists(u_dir) or not os.path.exists(o_dir):
+                missing_split = True
+            else:
+                for s in samples:
+                    if not os.path.isfile(os.path.join(u_dir, f"{s}.bam")) or \
+                       not os.path.isfile(os.path.join(o_dir, f"{s}.bam")):
+                        missing_split = True
+                        break
+            
+            if missing_split or overwrite:
+                print(f"Running split step (cutoff {cutoff})...", file=sys.stderr)
+                from . import toolsSplit
+                split_args = SimpleNamespace(
+                    input=args.input,
+                    readlengthsplit=cutoff,
+                    bamdir=bamdir,
+                    overwritebams=overwrite,
+                    threads=args.threads
+                )
+                toolsSplit.BamSplitter(split_args).process()
+            else:
+                print(f"Split BAM files found for cutoff {cutoff}. Skipping split (use --overwritebams to force).", file=sys.stderr)

@@ -139,31 +139,6 @@ def trim(
         toolsTrim.FastpTrimmer(args).process()
         print('Done!\n')
 
-@preprocess_app.command("split", help="Split BAM files based on read length")
-def split(
-    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited metadata file"),
-    cutoff: int = typer.Option(60, "-c", "--cutoff", help="Read length cutoff for splitting"),
-    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory containing input BAM files (default: current directory)"),
-    threads: int = typer.Option(0, "-n", "--threads", help="Number of threads to use (0 = 1 thread per sample)"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
-    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
-):
-    with handle_output(log, quiet):
-        import shutil
-        if shutil.which('samtools') is None:
-            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
-        if not os.path.isfile(input):
-            raise Exception(f'Error: Metadata file does not exist: {input}')
-            
-        args = SimpleNamespace(
-            mode='split', input=input, cutoff=cutoff, bamdir=bamdir,
-            threads=threads, log=log, quiet=quiet
-        )
-        
-        print('Splitting BAM files...')
-        toolsSplit.BamSplitter(args).process()
-        print('Done!\n')
-
 @preprocess_app.command("map", help="Map reads to tRNA database")
 def map_cmd(
     output: str = typer.Option(..., "-o", "--output", help="Experiment name to be used"),
@@ -210,6 +185,8 @@ def build(
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
+    readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
+    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
     
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
@@ -233,6 +210,7 @@ def build(
             bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
+            readlengthsplit=readlengthsplit, overwritebams=overwritebams,
             log=log, quiet=quiet
         )
         
@@ -462,6 +440,32 @@ def csv_cmd(
         adata.write_csvs(output_path, skip_data=False)
         print('Done!\n')
 
+@tools_app.command("split", help="Split BAM files based on read length")
+def split(
+    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited metadata file"),
+    readlengthsplit: int = typer.Option(60, "-c", "--readlengthsplit", help="Read length cutoff for splitting"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory containing input BAM files (default: current directory)"),
+    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Number of threads to use (0 = 1 thread per sample)"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    with handle_output(log, quiet):
+        import shutil
+        if shutil.which('samtools') is None:
+            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
+        if not os.path.isfile(input):
+            raise Exception(f'Error: Metadata file does not exist: {input}')
+            
+        args = SimpleNamespace(
+            mode='split', input=input, readlengthsplit=readlengthsplit, bamdir=bamdir,
+            overwritebams=overwritebams, threads=threads, log=log, quiet=quiet
+        )
+        
+        print('Splitting BAM files...')
+        toolsSplit.BamSplitter(args).process()
+        print('Done!\n')
+
 @tools_app.command("test", help="Run pipeline demo tests")
 def test(
     metadata: bool = typer.Option(False, "--metadata", help="Run metadata download test"),
@@ -474,10 +478,12 @@ def test(
     split: bool = typer.Option(False, "--split", help="Run split test"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Run map test with hubonly flag"),
     maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
-    build: bool = typer.Option(False, "--build", help="Run build test"),
+    build: bool = typer.Option(False, "--build", help="Run build test (no split)"),
+    split_build: bool = typer.Option(False, "--split-build", help="Run build test with read length split"),
     cluster: bool = typer.Option(False, "--cluster", help="Run cluster test"),
     merge: bool = typer.Option(False, "--merge", help="Run merge test"),
-    graph: bool = typer.Option(False, "--graph", help="Run graph test"),
+    graph: bool = typer.Option(False, "--graph", help="Run graph test (no split)"),
+    split_graph: bool = typer.Option(False, "--split-graph", help="Run graph test with read length split"),
     all: bool = typer.Option(False, "--all", help="Run all tests (default)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
     directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Specify directory to run tests in"),
@@ -487,7 +493,9 @@ def test(
     with handle_output(log, quiet):
         args = SimpleNamespace(
             mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-            makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build, cluster=cluster, merge=merge, graph=graph, all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
+            makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build,
+            split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
+            all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
         )
         toolsTestSuite.demoPipeline(args).main()
         print('Done!\n')

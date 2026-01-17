@@ -76,7 +76,7 @@ trnagraph preprocess split -i <metadata> [options]
 **Flags:**
 
 - **`-i`, `--input`** (Required): Tab-delimited metadata file.
-- **`-c`, `--cutoff`**: Read length cutoff for splitting. Reads with length < cutoff go to one file, >= cutoff to another. Default: `60`.
+- **`-c`, `--cutoff`**: Read length cutoff for splitting. Reads with length < cutoff go to the "under" file, reads with length >= cutoff go to the "over" file. Default: `60`.
 - **`--bamdir`**: Directory containing input BAM files. Default: current directory.
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (1 thread per sample).
 
@@ -138,6 +138,8 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--bamdir`**: Custom directory to look for BAM files if they are not in the default location. Default: `None`
 - **`--uniqueonly`**: Restricts analysis to uniquely mapped reads only. Default: `False`
 - **`--dispfittype`**: Dispersion fit type for DESeq2. parametric`(default, standard for DESeq2),`mean`(robust for small sample sizes). Default:`parametric`
+- **`-c`, `--readlengthsplit`**: Read length cutoff for splitting. When specified, generates additional under/over analyses (e.g., `_u60.h5ad` and `_o60.h5ad`). Default: `None` (disabled)
+- **`--overwritebams`**: Force overwrite of existing BAM files during map/split. Default: `False`
 - **`-n`, `--threads`**: Number of threads to use for processing. Default: `8`
 
 > [!NOTE]
@@ -312,7 +314,28 @@ Runs the internal automated test suite.
 trnagraph tools test [options]
 ```
 
-- **`--all`**: Run all tests.
+**General Options:**
+
+- **`--all`**: Run all tests including split analysis.
 - **`--cleanrun`**: Clean up test files after completion.
 - **`-d`, `--directory`**: Directory to run tests in.
-- **Step Flags**: `--metadata`, `--fastq`, `--trna`, `--genome`, `--trim`, `--makedb`, `--map`, `--build`, `--cluster`, `--graph`.
+
+**Step Flags (run specific steps):**
+
+| Flag | Description |
+| :--- | :---------- |
+| `--metadata` | Download metadata |
+| `--fastq` | Download FASTQ files |
+| `--trna` | Download tRNA sequences |
+| `--genome` | Download reference genome |
+| `--trim` | Run adapter trimming |
+| `--makedb` | Create tRNA database |
+| `--map` | Run read mapping |
+| `--split` | Run BAM splitting |
+| `--build` | Build AnnData object (no split analysis) |
+| `--split-build` | Build AnnData with read length split (generates u60/o60 files) |
+| `--cluster` | Run clustering algorithms |
+| `--graph` | Generate visualization plots (main h5ad only) |
+| `--split-graph` | Generate plots for split h5ad files |
+| `--hubonly` | Generate UCSC track hubs only |
+| `--maponly` | Stop after mapping step |
