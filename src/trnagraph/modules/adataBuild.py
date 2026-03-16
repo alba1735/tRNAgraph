@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from multiprocessing import cpu_count
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
+import sklearn.preprocessing
 from . import toolsTG
 from .lazy_imports import toolsMap, toolsCountReads, toolsGetCoverage, toolsTrackHub
 
@@ -168,7 +169,8 @@ class AnalysisPipeline:
             norm_counts_file=self.expinfo.normalizedcounts,
             size_factors_file=self.expinfo.sizefactors,
             output_dir=self.expinfo.resultsdir,
-            prefix=""
+            prefix="",
+            use_trna_control=getattr(self.args, 'trna_size_factors', False)
         )
         
         # 2. tRNA Counts
@@ -209,7 +211,7 @@ class AnalysisPipeline:
             prefix="uniqueanticodons_"
         )
 
-    def run_deseq2_on_file(self, counts_file, norm_counts_file, size_factors_file, output_dir, prefix):
+    def run_deseq2_on_file(self, counts_file, norm_counts_file, size_factors_file, output_dir, prefix, use_trna_control=False):
         # Load counts
 
         if not os.path.exists(counts_file):
@@ -265,7 +267,17 @@ class AnalysisPipeline:
             return
 
         try:
-            dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition", fit_type=self.dispfittype)
+            control_genes = None
+            if use_trna_control:
+                # Select only features containing 'tRNA' or 'tRX' for computing size factors
+                trna_features = [f for f in counts_df.columns if 'tRNA' in f or 'tRX' in f]
+                if trna_features:
+                    control_genes = trna_features
+                    print(f"Using {len(control_genes)} tRNA features for size factor calculation.", file=sys.stderr)
+                else:
+                    print(f"Warning: No tRNA features found for size factor computation. Defaulting to all features.", file=sys.stderr)
+
+            dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition", fit_type=self.dispfittype, control_genes=control_genes)
             dds.deseq2()
             
 
@@ -525,6 +537,7 @@ class AnnDataBuilder():
         '''
         Initialize AnnDataBuilder object
         '''
+        self.analysis_args = analysis_args
         # Run analysis pipeline if args are provided
         if analysis_args:
             # Handle auto-mapping and splitting if needed
@@ -743,6 +756,59 @@ class AnnDataBuilder():
 
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
+        
+        # Determine vst strategy
+        vst_strategy = 'vst'
+        if self.analysis_args and hasattr(self.analysis_args, 'vst'):
+            vst_strategy = str(self.analysis_args.vst).lower()
+
+        if vst_strategy != 'none':
+            if vst_strategy == 'log1p':
+                print('Applying Variance Stabilizing Transformation (log1p + StandardScaler)...')
+                log_counts = np.log1p(adata.X)
+                scaler = sklearn.preprocessing.StandardScaler()
+                adata.layers['vst'] = scaler.fit_transform(log_counts)
+            else:
+                print('Applying Variance Stabilizing Transformation (PyDESeq2 VST)...')
+                try:
+                    # Prepare raw counts matrix (PyDESeq2 requires integers)
+                    # Round and cap negatives to 0 (shouldn't be negatives in raw, but safety first)
+                    raw_integer_counts = np.clip(np.round(adata.layers['raw']), 0, None).astype(int)
+                    # Create a DataFrame mirroring the shapes
+                    raw_df = pd.DataFrame(raw_integer_counts, index=adata.obs_names, columns=adata.var_names)
+                    
+                    # Create a minimalist metadata DataFrame
+                    meta_df = pd.DataFrame({'condition': adata.obs.get('group', 'all')}, index=adata.obs_names)
+                    
+                    # Initialize PyDESeq2 DeseqDataSet
+                    # NOTE: Since PyDESeq2's dispersion estimations often use parametric/mean fit 
+                    # based on feature variances, we use the fit_type that was passed previously.
+                    vst_dds = DeseqDataSet(
+                        counts=raw_df, 
+                        metadata=meta_df, 
+                        design_factors="condition", 
+                        fit_type=getattr(self.analysis_args, 'dispfittype', 'parametric'),
+                        quiet=True
+                    )
+                    
+                    # Attach the pre-calculated size factors to preserve `--trna-size-factors` scaling impacts
+                    if 'deseq2_sizefactor' in adata.obs:
+                        vst_dds.obsm['size_factors'] = adata.obs['deseq2_sizefactor'].values
+                    else:
+                        # Fallback
+                        vst_dds.obsm['size_factors'] = np.ones(vst_dds.n_obs)
+                        
+                    # Calculate vst
+                    vst_dds.vst(use_design=False)
+                    
+                    # Save results
+                    adata.layers['vst'] = vst_dds.layers['vst_counts']
+                except Exception as e:
+                    print(f"Warning: PyDESeq2 native VST failed ({e}). Falling back to log1p + StandardScaler...", file=sys.stderr)
+                    log_counts = np.log1p(adata.X)
+                    scaler = sklearn.preprocessing.StandardScaler()
+                    adata.layers['vst'] = scaler.fit_transform(log_counts)
+
         # Quality check adata by dropping NaN values and printing summary
         if adata.obs.isna().any(axis=0).any():
             print('WARNING: NaN values found in obs dataframe this is commonly caused by missing samples in your metadata file or havinge a different number of observations per sample.\n' + \

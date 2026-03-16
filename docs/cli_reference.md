@@ -140,6 +140,8 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--dispfittype`**: Dispersion fit type for DESeq2. parametric`(default, standard for DESeq2),`mean`(robust for small sample sizes). Default:`parametric`
 - **`-c`, `--readlengthsplit`**: Read length cutoff for splitting. When specified, generates additional under/over analyses (e.g., `_u60.h5ad` and `_o60.h5ad`). Default: `None` (disabled)
 - **`--overwritebams`**: Force overwrite of existing BAM files during map/split. Default: `False`
+- **`--trna-size-factors`**: Configures PyDESeq2 to compute size factors using *only* tRNA and tRX features, rather than all features in the count matrix. If omitted, size factors are safely computed using *all* available features (the standard default behavior of DESeq2). Default: `False`
+- **`--vst`**: Sets the Variance Stabilizing Transformation (VST) computation method. Options: `vst` (native PyDESeq2 0.5.4 VST, Default), `log1p` (np.log1p + StandardScaler fallback), or `none` (disable VST computation).
 - **`-n`, `--threads`**: Number of threads to use for processing. Default: `8`
 
 > [!NOTE]

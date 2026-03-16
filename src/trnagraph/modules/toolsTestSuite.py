@@ -354,23 +354,25 @@ class demoPipeline:
         )
         self._run_command(cmd, "Running cluster command...")
 
-        self.logger.info("Clustering AnnData object for under split...")
-        print("Clustering AnnData object for under split...")
-        
-        cmd = (
-            f"{self.trnagraph_path} analyze cluster "
-            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/vibrChol1_u60.h5ad --overwrite"
-        )
-        self._run_command(cmd, "Running cluster command for under split...")
+        if os.path.exists("vibrChol1/vibrChol1_u60.h5ad"):
+            self.logger.info("Clustering AnnData object for under split...")
+            print("Clustering AnnData object for under split...")
+            
+            cmd = (
+                f"{self.trnagraph_path} analyze cluster "
+                "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/vibrChol1_u60.h5ad --overwrite"
+            )
+            self._run_command(cmd, "Running cluster command for under split...")
 
-        self.logger.info("Clustering AnnData object for over split...")
-        print("Clustering AnnData object for over split...")
-        
-        cmd = (
-            f"{self.trnagraph_path} analyze cluster "
-            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/vibrChol1_o60.h5ad --overwrite"
-        )
-        self._run_command(cmd, "Running cluster command for over split...") 
+        if os.path.exists("vibrChol1/vibrChol1_o60.h5ad"):
+            self.logger.info("Clustering AnnData object for over split...")
+            print("Clustering AnnData object for over split...")
+            
+            cmd = (
+                f"{self.trnagraph_path} analyze cluster "
+                "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/vibrChol1_o60.h5ad --overwrite"
+            )
+            self._run_command(cmd, "Running cluster command for over split...") 
         
         self.logger.info("Done.")
         print("Done.")
@@ -446,7 +448,7 @@ class demoPipeline:
             if (run_all and not self.args.maponly) or self.args.build or self.args.hubonly:
                 self.build_db()
             # split_build runs build with readlengthsplit
-            if getattr(self.args, 'split_build', False):
+            if getattr(self.args, 'split_build', False) or (run_all and not self.args.maponly):
                 self.args.split_build = True  # Ensure flag is set
                 self.build_db()
             if (run_all and not self.args.maponly) or self.args.cluster:
@@ -454,7 +456,7 @@ class demoPipeline:
             if (run_all and not self.args.maponly) or self.args.graph:
                 self.graph_db()
             # split_graph runs graphs for split h5ad files
-            if getattr(self.args, 'split_graph', False):
+            if getattr(self.args, 'split_graph', False) or (run_all and not self.args.maponly):
                 self.graph_split_db()
                 
             if self.args.cleanrun:

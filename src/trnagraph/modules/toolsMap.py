@@ -368,10 +368,6 @@ class expdatabase:
         # Helper to join paths
         def res_path(path): return os.path.join(self.resultsdir, path)
         def graph_path(path): return os.path.join(self.graphsdir, path)
-        
-        print(f"DEBUG: expname='{self.expname}', basename='{basename}'", file=sys.stderr)
-        print(f"DEBUG: resultsdir='{self.resultsdir}'", file=sys.stderr)
-
 
         self.uniquename = res_path("unique/"+basename+"-unique")
         self.allfeats = res_path(basename+"-allfeats.bed")

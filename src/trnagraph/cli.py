@@ -187,6 +187,8 @@ def build(
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
+    trna_size_factors: bool = typer.Option(False, "--trna-size-factors", help="Compute PyDESeq2 size factors only against tRNA/tRX features"),
+    vst: str = typer.Option("vst", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
     
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
@@ -211,6 +213,7 @@ def build(
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams,
+            trna_size_factors=trna_size_factors, vst=vst,
             log=log, quiet=quiet
         )
         

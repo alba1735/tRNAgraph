@@ -15,7 +15,7 @@ dependencies:
   - "matplotlib=3.9.1"
   - "numpy=2.3.5"
   - "pandas=2.3.3"
-  - "pydeseq2=0.5.3"
+  - "pydeseq2=0.5.4"
   - "pysam=0.23.3"
   - "pysradb=2.5.1"
   - "python=3.12"
