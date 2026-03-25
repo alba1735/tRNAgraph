@@ -6,7 +6,7 @@ import warnings
 warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
 from . import toolsTG
 from .lazy_imports import (
-    plotsBar, plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
+    plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
     plotsCoverage, plotsHeatmap, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
 )
 
@@ -19,11 +19,11 @@ class anndataGrapher:
         self.adata = ad.read_h5ad(self.args.anndata)
         self.config_name = 'default'
         # Load cmap dict for each graph type
-        self.cmap_dict = {'bar':self.args.bargrp, 'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
+        self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['bar', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
+            self.args.graphtypes = ['cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
             self.args.clusteroverview = True
         # Load max threads available unless specified
         if self.args.threads == 0:
@@ -103,12 +103,12 @@ class anndataGrapher:
             print('Generating graphs with the following parameters:\n')
             for i in self.args.__dict__: print(f'{i}: {self.args.__dict__[i]}')
             print('')
-        # Remove bar and coverage from self.args.graphtypes and add them to non_pooled_graphs if they are present
-        # This is because the bar and coverage plots already implement multiprocessing
+        # Remove coverage from self.args.graphtypes and add it to non_pooled_graphs
         non_pooled_graphs = []
         if 'bar' in self.args.graphtypes:
             self.args.graphtypes.remove('bar')
-            non_pooled_graphs.append('bar')
+            if 'count' not in self.args.graphtypes:
+                self.args.graphtypes.append('count')
         if 'coverage' in self.args.graphtypes:
             self.args.graphtypes.remove('coverage')
             non_pooled_graphs.append('coverage')
@@ -140,7 +140,7 @@ class anndataGrapher:
             print(f'Generating {gt} plots...')
         adata_c = self.adata.copy()
         # Define the colormap to use for the graph type
-        colormap, colormap_tc, colormap_bg = None, None, None # For counts plot
+        colormap = None
         cmapgrp = gt
         if gt == 'coverage':
             if not self.args.covgrp:
@@ -149,11 +149,6 @@ class anndataGrapher:
         if self.args.colormap:
             if cmappar in self.args.colormap:
                 colormap = self.args.colormap[cmappar]
-            if gt == 'count':
-                if 'sample' in self.args.colormap:
-                    colormap_bg = self.args.colormap['sample']
-                if 'group' in self.args.colormap:
-                    colormap_tc = self.args.colormap['group']
         # Create the output directory
         output = self.args.output + '/' + gt + '/'
         if threaded:
@@ -161,11 +156,6 @@ class anndataGrapher:
         else:
             print(toolsTG.builder(output))
         # Plot specific parameters
-        if gt == 'bar':
-            if self.args.barsubgrp:
-                plotsBar.visualizer(adata_c, self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_subplots()
-            else:
-                plotsBar.visualizer(adata_c, self.args.threads, self.args.barcol, self.args.bargrp, self.args.barsubgrp, self.args.barsort, self.args.barlabel, colormap, output).generate_plots()
         if gt == 'cluster':
             if not 'cluster_runinfo' in self.adata.uns:
                 if threaded:
@@ -179,7 +169,7 @@ class anndataGrapher:
         if gt == 'correlation':
             threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded)
         if gt == 'count':
-            threaded = plotsCount.visualizer(adata_c, colormap_tc, colormap_bg, output, threaded=threaded) # Need to add better threading to this
+            threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded)
         if gt == 'coverage':
             pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output)
             # Generate folders/subfolders if coveragecombine is specified

@@ -26,7 +26,7 @@ class ExternalLazyLoader:
 
 
 # Plot modules
-plotsBar = LazyLoader('plotsBar')
+
 plotsCount = LazyLoader('plotsCount')
 plotsCluster = LazyLoader('plotsCluster')
 plotsCompare = LazyLoader('plotsCompare')

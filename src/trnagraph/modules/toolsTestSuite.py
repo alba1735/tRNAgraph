@@ -384,7 +384,7 @@ class demoPipeline:
         
         cmd = (
             f"{self.trnagraph_path} graph "
-            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs"
+            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running graph command...")
         
@@ -398,7 +398,7 @@ class demoPipeline:
         
         cmd = (
             f"{self.trnagraph_path} graph "
-            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/graphs_u60"
+            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/graphs_u60 --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running graph command for under split...")
 
@@ -407,7 +407,7 @@ class demoPipeline:
         
         cmd = (
             f"{self.trnagraph_path} graph "
-            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/graphs_o60"
+            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/graphs_o60 --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running graph command for over split...")
         

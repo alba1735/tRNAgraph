@@ -154,7 +154,7 @@ class visualizer():
         if numeric:
             norm = plt.Normalize(adata.obs[clustgrp].min(), adata.obs[clustgrp].max())
             # sm = plt.cm.ScalarMappable(cmap=self.numericcolormap, norm=norm)
-            sm = plt.cm.ScalarMappable(cmap=sns.diverging_palette(255, 85, s=255, l=70, sep=64, as_cmap=True), norm=norm)
+            sm = plt.cm.ScalarMappable(cmap=self.numericcolormap, norm=norm)
             sm.set_array([])
             # Remove the legend and add a colorbar
             if axs.get_legend():

@@ -117,7 +117,7 @@ Utility functions for specific data operations.
 
 ## Configuration Files
 
-You can control filtering and coloring in `trnagraph.py graph` using JSON files.
+You can control filtering and coloring in `trnagraph graph` using JSON files.
 
 ### Filter Configuration (`--config`)
 

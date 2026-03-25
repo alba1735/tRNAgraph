@@ -3,6 +3,7 @@
 import seaborn as sns
 import numpy as np
 import pandas as pd
+import os
 
 from . import toolsTG
 
@@ -40,7 +41,9 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
             df_combine = pd.concat([df_combine, df], axis=0)
         # save df to csv
-        df.to_csv(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.csv')
+        csv_output = output.replace('graphs', 'results')
+        os.makedirs(csv_output, exist_ok=True)
+        df.to_csv(f'{csv_output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.csv')
         # Create a pdf with a heatmap for sorted by each group on each page
         with PdfPages(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.pdf') as pdf:
             for col in [i for i in df.columns.tolist() if 'log2' in i]:

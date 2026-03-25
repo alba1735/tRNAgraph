@@ -220,17 +220,10 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (e.g., `all`, `bar`, `heatmap`, `pca`). Default: `all`.
+- **`-g`, `--graphtypes`**: List of graphs to generate (e.g., `all`, `heatmap`, `pca`). Default: `all`.
 - **`--config`**: JSON configuration file for filtering.
 - **`--colormap`**: JSON file for custom colors.
 - **`--regen_uns`**: Force regeneration of calculated stats.
-
-**Bar Plot Options:**
-
-- **`--barcol`**: Column for bar stack components. Default: `group`.
-- **`--bargrp`**: Column for bar stacking groups. Default: `amino`.
-- **`--barsubgrp`**: Column for subplots.
-- **`--barsort`**: Column to sort bars by.
 
 **Cluster Plot Options:**
 

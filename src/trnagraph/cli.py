@@ -312,11 +312,6 @@ def graph(
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print verbose output to stdout"),
-    barcol: str = typer.Option("group", "--barcol", help="Specify AnnData column to of what the individal stacks of bars will be"),
-    bargrp: str = typer.Option("amino", "--bargrp", help="Specify AnnData column to of what will stack in bar columns"),
-    barsubgrp: Optional[str] = typer.Option(None, "--barsubgrp", help="Specify AnnData column for secondary spliting of bars into subplots"),
-    barsort: Optional[str] = typer.Option(None, "--barsort", help="Specify AnnData column to sort the bars by"),
-    barlabel: Optional[str] = typer.Option(None, "--barlabel", help="Specify wether to label the bars using a different AnnData column"),
     clustergrp: str = typer.Option("amino", "--clustergrp", help="Specify AnnData column to group by"),
     clusterlabels: Optional[str] = typer.Option(None, "--clusterlabels", help="Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot"),
     clusteroverview: bool = typer.Option(False, "--clusteroverview", help="Specify wether to generate an overview of the clusters"),
@@ -366,8 +361,7 @@ def graph(
         
         args = SimpleNamespace(
             mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, colormap=colormap,
-            regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, barcol=barcol, bargrp=bargrp,
-            barsubgrp=barsubgrp, barsort=barsort, barlabel=barlabel, clustergrp=clustergrp, clusterlabels=clusterlabels,
+            regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
             covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
