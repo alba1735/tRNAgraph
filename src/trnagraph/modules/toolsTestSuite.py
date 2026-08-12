@@ -52,6 +52,7 @@ class demoPipeline:
         self.assets_dir = os.path.join(self.repo_root, "src/trnagraph/assets")
         os.makedirs("config", exist_ok=True)
         self._run_command(f"cp --update {self.assets_dir}/*.txt config/.", "Copying assets...")
+        self._run_command(f"cp --update {self.assets_dir}/*.json config/.", "Copying assets...")
 
     def _run_command(self, command: str, description: str = "", check: bool = True) -> subprocess.CompletedProcess:
         """
