@@ -29,3 +29,4 @@ dependencies:
   - "ucsc-bedgraphtobigwig=482"
   - "umap-learn=0.5.9.post2"
   - "umi_tools=1.1.6"
+  - "venn=0.1.3"

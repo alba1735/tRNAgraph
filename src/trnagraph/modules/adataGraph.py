@@ -47,7 +47,7 @@ class anndataGrapher:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
                 obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
-                filter_dict = self.args.config['obs']
+                filter_dict = self.args.config.get('obs', dict())
                 if 'obs_r' in self.args.config:
                     # Add the inverse of the obs_r filter to the filter_dict
                     for k,v in self.args.config['obs_r'].items():
@@ -105,10 +105,10 @@ class anndataGrapher:
             print('')
         # Remove coverage from self.args.graphtypes and add it to non_pooled_graphs
         non_pooled_graphs = []
-        if 'bar' in self.args.graphtypes:
-            self.args.graphtypes.remove('bar')
-            if 'count' not in self.args.graphtypes:
-                self.args.graphtypes.append('count')
+        # if 'bar' in self.args.graphtypes:
+        #     self.args.graphtypes.remove('bar')
+        #     if 'count' not in self.args.graphtypes:
+        #         self.args.graphtypes.append('count')
         if 'coverage' in self.args.graphtypes:
             self.args.graphtypes.remove('coverage')
             non_pooled_graphs.append('coverage')

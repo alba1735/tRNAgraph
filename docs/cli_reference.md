@@ -220,7 +220,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (e.g., `all`, `heatmap`, `pca`). Default: `all`.
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `pca`, `radar`, `volcano`). Default: `all`.
 - **`--config`**: JSON configuration file for filtering.
 - **`--colormap`**: JSON file for custom colors.
 - **`--regen_uns`**: Force regeneration of calculated stats.

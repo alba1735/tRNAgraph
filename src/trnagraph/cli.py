@@ -304,7 +304,7 @@ def cluster(
 def graph(
     anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
-    graphtypes: List[str] = typer.Option(["all"], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
+    graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
     colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the graphs"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
