@@ -40,7 +40,9 @@ from .toolsSchemas import VariantTag
 _VARIANT_LAYER_MAP = {'norm': 'norm', 'raw': 'raw', 'allfeatures': 'norm_allfeatures', 'vst': 'vst'}
 
 # Maps a `uns['size_splits'][tag]` key to the default/full uns key it stands in for
-# once overlaid onto a resolved variant view (see build_variant_view()).
+# once overlaid onto a resolved variant view (see build_variant_view()). 'sample_cluster_umap'
+# is NOT here -- it's obs-aligned data stored in obsm (as f'sample_cluster_umap_{tag}' for a
+# split variant), overlaid separately below, not through this uns-only map.
 _VARIANT_UNS_KEY_MAP = {
     'sizefactors_trna': 'deseq2_sizefactors_trna',
     'sizefactors_allfeatures': 'deseq2_sizefactors_allfeatures',
@@ -51,7 +53,6 @@ _VARIANT_UNS_KEY_MAP = {
     'nontRNA_counts': 'nontRNA_counts',
     'log2FC': 'log2FC',
     'cluster_runinfo': 'cluster_runinfo',
-    'sample_cluster_umap': 'sample_cluster_umap',
     'group_cluster_umap': 'group_cluster_umap',
 }
 
@@ -104,6 +105,10 @@ def build_variant_view(adata: ad.AnnData, spec: 'VariantTag') -> ad.AnnData:
     if split_obs is not None:
         for col in split_obs.columns:
             view.obs[col] = split_obs[col].reindex(view.obs.index).values
+
+    split_sample_umap = adata.obsm.get(f'sample_cluster_umap_{spec.tag}')
+    if split_sample_umap is not None:
+        view.obsm['sample_cluster_umap'] = split_sample_umap.reindex(view.obs.index)
 
     split_uns = adata.uns.get('size_splits', {}).get(spec.tag, {})
     for split_key, default_key in _VARIANT_UNS_KEY_MAP.items():

@@ -174,17 +174,37 @@ class anndataCluster():
         '''
         Write this group's ('sample' or 'group') UMAP/HDBSCAN cluster result onto `adata`
         (the ORIGINAL, unresolved adata -- never the resolved view). For the full/default
-        variant this writes to the same unsuffixed uns/obs locations as before; for a split
-        variant it writes into the namespaced uns['size_splits'][tag] / obsm['size_split_tag']
-        locations instead, so it never overwrites another variant's stored cluster results.
+        variant this writes to the same unsuffixed uns/obs/obsm locations as before; for a
+        split variant it writes into the namespaced uns['size_splits'][tag] /
+        obsm['size_split_tag'] locations instead, so it never overwrites another variant's
+        stored cluster results.
+
+        'sample'-group results are obs-aligned (df.index is a subset of adata.obs_names,
+        since adataPreprocess() drops low-coverage/'Und' samples before clustering), so they
+        belong in obsm (reindexed onto the full obs axis) per AnnData convention for
+        per-observation multi-column data -- not uns, which doesn't get resliced when the
+        AnnData object is subset later. 'group'-group results collapse onto a trna x group
+        axis that shares neither adata's obs nor var axis, so they genuinely can't be
+        represented in obsm/varm and stay in uns, which is the correct slot for structured
+        data that doesn't conform to either axis.
         '''
         is_split = self.variant_spec.tag != 'full'
-        umap_key = f'{group}_cluster_umap'
 
-        if is_split:
-            adata.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})[umap_key] = df
+        if group == 'sample':
+            sample_umap_key = 'sample_cluster_umap' if not is_split else f'sample_cluster_umap_{self.variant_spec.tag}'
+            adata.obsm[sample_umap_key] = df.reindex(adata.obs.index)
+            # Drop a stale copy from re-clustering an object built before this moved from
+            # uns to obsm, so it doesn't linger as an orphaned duplicate.
+            if is_split:
+                adata.uns.get('size_splits', {}).get(self.variant_spec.tag, {}).pop('sample_cluster_umap', None)
+            else:
+                adata.uns.pop('sample_cluster_umap', None)
         else:
-            adata.uns['_'.join([group,'cluster_umap'])] = df
+            umap_key = f'{group}_cluster_umap'
+            if is_split:
+                adata.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})[umap_key] = df
+            else:
+                adata.uns[umap_key] = df
 
         obsm_key = f'size_split_{self.variant_spec.tag}'
         split_obsm = adata.obsm.get(obsm_key, pd.DataFrame(index=adata.obs.index)) if is_split else None
