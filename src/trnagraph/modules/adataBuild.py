@@ -2,6 +2,8 @@ import pandas as pd
 import anndata as ad
 import os
 import sys
+import datetime
+import subprocess
 import numpy as np
 from types import SimpleNamespace
 from multiprocessing import cpu_count
@@ -9,6 +11,7 @@ from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 import sklearn.preprocessing
 from . import toolsTG
+from .toolsSchemas import VariantContribution
 from .lazy_imports import toolsMap, toolsCountReads, toolsGetCoverage, toolsTrackHub
 
 class AnalysisPipeline:
@@ -543,72 +546,34 @@ class AnnDataBuilder():
     '''
     Create h5ad AnnData object
     '''
-    def __init__(self, resultsdir, metadata, output, analysis_args=None):
+    def __init__(self, resultsdir, metadata, output, analysis_args=None, results_dir_name=None, graphs_dir_name=None):
         '''
-        Initialize AnnDataBuilder object
+        Initialize AnnDataBuilder object.
+
+        `results_dir_name`/`graphs_dir_name` let this be used as a "loader-only" instance
+        (analysis_args=None) that reads an already-generated results/graphs directory --
+        e.g. a size-split variant's `results_u60`/`graphs_u60` -- without re-running the
+        analysis pipeline. This is how split-variant contributions get computed for merging
+        into an existing AnnData object, both at initial build time (_apply_readlength_split_)
+        and via the incremental `analyze addsplit` command.
         '''
         self.analysis_args = analysis_args
+        self.metadata_path = metadata
         # Run analysis pipeline if args are provided
         if analysis_args:
             # Handle auto-mapping and splitting if needed
             self._handle_preprocessing(analysis_args)
-            
+
             print("Running analysis pipeline (Full Dataset)...")
             pipeline = AnalysisPipeline(analysis_args)
             pipeline.run()
-            
-            # If readlengthsplit is set, run for under and over
-            if hasattr(analysis_args, 'readlengthsplit') and analysis_args.readlengthsplit:
-                cutoff = analysis_args.readlengthsplit
-                print(f"Running analysis pipeline (Under {cutoff})...")
-                
-                args_under = SimpleNamespace(**vars(analysis_args))
-                args_under.bamdir = os.path.join(analysis_args.bamdir if analysis_args.bamdir else os.path.join("processed", "bam"), f"u{cutoff}")
-                # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
-                args_under.readlengthsplit = None
-   
-                abs_output = os.path.abspath(analysis_args.output)
-                base_output_dir = os.path.dirname(abs_output)
-                base_output_filename = os.path.basename(abs_output)
-                base_name_no_ext = os.path.splitext(base_output_filename)[0]
-                
-                args_under.results_dir_name = f"results_u{cutoff}"
-                args_under.graphs_dir_name = f"graphs_u{cutoff}"
-                
-                under_h5ad_name = f"{base_name_no_ext}_u{cutoff}.h5ad"
-                args_under.output = os.path.join(base_output_dir, under_h5ad_name)
-                
-                pipeline_under = AnalysisPipeline(args_under, expname=base_output_dir)
-                pipeline_under.run()
-                
-                print(f"Building AnnData object (Under {cutoff})...")
-                AnnDataBuilder(base_output_dir, metadata, args_under.output, analysis_args=args_under).create()
-                
-                print(f"Running analysis pipeline (Over {cutoff})...")
-                args_over = SimpleNamespace(**vars(analysis_args))
-                args_over.bamdir = os.path.join(analysis_args.bamdir if analysis_args.bamdir else os.path.join("processed", "bam"), f"o{cutoff}")
-                # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
-                args_over.readlengthsplit = None
-                
-                args_over.results_dir_name = f"results_o{cutoff}"
-                args_over.graphs_dir_name = f"graphs_o{cutoff}"
-                
-                over_h5ad_name = f"{base_name_no_ext}_o{cutoff}.h5ad"
-                args_over.output = os.path.join(base_output_dir, over_h5ad_name)
-                
-                pipeline_over = AnalysisPipeline(args_over, expname=base_output_dir)
-                pipeline_over.run()
-                
-                print(f"Building AnnData object (Over {cutoff})...")
-                AnnDataBuilder(base_output_dir, metadata, args_over.output, analysis_args=args_over).create()
-        
+
         # Initialize expdatabase to get file paths
-        results_dir_name = "results"
-        graphs_dir_name = "graphs"
-        if analysis_args:
-             results_dir_name = getattr(analysis_args, 'results_dir_name', 'results')
-             graphs_dir_name = getattr(analysis_args, 'graphs_dir_name', 'graphs')
-        
+        if results_dir_name is None:
+            results_dir_name = getattr(analysis_args, 'results_dir_name', 'results') if analysis_args else 'results'
+        if graphs_dir_name is None:
+            graphs_dir_name = getattr(analysis_args, 'graphs_dir_name', 'graphs') if analysis_args else 'graphs'
+
         self.expinfo = toolsMap.expdatabase(resultsdir, results_dir_name, graphs_dir_name)
 
         # Add unique feature column to coverage file for alignment and sorting
@@ -715,26 +680,8 @@ class AnnDataBuilder():
         self.metadata.set_index('sample', inplace=True)
         self.metadata = self.metadata.to_dict()
         # Add trnagraph version to run info based on github hash - Will be changed to git describe once the package is deployed
-        trnagraphdir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Try to get git version info, with fallback for non-git installations
-        # Run git from the directory where this file is located, letting git find the .git folder in parent dirs
-        try:
-            import subprocess
-            git_version = subprocess.check_output(
-                ['git', 'describe', '--always'],
-                cwd=trnagraphdir,
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
-            git_hash = subprocess.check_output(
-                ['git', 'rev-parse', 'HEAD'],
-                cwd=trnagraphdir,
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            git_version = 'unknown (not a git repository)'
-            git_hash = 'unknown'
-        
+        git_version, git_hash = _get_git_version_()
+
         # Capture the CLI flags used to build this object, sanitizing None (anndata's h5ad uns writer
         # doesn't reliably round-trip None values, so substitute a string sentinel like adataCluster.py does)
         run_flags = {}
@@ -758,24 +705,8 @@ class AnnDataBuilder():
         Create h5ad database object
         '''
         # Build obs and x dataframes
-        x_dfs = []
-        for cov_type in self.cov_types:
-            x_df = self._x_build_(cov_type)
-            # Build size factors list if it does not exist
-            if not self.size_factors_list:
-                self.size_factors_list = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
-            # 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions' are already raw counts so they need to be normalized by size factor first
-            if cov_type in ['adenines', 'thymines', 'cytosines', 'guanines', 'deletions']:
-                x_df = x_df.div(self.size_factors_list, axis=0)
-            x_dfs.append(x_df)
-        # Build obs dataframe
+        x_df, self.size_factors_list = self._build_coverage_matrix_()
         obs_df = self._obs_build_(x_df)
-        x_df = pd.concat(x_dfs, axis=1, sort=False)
-        x_df = x_df.astype('float64')  # Not sure if this is the dtype I want to use defaults to float64
-        # Rename columns of x_df to include position and coverage type
-        clist = [[p + '_' + cov for p in self.positions] for cov in self.cov_types]
-        clist = [a for l in clist for a in l]
-        x_df.columns = clist
         # obs_df,x_df = self._group_sort_(obs_df,x_df) # Not sure if I need this function
         # Check that the index of the obs and x dataframes are the same
         if not obs_df.index.equals(x_df.index):
@@ -796,51 +727,10 @@ class AnnDataBuilder():
             vst_strategy = str(self.analysis_args.vst).lower()
 
         if vst_strategy != 'none':
-            if vst_strategy == 'log1p':
-                print('Applying Variance Stabilizing Transformation (log1p + StandardScaler)...')
-                log_counts = np.log1p(adata.X)
-                scaler = sklearn.preprocessing.StandardScaler()
-                adata.layers['vst'] = scaler.fit_transform(log_counts)
-            else:
-                print('Applying Variance Stabilizing Transformation (PyDESeq2 VST)...')
-                try:
-                    # Prepare raw counts matrix (PyDESeq2 requires integers)
-                    # Round and cap negatives to 0 (shouldn't be negatives in raw, but safety first)
-                    raw_integer_counts = np.clip(np.round(adata.layers['raw']), 0, None).astype(int)
-                    # Create a DataFrame mirroring the shapes
-                    raw_df = pd.DataFrame(raw_integer_counts, index=adata.obs_names, columns=adata.var_names)
-                    
-                    # Create a minimalist metadata DataFrame
-                    meta_df = pd.DataFrame({'condition': adata.obs.get('group', 'all')}, index=adata.obs_names)
-                    
-                    # Initialize PyDESeq2 DeseqDataSet
-                    # NOTE: Since PyDESeq2's dispersion estimations often use parametric/mean fit 
-                    # based on feature variances, we use the fit_type that was passed previously.
-                    vst_dds = DeseqDataSet(
-                        counts=raw_df, 
-                        metadata=meta_df, 
-                        design_factors="condition", 
-                        fit_type=getattr(self.analysis_args, 'dispfittype', 'parametric'),
-                        quiet=True
-                    )
-                    
-                    # Attach the pre-calculated (tRNA-control, default) size factors so VST reflects the same scaling
-                    if 'deseq2_sizefactor' in adata.obs:
-                        vst_dds.obsm['size_factors'] = adata.obs['deseq2_sizefactor'].values
-                    else:
-                        # Fallback
-                        vst_dds.obsm['size_factors'] = np.ones(vst_dds.n_obs)
-                        
-                    # Calculate vst
-                    vst_dds.vst(use_design=False)
-                    
-                    # Save results
-                    adata.layers['vst'] = vst_dds.layers['vst_counts']
-                except Exception as e:
-                    print(f"Warning: PyDESeq2 native VST failed ({e}). Falling back to log1p + StandardScaler...", file=sys.stderr)
-                    log_counts = np.log1p(adata.X)
-                    scaler = sklearn.preprocessing.StandardScaler()
-                    adata.layers['vst'] = scaler.fit_transform(log_counts)
+            adata.layers['vst'] = self._compute_vst_(
+                adata.X, adata.layers['raw'], adata.obs['deseq2_sizefactor'].values, adata.obs.get('group', 'all'),
+                vst_strategy, getattr(self.analysis_args, 'dispfittype', 'parametric'), adata.obs_names, adata.var_names
+            )
 
         # Quality check adata by dropping NaN values and printing summary
         if adata.obs.isna().any(axis=0).any():
@@ -851,9 +741,160 @@ class AnnDataBuilder():
                   f'Samples with NaN:\n{str(list(set(adata.obs["sample"][adata.obs.isna().any(axis=1)].tolist())))}\n')
         # Add output name to adata object index
         adata.obs.index = [os.path.basename(self.output).split('.')[0] + '_' + str(x) for x in adata.obs.index]
+
+        # Apply read-length split variants (added as layers/obsm/uns onto this SAME object,
+        # rather than the old behavior of writing separate _u{N}.h5ad/_o{N}.h5ad files)
+        if self.analysis_args and getattr(self.analysis_args, 'readlengthsplit', None):
+            self._apply_readlength_split_(adata)
+
         # Save adata object
         adata.write(self.output)
         print(f'Writing h5ad database object to {self.output}')
+
+    def _build_coverage_matrix_(self):
+        '''
+        Build the concatenated, position/coverage-type-labeled coverage matrix -- equivalent
+        to what becomes adata.X for the full/default variant -- plus its aligned size-factor
+        list. Extracted from create() so it's reusable by compute_variant_contribution() for
+        split-variant contributions.
+        '''
+        x_dfs = []
+        size_factors_list = None
+        for cov_type in self.cov_types:
+            x_df = self._x_build_(cov_type)
+            # Build size factors list if it does not exist
+            if not size_factors_list:
+                size_factors_list = [self.size_factors.get(i) for i in ['_'.join(x.split('_')[1:]) for x in x_df.index.values]]
+            # 'adenines', 'thymines', 'cytosines', 'guanines', 'deletions' are already raw counts so they need to be normalized by size factor first
+            if cov_type in ['adenines', 'thymines', 'cytosines', 'guanines', 'deletions']:
+                x_df = x_df.div(size_factors_list, axis=0)
+            x_dfs.append(x_df)
+        x_df = pd.concat(x_dfs, axis=1, sort=False)
+        x_df = x_df.astype('float64')  # Not sure if this is the dtype I want to use defaults to float64
+        # Rename columns of x_df to include position and coverage type
+        clist = [[p + '_' + cov for p in self.positions] for cov in self.cov_types]
+        clist = [a for l in clist for a in l]
+        x_df.columns = clist
+        return x_df, size_factors_list
+
+    def _compute_vst_(self, x_norm, x_raw, sizefactor_values, group_values, vst_strategy, dispfittype, obs_index, var_index):
+        '''
+        Compute a Variance Stabilizing Transformation of `x_norm`/`x_raw`. Extracted from
+        create()'s VST block so it's reusable by compute_variant_contribution() for
+        split-variant contributions.
+        '''
+        if vst_strategy == 'log1p':
+            print('Applying Variance Stabilizing Transformation (log1p + StandardScaler)...')
+            log_counts = np.log1p(x_norm)
+            scaler = sklearn.preprocessing.StandardScaler()
+            return scaler.fit_transform(log_counts)
+
+        print('Applying Variance Stabilizing Transformation (PyDESeq2 VST)...')
+        try:
+            # Prepare raw counts matrix (PyDESeq2 requires integers)
+            # Round and cap negatives to 0 (shouldn't be negatives in raw, but safety first)
+            raw_integer_counts = np.clip(np.round(x_raw), 0, None).astype(int)
+            raw_df = pd.DataFrame(raw_integer_counts, index=obs_index, columns=var_index)
+
+            # Create a minimalist metadata DataFrame
+            meta_df = pd.DataFrame({'condition': pd.Series(np.asarray(group_values), index=obs_index)}, index=obs_index)
+
+            # Initialize PyDESeq2 DeseqDataSet
+            # NOTE: Since PyDESeq2's dispersion estimations often use parametric/mean fit
+            # based on feature variances, we use the fit_type that was passed previously.
+            vst_dds = DeseqDataSet(
+                counts=raw_df,
+                metadata=meta_df,
+                design_factors="condition",
+                fit_type=dispfittype,
+                quiet=True
+            )
+
+            # Attach the pre-calculated (tRNA-control, default) size factors so VST reflects the same scaling
+            vst_dds.obsm['size_factors'] = np.asarray(sizefactor_values) if sizefactor_values is not None else np.ones(vst_dds.n_obs)
+
+            # Calculate vst
+            vst_dds.vst(use_design=False)
+
+            return vst_dds.layers['vst_counts']
+        except Exception as e:
+            print(f"Warning: PyDESeq2 native VST failed ({e}). Falling back to log1p + StandardScaler...", file=sys.stderr)
+            log_counts = np.log1p(x_norm)
+            scaler = sklearn.preprocessing.StandardScaler()
+            return scaler.fit_transform(log_counts)
+
+    def compute_variant_contribution(self, vst_strategy='vst', dispfittype='parametric'):
+        '''
+        Compute this loader's data as a "variant contribution" -- coverage matrices, numeric
+        per-obs columns, and count/sizefactor summaries -- for merging into an existing target
+        AnnData object via merge_variant_into_adata(). Does not build a standalone AnnData.
+        Intended to be called on a "loader-only" instance (constructed with analysis_args=None,
+        pointed at one split variant's results_dir_name/graphs_dir_name).
+        '''
+        x_df, size_factors_list = self._build_coverage_matrix_()
+        obs_df = self._obs_build_(x_df)
+
+        # Numeric, per-obs columns only -- identity columns (trna, sample, group, amino, ...)
+        # are shared across all variants and already live on the target adata's real .obs.
+        numeric_cols = [c for c in obs_df.columns if c.startswith('nreads_') or c == 'sizefactor']
+        obsm_counts = obs_df[numeric_cols].rename(columns={'sizefactor': 'deseq2_sizefactor'})
+
+        x_norm = x_df
+        x_raw = pd.DataFrame(x_norm.values * np.array(size_factors_list)[:, None], index=x_df.index, columns=x_df.columns)
+        allfeature_sf = np.array([self.size_factors_allfeatures.get(s, 1.0) for s in obs_df['sample'].values])
+        x_norm_allfeatures = pd.DataFrame(x_raw.values / allfeature_sf[:, None], index=x_df.index, columns=x_df.columns)
+
+        x_vst = None
+        if vst_strategy != 'none':
+            x_vst = self._compute_vst_(
+                x_norm.values, x_raw.values, obsm_counts['deseq2_sizefactor'].values, obs_df.get('group', 'all'),
+                vst_strategy, dispfittype, x_df.index, x_df.columns
+            )
+
+        return VariantContribution(
+            x_raw=x_raw, x_norm=x_norm, x_norm_allfeatures=x_norm_allfeatures, x_vst=x_vst,
+            obsm_counts=obsm_counts, sizefactors_trna=self.size_factors, sizefactors_allfeatures=self.size_factors_allfeatures,
+            type_counts=self.type_counts, type_real_counts=self.type_real_counts, amino_counts=self.amino_counts,
+            anticodon_counts=self.anticodon_counts, nontrna_counts=self.non_trna_read_counts,
+        )
+
+    def _apply_readlength_split_(self, adata):
+        '''
+        Compute and merge the under/over read-length split variants for `self.analysis_args
+        .readlengthsplit` into `adata` in place, as new layers/obsm/uns entries (see
+        merge_variant_into_adata()) -- replaces the old behavior of writing separate
+        `_u{N}.h5ad`/`_o{N}.h5ad` files. On-disk `results_u{N}`/`graphs_u{N}` (and o{N})
+        directories are still produced via AnalysisPipeline, unchanged.
+        '''
+        cutoff = self.analysis_args.readlengthsplit
+        abs_output = os.path.abspath(self.output)
+        base_output_dir = os.path.dirname(abs_output)
+        default_bamdir = self.analysis_args.bamdir if self.analysis_args.bamdir else os.path.join("processed", "bam")
+        vst_strategy = str(getattr(self.analysis_args, 'vst', 'vst')).lower()
+        dispfittype = getattr(self.analysis_args, 'dispfittype', 'parametric')
+
+        for direction, prefix in [('under', 'u'), ('over', 'o')]:
+            tag = f'{prefix}{cutoff}'
+            print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
+
+            args_variant = SimpleNamespace(**vars(self.analysis_args))
+            args_variant.bamdir = os.path.join(default_bamdir, tag)
+            # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
+            args_variant.readlengthsplit = None
+            args_variant.results_dir_name = f"results_{tag}"
+            args_variant.graphs_dir_name = f"graphs_{tag}"
+            args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(abs_output))[0]}_{tag}.h5ad")
+
+            pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
+            pipeline_variant.run()
+
+            print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
+            loader = AnnDataBuilder(base_output_dir, self.metadata_path, None, analysis_args=None,
+                                     results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
+            contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype)
+
+            build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+            merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=True)
 
     def _seq_build_(self, gap=False):
         # Build reference sequence dataframe
@@ -1146,3 +1187,190 @@ class AnnDataBuilder():
                 toolsSplit.BamSplitter(split_args).process()
             else:
                 print(f"Split BAM files found for cutoff {cutoff}. Skipping split (use --overwritebams to force).", file=sys.stderr)
+
+
+def _get_git_version_():
+    '''
+    Return (git_version, git_hash) for the installed trnagraph package, with a fallback for
+    non-git installations. Run from this file's own directory, letting git find the .git
+    folder in a parent directory.
+    '''
+    trnagraphdir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        git_version = subprocess.check_output(
+            ['git', 'describe', '--always'], cwd=trnagraphdir, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        git_hash = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=trnagraphdir, stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        git_version = 'unknown (not a git repository)'
+        git_hash = 'unknown'
+    return git_version, git_hash
+
+
+def merge_variant_into_adata(target_adata, contribution: VariantContribution, tag, direction, cutoff, build_flags, overwrite=False):
+    '''
+    Merge a VariantContribution (from AnnDataBuilder.compute_variant_contribution()) into
+    `target_adata` as a new size-split variant, under the naming scheme documented in
+    tRNAgraph/docs/data_structure.md:
+      - layers[f'raw_{tag}'] / layers[f'norm_{tag}'] / layers[f'norm_allfeatures_{tag}'] / layers[f'vst_{tag}']
+      - obsm[f'size_split_{tag}'] (all numeric per-obs columns, unsuffixed names)
+      - uns['size_splits'][tag] (sizefactors, counts, log2FC, build provenance)
+    Mutates and returns `target_adata` in place; does not write it to disk -- the caller
+    decides when/where to persist. `target_adata.obs.index` must already be in its final,
+    prefixed form (i.e. this must be called AFTER AnnDataBuilder.create()'s obs-index-prefix
+    step) so the prefix used to align `contribution`'s raw `{trna}_{sample}` index matches.
+    '''
+    existing = target_adata.uns.get('size_splits', {})
+    if tag in existing and not overwrite:
+        raise ValueError(f"Split variant '{tag}' already exists in this AnnData object. Pass --overwrite to replace it.")
+
+    # contribution frames are indexed by the raw '{trna}_{sample}' form (no dataset-basename
+    # prefix, since compute_variant_contribution() never calls _adata_build_()); reconstruct
+    # the same prefix the target's own obs index carries so rows align.
+    dataset_basename = str(target_adata.obs['dataset'].iloc[0]).split('.')[0]
+    prefixed_index = pd.Index([f'{dataset_basename}_{raw_idx}' for raw_idx in contribution.obsm_counts.index])
+
+    def _reindexed(df):
+        df = df.copy()
+        df.index = prefixed_index
+        aligned = df.reindex(target_adata.obs.index)
+        missing = aligned.index[aligned.isna().all(axis=1)]
+        if len(missing) > 0:
+            print(f"WARNING: {len(missing)} observations in the target object had no matching row in the '{tag}' split contribution (e.g. {list(missing[:3])}); filling with 0.", file=sys.stderr)
+        return aligned.fillna(0.0)
+
+    target_adata.layers[f'raw_{tag}'] = _reindexed(contribution.x_raw).values
+    target_adata.layers[f'norm_{tag}'] = _reindexed(contribution.x_norm).values
+    target_adata.layers[f'norm_allfeatures_{tag}'] = _reindexed(contribution.x_norm_allfeatures).values
+    if contribution.x_vst is not None:
+        x_vst_df = pd.DataFrame(contribution.x_vst, index=contribution.x_norm.index, columns=contribution.x_norm.columns)
+        target_adata.layers[f'vst_{tag}'] = _reindexed(x_vst_df).values
+
+    target_adata.obsm[f'size_split_{tag}'] = _reindexed(contribution.obsm_counts)
+
+    git_version, git_hash = _get_git_version_()
+    target_adata.uns.setdefault('size_splits', {})[tag] = {
+        'cutoff': cutoff,
+        'direction': direction,
+        'date_added': datetime.datetime.now().isoformat(),
+        'trnagraph_git_version': git_version,
+        'trnagraph_git_hash': git_hash,
+        'results_dir_name': build_flags.get('results_dir_name'),
+        'graphs_dir_name': build_flags.get('graphs_dir_name'),
+        'build_flags': build_flags,
+        'sizefactors_trna': contribution.sizefactors_trna,
+        'sizefactors_allfeatures': contribution.sizefactors_allfeatures,
+        'type_counts': contribution.type_counts,
+        'type_real_counts': contribution.type_real_counts,
+        'amino_counts': contribution.amino_counts,
+        'anticodon_counts': contribution.anticodon_counts,
+        'nontRNA_counts': contribution.nontrna_counts,
+    }
+
+    # Precompute default log2FC for common cutoffs, mirroring _adata_build_'s equivalent block
+    # for the full variant, via a temporary resolved view so adataLog2FC's obs-column lookups
+    # work completely unchanged.
+    temp_spec = toolsTG.VariantTag(raw=f'norm:{tag}', norm='norm', tag=tag)
+    temp_view = toolsTG.build_variant_view(target_adata, temp_spec)
+    for cutoff_i in [20, 40, 80, 100, 200]:  # common read cutoffs for tRNAseq
+        toolsTG.adataLog2FC(temp_view, 'group', 'nreads_total_unique_norm', readcount_cutoff=cutoff_i, config_name='default', overwrite=True).main()
+        toolsTG.adataLog2FC(temp_view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff_i, config_name='default', overwrite=True).main()
+    target_adata.uns['size_splits'][tag]['log2FC'] = temp_view.uns.get('log2FC', {})
+
+    return target_adata
+
+
+def add_split(args):
+    '''
+    Add a new read-length split variant (an under/over cutoff pair) to an EXISTING h5ad
+    AnnData object -- e.g. add u50/o50 to an object that already has u60/o60 -- without
+    disturbing any variant already present. Implements `trnagraph analyze addsplit`. Uses
+    the same compute_variant_contribution()/merge_variant_into_adata() unit that
+    AnnDataBuilder._apply_readlength_split_() uses at initial build time, so both paths
+    produce identical results for the same cutoff/data.
+    '''
+    adata = ad.read_h5ad(args.anndata)
+
+    # Recover original build parameters from this object's own provenance record, reversing
+    # the None -> 'None' sentinel used when it was written (see __init__'s run_flags).
+    recorded_flags = dict(adata.uns.get('trnagraphruninfo', {}).get('flags', {}))
+    recorded_flags = {k: (None if v == 'None' else v) for k, v in recorded_flags.items()}
+
+    def _effective(cli_value, flag_key, default=None):
+        value = cli_value if cli_value is not None else recorded_flags.get(flag_key)
+        return value if value is not None else default
+
+    effective_input = _effective(args.metadata, 'input')
+    effective_bamdir = _effective(args.bamdir, 'bamdir')
+    effective_database = _effective(args.database, 'database')
+    effective_gtf = _effective(args.gtf, 'gtf')
+    effective_dispfittype = _effective(args.dispfittype, 'dispfittype', 'parametric')
+    effective_vst = _effective(args.vst, 'vst', 'vst')
+
+    if not effective_input or not os.path.isfile(effective_input):
+        raise ValueError(f"Could not recover a valid metadata file from this object's build provenance. Pass --metadata explicitly (got: {effective_input!r}).")
+    if not effective_bamdir or not os.path.isdir(effective_bamdir):
+        raise ValueError(f"Could not recover a valid BAM directory from this object's build provenance. Pass --bamdir explicitly (got: {effective_bamdir!r}).")
+
+    # Light conflicting-run-info validation: refuse (unless --force) if an explicitly-overridden
+    # database/gtf differs from what this object was originally built with -- the narrowly-scoped
+    # seed for the roadmap's "prevent merging AnnData objects with conflicting run info" item.
+    conflicts = []
+    for cli_value, flag_key, label in [(args.database, 'database', 'database'), (args.gtf, 'gtf', 'gtf')]:
+        recorded_value = recorded_flags.get(flag_key)
+        if cli_value is not None and recorded_value is not None and cli_value != recorded_value:
+            conflicts.append(f"--{label} '{cli_value}' was given, but this object was originally built with {label}='{recorded_value}'")
+    if conflicts:
+        message = "Detected parameters that conflict with this object's original build provenance:\n  " + "\n  ".join(conflicts)
+        if not args.force:
+            raise ValueError(message + "\nPass --force to proceed anyway.")
+        print(f"WARNING: {message}\nProceeding anyway due to --force.", file=sys.stderr)
+
+    cutoff = args.readlengthsplit
+    existing = adata.uns.get('size_splits', {})
+    for tag in (f'u{cutoff}', f'o{cutoff}'):
+        if tag in existing and not args.overwrite:
+            raise ValueError(f"Split variant '{tag}' already exists in this AnnData object. Pass --overwrite to replace it.")
+
+    base_output_dir = os.path.dirname(os.path.abspath(args.anndata))
+
+    from . import toolsSplit
+    split_args = SimpleNamespace(input=effective_input, readlengthsplit=cutoff, bamdir=effective_bamdir,
+                                  overwritebams=args.overwritebams, threads=args.threads)
+    toolsSplit.BamSplitter(split_args).process()
+
+    for direction, prefix in [('under', 'u'), ('over', 'o')]:
+        tag = f'{prefix}{cutoff}'
+        print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
+
+        args_variant = SimpleNamespace(**recorded_flags)
+        args_variant.input = effective_input
+        args_variant.database = effective_database
+        args_variant.gtf = effective_gtf
+        args_variant.dispfittype = effective_dispfittype
+        args_variant.vst = effective_vst
+        args_variant.bamdir = os.path.join(effective_bamdir, tag)
+        args_variant.readlengthsplit = None
+        args_variant.overwritebams = args.overwritebams
+        args_variant.threads = args.threads
+        args_variant.results_dir_name = f"results_{tag}"
+        args_variant.graphs_dir_name = f"graphs_{tag}"
+        args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")
+
+        pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
+        pipeline_variant.run()
+
+        print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
+        loader = AnnDataBuilder(base_output_dir, effective_input, None, analysis_args=None,
+                                 results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
+        contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype)
+
+        build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+        merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=args.overwrite)
+
+    output_path = os.path.abspath(args.output) if args.output else os.path.abspath(args.anndata)
+    adata.write(output_path)
+    print(f'Writing h5ad database object to {output_path}')
+    return output_path

@@ -17,6 +17,8 @@ classDiagram
         +var : dataframe [n_vars]
         +uns : dict
         +layers : dict
+        +obsm : dict
+        +obsp : dict
     }
 
     class Obs_Metadata {
@@ -45,17 +47,33 @@ classDiagram
         +trnagraphruninfo : dict
         +deseq2_sizefactors_trna : dict
         +deseq2_sizefactors_allfeatures : dict
+        +size_splits : dict<tag, dict>
     }
 
     class Layers_Matrices {
         +raw : matrix (int64)
         +norm_allfeatures : matrix (float32)
+        +vst : matrix (float32)
+        +raw_u60 : matrix (int64)
+        +norm_u60 : matrix (float32)
+        ...one raw/norm/norm_allfeatures/vst set per split tag
+    }
+
+    class Obsm_Variants {
+        +size_split_u60 : dataframe [n_obs]
+        ...one table per split tag
+    }
+
+    class Obsp_Graphs {
+        +sample_umap_connectivities : sparse [n_obs, n_obs]
     }
 
     AnnData *-- Obs_Metadata
     AnnData *-- Var_Features
     AnnData *-- Uns_Unstructured
     AnnData *-- Layers_Matrices
+    AnnData *-- Obsm_Variants
+    AnnData *-- Obsp_Graphs
 ```
 
 ## 1. The Data Matrix (`adata.X` and `adata.layers`)
@@ -79,6 +97,22 @@ To ensure reproducibility and allow for on-the-fly re-normalization, data is sto
 | **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default. |
 | **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.      |
 | **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                               |
+
+### Split Variants (`--readlengthsplit`)
+
+A tRNAgraph object can hold the full (unsplit) dataset alongside one or more **read-length split variants** — e.g. reads under 60bp and reads 60bp-and-over — all within the same object. `trnagraph analyze build --readlengthsplit N` adds an under/over cutoff pair (tagged `u<N>`/`o<N>`) at build time; `trnagraph analyze addsplit -c N` adds further cutoffs to an existing object later, without disturbing variants already present. See [CLI Reference: addsplit](cli_reference.md#addsplit).
+
+Because a length split only changes *which reads* contribute to coverage — it doesn't add a new tRNA or sample — each variant reuses the object's existing `obs`/`var` shape and is stored as a set of additional, tag-suffixed entries:
+
+- **Layers**: each of `raw`/`norm` (the default-normalized data — this can't reuse `adata.X`, since `.X` is singular and already holds the full/unsplit default)/`norm_allfeatures`/`vst` (if built) has a `_<tag>` suffixed sibling per variant, e.g. `adata.layers['raw_u60']`, `adata.layers['norm_u60']`, `adata.layers['norm_allfeatures_u60']`, `adata.layers['vst_u60']`. `<tag>` is `u<N>` (under) or `o<N>` (over).
+- **`adata.obsm['size_split_<tag>']`**: a single DataFrame, indexed identically to `adata.obs`, holding every per-obs numeric column that variant needs (`deseq2_sizefactor`, `nreads_<readtype>_raw`/`_norm`, etc.) under the exact same (unsuffixed) column names used in the default `adata.obs` — and, once `analyze cluster --variant norm:<tag>` has been run for that variant, its cluster labels/UMAP coordinates too. `adata.obs` itself holds only the full/default variant's numeric columns; identity columns (`trna`, `sample`, `group`, `amino`, ...) are shared across all variants.
+- **`adata.uns['size_splits'][tag]`**: everything else split-specific — see [§4 Unstructured Data](#4-unstructured-data-adatauns) below.
+- **`adata.obsp`**: the sample-level UMAP neighbor graph from clustering, see [Clustering Results](#clustering-results) below.
+
+A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyze cluster`, and `tools log2fc` selects which variant a plot/cluster run/DE calculation is built from — `<norm>` is one of `norm`/`raw`/`allfeatures`/`vst`, `<tag>` is `full` or an added split tag. The same flag also covers the plain (non-split) "plot raw counts instead of normalized" case via `--variant raw:full`. Internally, the requested variant is resolved **once**, into a working copy where `.X` is swapped to the right layer and the split's `obsm` columns/relevant `uns` entries are overlaid onto `.obs`/`.uns` under their normal unsuffixed names — so plotting code reads `adata.X`/`adata.obs['nreads_total_unique_norm']`/`adata.uns['nontRNA_counts']` exactly as it does for the full/default variant, regardless of which variant was requested.
+
+> [!IMPORTANT]
+> Each split variant gets its **own independently-fit** DESeq2 size factors/dispersion, computed from that variant's own read-length-restricted BAMs — not a shared/global normalization derived from the full dataset. This is intentional: a split subset's read-depth and length-composition profile can differ substantially from the full dataset, so sharing size factors across variants would bias comparisons within a split subset.
 
 ### On-Disk Result Files (`results/<exp>/`)
 
@@ -214,6 +248,7 @@ If `trnagraph analyze cluster` has been run, dimensionality reduction coordinate
 - `sample_cluster_umap`: UMAP coordinates (n_samples x 2).
 - `group_cluster_umap`: Centroid UMAP coordinates for sample groups.
 - `cluster_runinfo`: Parameters used for the clustering run (neighbors, metrics, etc.).
+- `adata.obsp['sample_umap_connectivities']`: the sample-level pass's UMAP fuzzy-simplicial-set neighbor graph, sparse and sized `[n_obs, n_obs]`. Computed over a subset of samples (excluding those below `--readcutoff` and the `'Und'` amino-acid filter) and reindexed to the full object shape — rows/columns for excluded samples have all-zero connectivity. There is no group-level analog: the group-level clustering pass first collapses rows via a `trna`×`group` groupby, so its "observations" are a different axis than the top-level object's `trna`×`sample` obs and can't be expressed as an `[n_obs, n_obs]` matrix against it — group-level clustering stays `uns`-based only.
 
 ### Aggregate Counts
 
@@ -231,6 +266,25 @@ Provenance metadata for reproducibility.
 - `trnagraphruninfo`: Provenance for the `trnagraph analyze build` run — `expname`, `time`, `trnagraph_directory`, `git version`, `git version hash`, and a `flags` sub-dict containing every CLI flag the `build` command was invoked with (e.g. `database`, `dispfittype`, `vst`, `nofrag`, `pairs`, ...). `None`-valued flags are stored as the string `'None'`.
 - `deseq2_sizefactors_trna`: Per-sample DESeq2 size factors computed with tRNA/tRX features as the normalization reference (the default; identical to `adata.obs['deseq2_sizefactor']`).
 - `deseq2_sizefactors_allfeatures`: Per-sample DESeq2 size factors computed with all features (tRNAs + non-tRNA GTF features) as the normalization reference — the secondary set backing `adata.layers['norm_allfeatures']`, kept for comparison against the default.
+
+### Split Variants (`size_splits`)
+
+`adata.uns['size_splits'][tag]` (`tag` = `u<N>`/`o<N>`) holds everything about one read-length split variant that isn't a flat layer/obsm/obsp entry (see [Split Variants](#split-variants---readlengthsplit) above). `'full'` is never a real key here — it's the reserved pseudo-tag meaning "read the unsuffixed/default location" used by `--variant`.
+
+```python
+adata.uns['size_splits']['u60'] = {
+    'cutoff': 60, 'direction': 'under',                          # 'under' | 'over'
+    'date_added': '2026-08-19T...', 'trnagraph_git_version': '...', 'trnagraph_git_hash': '...',
+    'results_dir_name': 'results_u60', 'graphs_dir_name': 'graphs_u60',
+    'build_flags': {...},                                        # sanitized snapshot of the args used to compute this variant
+    'sizefactors_trna': {...}, 'sizefactors_allfeatures': {...},  # this variant's own independent DESeq2 fit
+    'type_counts': DataFrame, 'type_real_counts': DataFrame, 'amino_counts': DataFrame,
+    'anticodon_counts': DataFrame, 'nontRNA_counts': DataFrame,
+    'log2FC': {...},           # same nested config_name/compare/readtype/cutoff structure as the top-level uns['log2FC']
+    # populated only once `analyze cluster --variant norm:u60` has been run:
+    'cluster_runinfo': {...}, 'sample_cluster_umap': DataFrame, 'group_cluster_umap': DataFrame,
+}
+```
 
 ---
 
@@ -267,6 +321,10 @@ If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA f
 ## 6. Graphing Notes
 
 Nuances specific to individual `trnagraph graph` plot types that aren't obvious from the schema alone.
+
+### Selecting a Variant (`--variant`)
+
+`--variant <norm>:<tag>` (default `norm:full`) selects which normalization and which split variant a plot is built from — see [Split Variants](#split-variants---readlengthsplit) above for the full mechanics. This is orthogonal to the tRNA/non-tRNA/combined families described below in [PCA Plots](#pca-plots)/[Volcano Plots](#volcano-plots): `--variant` picks the underlying data (e.g. raw counts, or a `u60` split), while those families are about which feature population (tRNA vs. non-tRNA vs. both) a given plot covers.
 
 ### PCA Plots
 

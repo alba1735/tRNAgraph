@@ -10,7 +10,15 @@ class anndataCluster():
     Class for performing UMAP clustering on an AnnData object
     '''
     def __init__(self, args):
-        self.adata = ad.read_h5ad(args.anndata)
+        self.adata_original = ad.read_h5ad(args.anndata)
+        # Resolve the requested normalization:split-tag ONCE, into a working copy, so
+        # adataPreprocess()/adataCluster() read .X/.obs[...] exactly as they do for the
+        # full/default variant -- see toolsTG.build_variant_view() for why this resolved copy
+        # must never be written back to args.anndata directly. Cluster OUTPUT (below, in
+        # main()/adataCombine()) is written onto self.adata_original instead, namespaced per
+        # variant so it never clobbers another variant's stored cluster results.
+        self.variant_spec = toolsTG.parse_variant(self.adata_original, getattr(args, 'variant', 'norm:full'))
+        self.adata = toolsTG.build_variant_view(self.adata_original, self.variant_spec)
         self.overwrite = args.overwrite
         self.output = args.output
         self.randomstate = args.randomstate
@@ -36,8 +44,10 @@ class anndataCluster():
         # Check if the output file already exists
         if os.path.isfile(self.output) and self.overwrite == False:
             try:
-                if 'cluster_runinfo' in ad.read_h5ad(self.output).uns:
-                    print('Cluster information already present in AnnData object. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
+                existing_uns = ad.read_h5ad(self.output).uns
+                existing_info = existing_uns if self.variant_spec.tag == 'full' else existing_uns.get('size_splits', {}).get(self.variant_spec.tag, {})
+                if 'cluster_runinfo' in existing_info:
+                    print('Cluster information already present in AnnData object for this variant. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
                     exit()
             except:
                 print('Output file already exists but not in AnnData format. Please remove the file or use the --overwrite option.')
@@ -50,12 +60,23 @@ class anndataCluster():
         adata_sub_group = self.adataPreprocess(self.adata.copy(), grpby='group')
         # # Cluster the data
         print('Clustering AnnData object...')
-        sample_df = self.adataCluster(adata_sub_sample, self.sample_neighbors_plot, self.sample_neighbors_cluster, self.sample_hdbscan_min_samples, self.sample_hdbscan_min_cluster_size, self.sample_n_components)
+        sample_df, sample_graph = self.adataCluster(adata_sub_sample, self.sample_neighbors_plot, self.sample_neighbors_cluster, self.sample_hdbscan_min_samples, self.sample_hdbscan_min_cluster_size, self.sample_n_components, return_graph=True)
         group_df = self.adataCluster(adata_sub_group, self.group_neighbors_plot, self.group_neighbors_cluster, self.group_hdbscan_min_samples, self.group_hdbscan_min_cluster_size, self.group_n_components)
-        # Add the cluster information to the original AnnData object
+        # Add the cluster information to the ORIGINAL AnnData object (never the resolved
+        # view), namespaced per variant so a split-variant cluster run never clobbers another
+        # variant's stored cluster results.
         print('Adding cluster information to original AnnData object...')
-        self.adata = self.adataCombine(self.adata, sample_df, 'sample')
-        self.adata = self.adataCombine(self.adata, group_df, 'group')
+        self.adata_original = self.adataCombine(self.adata_original, sample_df, 'sample')
+        self.adata_original = self.adataCombine(self.adata_original, group_df, 'group')
+
+        # Embed the sample-level pass's UMAP neighbor graph (computed over a subset excluding
+        # low-coverage samples and the 'Und' amino-acid filter) into the full n_obs x n_obs
+        # shape and store it in obsp -- the group-level pass has no analog here since its rows
+        # are a collapsed trna x group axis, not the top-level object's trna x sample obs.
+        full_graph = toolsTG.scatter_subset_graph_to_full(sample_graph, adata_sub_sample.obs.index, self.adata_original.obs.index)
+        obsp_key = 'sample_umap_connectivities' if self.variant_spec.tag == 'full' else f'sample_umap_connectivities_{self.variant_spec.tag}'
+        self.adata_original.obsp[obsp_key] = full_graph
+
         # Save all the variables as a dictionary in adata.uns
         if not self.randomstate:
             self.randomstate = -1
@@ -65,10 +86,13 @@ class anndataCluster():
                            'group_hdbscan_min_cluster_size':self.group_hdbscan_min_cluster_size,'group_n_components':self.group_n_components,\
                            'readcutoff':self.readcutoff,'randomstate':self.randomstate}
         # Convert the dictionary to a dataframe then transform it to a single column dataframe
-        self.adata.uns['cluster_runinfo'] = cluster_runinfo
+        if self.variant_spec.tag == 'full':
+            self.adata_original.uns['cluster_runinfo'] = cluster_runinfo
+        else:
+            self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['cluster_runinfo'] = cluster_runinfo
         # Save the AnnData object
         print(f'Writing h5ad database object to: {self.output}')
-        self.adata.write(f'{self.output}')
+        self.adata_original.write(f'{self.output}')
 
     def adataPreprocess(self, adata, grpby=None):
         '''
@@ -123,12 +147,13 @@ class anndataCluster():
 
         return adata
     
-    def adataCluster(self, adata, neighbors_plot, neighbors_cluster, min_samples, min_cluster_size, n_components):
+    def adataCluster(self, adata, neighbors_plot, neighbors_cluster, min_samples, min_cluster_size, n_components, return_graph=False):
         from sklearn.feature_selection import VarianceThreshold
         # Remove low variance features
         sel = VarianceThreshold(threshold=(self.variance_threshold))
         # Apply a standardscaler to the data and reduce dimensions
-        standard_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot, min_dist=self.mindist, metric=self.stats_metrics_umap).fit_transform(sel.fit_transform(adata.X))
+        standard_reducer = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot, min_dist=self.mindist, metric=self.stats_metrics_umap)
+        standard_embedding = standard_reducer.fit_transform(sel.fit_transform(adata.X))
         cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components, metric=self.stats_metrics_umap).fit_transform(sel.fit_transform(adata.X))
         # Perform clustering with HDBSCAN
         hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size, metric=self.stats_metrics_hdbscan).fit_predict(cluster_embedding)
@@ -137,21 +162,51 @@ class anndataCluster():
         df_c = pd.DataFrame(cluster_embedding, index=adata.obs.index, columns=['cluster_umap'+str(i) for i in range(1,n_components+1)])
         df = pd.concat([df, df_c], axis=1)
         df['cluster_hdbscan'] = hdbscan_results
-        
+
+        if return_graph:
+            # standard_reducer.graph_ is UMAP's fuzzy-simplicial-set neighbor graph, sized to
+            # this call's (sub)set of observations -- see toolsTG.scatter_subset_graph_to_full()
+            # for how the caller embeds it into the full object's obsp.
+            return df, standard_reducer.graph_
         return df
     
     def adataCombine(self, adata, df, group):
-        # Add the uns information to the original AnnData object for reference by using the 3: column of the dataframe
-        adata.uns['_'.join([group,'cluster_umap'])] = df
+        '''
+        Write this group's ('sample' or 'group') UMAP/HDBSCAN cluster result onto `adata`
+        (the ORIGINAL, unresolved adata -- never the resolved view). For the full/default
+        variant this writes to the same unsuffixed uns/obs locations as before; for a split
+        variant it writes into the namespaced uns['size_splits'][tag] / obsm['size_split_tag']
+        locations instead, so it never overwrites another variant's stored cluster results.
+        '''
+        is_split = self.variant_spec.tag != 'full'
+        umap_key = f'{group}_cluster_umap'
+
+        if is_split:
+            adata.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})[umap_key] = df
+        else:
+            adata.uns['_'.join([group,'cluster_umap'])] = df
+
+        obsm_key = f'size_split_{self.variant_spec.tag}'
+        split_obsm = adata.obsm.get(obsm_key, pd.DataFrame(index=adata.obs.index)) if is_split else None
+
         # Create dictionaries to map the cluster information to the original AnnData object obs for convience
         for i in [('cluster_hdbscan','cluster'), ('standard_umap1','umap1'), ('standard_umap2','umap2')]:
             # Create dictionaries to map the cluster information to the original AnnData object
             temp_dict = dict(zip(df.index, df[i[0]]))
+            col_name = '_'.join([group,i[1]])
             # Add the cluster information to the original AnnData object
             if group == 'sample':
-                adata.obs['_'.join([group,i[1]])] = adata.obs.index.map(temp_dict)
+                values = adata.obs.index.map(temp_dict)
             else:
-                adata.obs['_'.join([group,i[1]])] = adata.obs['trna'].astype('str') + '_' + adata.obs[group].astype('str')
-                adata.obs['_'.join([group,i[1]])] = adata.obs['_'.join([group,i[1]])].map(temp_dict)
-        
+                key_series = adata.obs['trna'].astype('str') + '_' + adata.obs[group].astype('str')
+                values = key_series.map(temp_dict)
+
+            if is_split:
+                split_obsm[col_name] = pd.Series(values, index=adata.obs.index)
+            else:
+                adata.obs[col_name] = values
+
+        if is_split:
+            adata.obsm[obsm_key] = split_obsm
+
         return adata

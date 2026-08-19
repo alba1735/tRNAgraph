@@ -20,6 +20,18 @@ class anndataMerger():
         if len(np.setdiff1d(self.adata1.obs.columns, self.adata2.obs.columns))>0 or len(np.setdiff1d(self.adata2.obs.columns, self.adata1.obs.columns))>0:
             print('The following columns are not present in each AnnData object and will be dropped:\n'+ \
                   ' '.join(set(np.setdiff1d(self.adata1.obs.columns, self.adata2.obs.columns)) | set(np.setdiff1d(self.adata2.obs.columns, self.adata1.obs.columns))))
+        # ad.concat's uns_merge='same' (below) silently drops any uns key -- including
+        # uns['size_splits'] -- that isn't byte-identical across both objects, and drops
+        # layers/obsm/obsp entries not present in both. Size-split variants added to only one
+        # side (e.g. u60/o60 added via `analyze addsplit` to just one of these two objects)
+        # will be silently lost from the merged result -- warn so that isn't a silent surprise.
+        splits1 = set(self.adata1.uns.get('size_splits', {}).keys())
+        splits2 = set(self.adata2.uns.get('size_splits', {}).keys())
+        if splits1 != splits2:
+            print('WARNING: The two AnnData objects have different size-split variants present '
+                  f'(object 1: {sorted(splits1) or "none"}, object 2: {sorted(splits2) or "none"}). '
+                  'ad.concat only keeps uns/layers/obsm/obsp entries that are identical/present in both objects, '
+                  'so mismatched split-variant data will be dropped from the merged result.\n')
         # Merge uns data
         amino_counts = pd.concat([self.adata1.uns['amino_counts'], self.adata2.uns['amino_counts']], axis=1).fillna(0)
         self.adata1.uns['amino_counts'] = amino_counts

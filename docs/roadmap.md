@@ -6,15 +6,17 @@ This document outlines the planned features and current areas of focus for tRNAg
 
 ### Analysis & Statistics
 
-- **Alternative Normalization**: Add options to compute with RAW counts and normalization methods other than DESeq2 size factors.
-- **External Analysis Integration**: Allow new DESeq2 or other analyses to be run directly on the combined object.
-- **Correlation**: Add function to plot correlation with smallRNAs included.
+- ~~**Alternative Normalization**: Add options to compute plots with RAW counts or alternative layers (normalization).~~ Resolved: `graph`/`analyze cluster`/`tools log2fc` now accept a `--variant <norm>:<tag>` flag (`<norm>` = `norm`/`raw`/`allfeatures`/`vst`) that selects the underlying layer a plot/DE call is built from, e.g. `--variant raw:full`. See `data_structure.md#split-variants---readlengthsplit`.
+- **External Analysis Integration**: Allow new DESeq2 or other analyses to be run directly on the combined object as a tool.
+- ~~**Differential Expression**: Add functionality to redo differential expression analysis, and/or add new layers and methods as a tool.~~ Largely resolved: `tools log2fc` already exists as a standalone DE-recompute command and is now `--variant`-aware, so it can redo DE for any normalization/split variant. A more general "run new DE methods" tool is still open.
+- **Single-Object Size-Range Splits**: ~~Currently calculating for size range splits (over/under Nbp) creates separate adata objects.~~ Resolved: `analyze build --readlengthsplit N` now adds `u<N>`/`o<N>` variants to the *same* object as layers/`obsm`/`uns` entries instead of writing separate `_uN.h5ad`/`_oN.h5ad` files, and a new `analyze addsplit` command adds further cutoffs to an existing object incrementally, without disturbing previously-added variants. On-disk `results_uN`/`graphs_uN` directories are unchanged. See `data_structure.md#split-variants---readlengthsplit`.
 
 ### Visualization Enhancements
 
 - **Sorting**: Add functionality to sort combined coverage plots from most to least abundant.
 - **Radar Plots**: Improve amino acid dictionary generation to be species-universal (currently uses a subset).
 - **Styling**: Cleanup `trim` plots to match the general tRNAgraph aesthetic.
+- **Correlation**: Add function to plot correlation with smallRNAs included.
 
 ### Data Validation
 
@@ -24,7 +26,7 @@ This document outlines the planned features and current areas of focus for tRNAg
 ## Known Issues & Refactoring Targets
 
 - **Acceptor Stems**: Fix labeling issues with acceptor stems in `adata.var` (affects CSV exports).
-- **Merge Logic**: Prevent merging of AnnData objects if they have conflicting tRNAgraph run info.
+- **Merge Logic**: Prevent merging of AnnData objects if they have conflicting tRNAgraph run info. Partially addressed: `analyze addsplit` now refuses (unless `--force`) to add a split variant whose explicitly-overridden `--database`/`--gtf` conflicts with the object's original build provenance, and `analyze merge` now warns if the two objects being merged have different `size_splits` variants present (which `ad.concat`'s `uns_merge='same'` would otherwise silently drop). Full conflicting-run-info enforcement across `analyze merge` is still open.
 - **Trimmer**: Add log file output and quiet mode to `toolTrim.py`.
 - **Trimmer UMI Handling**: Test that UMI handling in `toolTrim.py` works as expected.
 - **logging**: Standardize logging across all scripts for better traceability. Improve log messages for clarity.

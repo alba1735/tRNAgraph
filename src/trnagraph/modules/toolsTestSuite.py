@@ -344,37 +344,49 @@ class demoPipeline:
         self.logger.info("Done.")
         print("Done.")
 
+    def _has_split_variant(self, h5ad_path: str, tag: str) -> bool:
+        """Check whether split variant `tag` (e.g. 'u60') is present in uns['size_splits'] of an h5ad."""
+        if not os.path.exists(h5ad_path):
+            return False
+        try:
+            import anndata as ad
+            return tag in ad.read_h5ad(h5ad_path).uns.get('size_splits', {})
+        except Exception:
+            return False
+
     def cluster_db(self) -> None:
-        """Clusters the AnnData object."""
+        """Clusters the AnnData object. Split variants (added via --readlengthsplit at build
+        time) now live inside the same vibrChol1.h5ad, so they're clustered in place via
+        --variant rather than as separate h5ad files."""
         self.logger.info("Clustering AnnData object...")
         print("Clustering AnnData object...")
-        
+
         cmd = (
             f"{self.trnagraph_path} analyze cluster "
             "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --overwrite"
         )
         self._run_command(cmd, "Running cluster command...")
 
-        if os.path.exists("vibrChol1/vibrChol1_u60.h5ad"):
+        if self._has_split_variant("vibrChol1/vibrChol1.h5ad", "u60"):
             self.logger.info("Clustering AnnData object for under split...")
             print("Clustering AnnData object for under split...")
-            
+
             cmd = (
                 f"{self.trnagraph_path} analyze cluster "
-                "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/vibrChol1_u60.h5ad --overwrite"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --variant norm:u60 --overwrite"
             )
             self._run_command(cmd, "Running cluster command for under split...")
 
-        if os.path.exists("vibrChol1/vibrChol1_o60.h5ad"):
+        if self._has_split_variant("vibrChol1/vibrChol1.h5ad", "o60"):
             self.logger.info("Clustering AnnData object for over split...")
             print("Clustering AnnData object for over split...")
-            
+
             cmd = (
                 f"{self.trnagraph_path} analyze cluster "
-                "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/vibrChol1_o60.h5ad --overwrite"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/vibrChol1.h5ad --variant norm:o60 --overwrite"
             )
-            self._run_command(cmd, "Running cluster command for over split...") 
-        
+            self._run_command(cmd, "Running cluster command for over split...")
+
         self.logger.info("Done.")
         print("Done.")
 
@@ -393,25 +405,26 @@ class demoPipeline:
         print("Done.")
 
     def graph_split_db(self) -> None:
-        """Generates graphs from the split AnnData objects."""
+        """Generates graphs for split variants. These now live inside the same vibrChol1.h5ad
+        (rather than separate _u60.h5ad/_o60.h5ad files), selected in place via --variant."""
         self.logger.info("Generating graphs for under split...")
         print("Generating graphs for under split...")
-        
+
         cmd = (
             f"{self.trnagraph_path} graph "
-            "-i vibrChol1/vibrChol1_u60.h5ad -o vibrChol1/graphs_u60 --colormap config/colormap.json"
+            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs_u60 --variant norm:u60 --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running graph command for under split...")
 
         self.logger.info("Generating graphs for over split...")
         print("Generating graphs for over split...")
-        
+
         cmd = (
             f"{self.trnagraph_path} graph "
-            "-i vibrChol1/vibrChol1_o60.h5ad -o vibrChol1/graphs_o60 --colormap config/colormap.json"
+            "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs_o60 --variant norm:o60 --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running graph command for over split...")
-        
+
         self.logger.info("Done.")
         print("Done.")
 

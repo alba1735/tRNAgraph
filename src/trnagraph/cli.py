@@ -230,6 +230,39 @@ def build(
         adataBuild.AnnDataBuilder(output_dir, input, full_output_path, args).create()
         print('Done!\n')
 
+@analyze_app.command("addsplit", help="Add an additional read-length split variant (under/over cutoff pair) to an existing h5ad AnnData object")
+def addsplit(
+    anndata_path: str = typer.Option(..., "-i", "--anndata", help="Existing h5ad object to add a split variant to"),
+    readlengthsplit: int = typer.Option(..., "-c", "--readlengthsplit", help="New read length cutoff to add (generates u<N>/o<N> variants)"),
+    metadata: Optional[str] = typer.Option(None, "--metadata", help="Metadata file (default: recovered from the object's own build provenance)"),
+    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Original (unsplit) BAM directory (default: recovered from provenance)"),
+    database: Optional[str] = typer.Option(None, "-d", "--database", help="Override tRNA database (default: recovered from provenance)"),
+    gtf: Optional[str] = typer.Option(None, "--gtf", help="Override GTF path (default: recovered from provenance)"),
+    dispfittype: Optional[str] = typer.Option(None, "--dispfittype", help="Override DESeq2 dispersion fit type (default: recovered from provenance)"),
+    vst: Optional[str] = typer.Option(None, "--vst", help="VST strategy for this split's vst layer (default: recovered from provenance)"),
+    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
+    threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
+    output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
+    overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite this cutoff's u<N>/o<N> data if already present in the object"),
+    force: bool = typer.Option(False, "--force", help="Proceed even if explicitly-overridden parameters conflict with the object's original build provenance"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    with handle_output(log, quiet):
+        if not os.path.isfile(anndata_path):
+            raise Exception('Error: h5ad file does not exist.')
+
+        args = SimpleNamespace(
+            mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
+            bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst,
+            overwritebams=overwritebams, threads=threads, output=output, overwrite=overwrite, force=force,
+            log=log, quiet=quiet
+        )
+
+        print('Adding split variant to database object...\n')
+        adataBuild.add_split(args)
+        print('Done!\n')
+
 @analyze_app.command("merge", help="Merge data from two existing h5ad AnnData objects")
 def merge(
     anndata1: str = typer.Option(..., "-i1", "--anndata1", help="Specify location of first h5ad object"),
@@ -282,6 +315,7 @@ def cluster(
     umapstatsmetrics: str = typer.Option("euclidean", "-us", "--umapstatsmetrics", help="Specify UMAP statistics metrics to use for feature selection"),
     hdbstatsmetrics: str = typer.Option("euclidean", "-uh", "--hdbstatsmetrics", help="Specify hdbscan statistics metrics to use for feature selection with UMAP"),
     clusterobsexperimental: List[str] = typer.Option([], "--clusterobsexperimental", help="This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to cluster, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
     output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
@@ -302,7 +336,7 @@ def cluster(
             neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
             hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
             umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
-            overwrite=overwrite, output=output_path, log=log, quiet=quiet
+            variant=variant, overwrite=overwrite, output=output_path, log=log, quiet=quiet
         )
         
         print('Clustering data from database object...\n')
@@ -317,6 +351,7 @@ def graph(
     config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
     colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the graphs"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60', 'allfeatures:o60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag (e.g. 'u60'). Default 'norm:full' is today's default behavior"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
@@ -371,7 +406,7 @@ def graph(
         
         args = SimpleNamespace(
             mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, colormap=colormap,
-            regen_uns=regen_uns, threads=threads, log=log, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
+            regen_uns=regen_uns, variant=variant, threads=threads, log=log, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
             covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
@@ -393,17 +428,18 @@ def log2fc(
     readtypes: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "-r", "--readtypes", help="Specify readtypes to generate log2fc for"),
     cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
     config: Optional[str] = typer.Option(None, "-c", "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to compute log2fc for, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     with handle_output(log, quiet):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
-            
+
         # Load the AnnData object
         # Note: using anndata.read_h5ad from lazy_imports
         adata = anndata.read_h5ad(anndata_path)
-        
+
         # Load config file for name if specified
         config_name = 'default'
         config_data = None
@@ -414,20 +450,28 @@ def log2fc(
                 config_name = config_data['name']
             else:
                 raise ValueError('Config file must contain a "name" field')
-        
+
         print('Calculating log2FC for database object...\n')
-        adata_copy = adata.copy()
-        
-        # Note: args.config in original code was replaced by the loaded dict.
-        # We need to replicate that for the tool call if it expects it.
-        # But toolsTG.adataLog2FC takes config_name, not the config dict itself.
-        
+        # Resolve the requested normalization:split-tag into a working view so the readtype
+        # obs-column lookups below transparently read the right variant's data -- see
+        # toolsTG.build_variant_view() for why this view must never be written back directly.
+        variant_spec = toolsTG.parse_variant(adata, variant)
+        adata_view = toolsTG.build_variant_view(adata, variant_spec)
+
         for readtype in [f'nreads_{i}_norm' for i in readtypes]:
             for c in cutoff:
-                toolsTG.adataLog2FC(adata_copy, group, readtype, readcount_cutoff=c, config_name=config_name, overwrite=True).main()
-        
+                toolsTG.adataLog2FC(adata_view, group, readtype, readcount_cutoff=c, config_name=config_name, overwrite=True).main()
+
+        # Persist the newly-computed log2FC cache back onto the ORIGINAL (unresolved) adata,
+        # into the correct namespaced location -- never write the resolved view itself, which
+        # would overwrite the real full/default variant's data with the split variant's values.
+        if variant_spec.tag == 'full':
+            adata.uns['log2FC'] = adata_view.uns.get('log2FC', {})
+        else:
+            adata.uns.setdefault('size_splits', {}).setdefault(variant_spec.tag, {})['log2FC'] = adata_view.uns.get('log2FC', {})
+
         print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + anndata_path)
-        adata_copy.write(anndata_path)
+        adata.write(anndata_path)
         print('Done!\n')
 
 @tools_app.command("csv", help="Output .h5ad to CSV")

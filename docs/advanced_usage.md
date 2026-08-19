@@ -37,11 +37,15 @@ graph TD
     subgraph Analyze
         direction TB
         B[Build AnnData]
+        AS[Add Split]
         C[Cluster Data]
         MG[Merge Datasets]
 
         MP & MD --> B
         SP --> B
+        B --> AS
+        SP --> AS
+        AS --> C
         B --> C
         B --> MG
     end
@@ -61,6 +65,7 @@ graph TD
 
         C --> V
         B --> V
+        AS --> V
         L2FC --> V
     end
 
@@ -72,6 +77,7 @@ graph TD
     end
 
     B --> H5
+    AS -.-> H5
     C --> H5C
     V --> FIG
     CSV --> CSVO
@@ -79,7 +85,7 @@ graph TD
 
     %% Apply Classes
     class M,MD,FQ,G,T input;
-    class DB,TR,MP,SP,B,C,MG,L2FC,CSV,V process;
+    class DB,TR,MP,SP,B,AS,C,MG,L2FC,CSV,V process;
     class H5,H5C storage;
     class FIG,CSVO output;
 ```
@@ -99,7 +105,8 @@ The preprocessing module handles raw data preparation.
 
 The analysis module builds and refines the core database.
 
-- **[build](cli_reference.md#build)**: Aggregates alignment data (BAMs) and metadata into a structured AnnData object (`.h5ad`).
+- **[build](cli_reference.md#build)**: Aggregates alignment data (BAMs) and metadata into a structured AnnData object (`.h5ad`). Optionally adds an initial read-length split variant via `--readlengthsplit`.
+- **[addsplit](cli_reference.md#addsplit)**: Adds a further read-length split variant to an existing AnnData object, alongside any already present.
 - **[cluster](cli_reference.md#cluster)**: Performs dimensionality reduction (UMAP) and density-based clustering (HDBSCAN) on the dataset.
 - **[merge](cli_reference.md#merge)**: Combines multiple AnnData objects into a single dataset.
 
@@ -192,3 +199,26 @@ norm_data = adata.X
 # Access raw counts
 raw_data = adata.layers["raw"]
 ```
+
+### Working with Split Variants (`layers` + `obsm`)
+
+If the object has read-length split variants (built via `--readlengthsplit` or `analyze addsplit`), each variant's coverage matrix lives in `adata.layers` under a tag-suffixed key, and its per-tRNA read counts live in a matching `adata.obsm` table — both share `adata.obs`'s row order, so they combine directly with `obs` and with each other:
+
+```python
+# Which split variants are on this object?
+tags = list(adata.uns.get("size_splits", {}).keys())  # e.g. ["u60", "o60"]
+
+# A variant's coverage matrix -- same shape as adata.X, selected by layer key
+u60_coverage = adata.layers["norm_u60"]
+
+# That variant's per-tRNA read counts -- a DataFrame aligned to adata.obs.index,
+# under the same (unsuffixed) column names adata.obs itself uses
+u60_counts = adata.obsm["size_split_u60"]
+
+# obs holds only identity/metadata columns shared across all variants, so join a
+# split variant's counts onto them directly to build a variant-specific table
+u60_df = adata.obs[["trna", "sample", "group"]].join(u60_counts[["nreads_total_unique_norm"]])
+```
+
+> [!TIP]
+> `trnagraph`'s own CLI does this same lookup for you via a single `--variant norm:u60` flag on `graph`/`analyze cluster`/`tools log2fc`. See [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the complete layer/obsm naming scheme.

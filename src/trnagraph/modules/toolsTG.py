@@ -35,6 +35,107 @@ def builder(directory: Union[str, Path]) -> str:
         output = f'Output directory already exists: {dir_path}'
     return output
 
+from .toolsSchemas import VariantTag
+
+_VARIANT_LAYER_MAP = {'norm': 'norm', 'raw': 'raw', 'allfeatures': 'norm_allfeatures', 'vst': 'vst'}
+
+# Maps a `uns['size_splits'][tag]` key to the default/full uns key it stands in for
+# once overlaid onto a resolved variant view (see build_variant_view()).
+_VARIANT_UNS_KEY_MAP = {
+    'sizefactors_trna': 'deseq2_sizefactors_trna',
+    'sizefactors_allfeatures': 'deseq2_sizefactors_allfeatures',
+    'type_counts': 'type_counts',
+    'type_real_counts': 'type_real_counts',
+    'amino_counts': 'amino_counts',
+    'anticodon_counts': 'anticodon_counts',
+    'nontRNA_counts': 'nontRNA_counts',
+    'log2FC': 'log2FC',
+    'cluster_runinfo': 'cluster_runinfo',
+    'sample_cluster_umap': 'sample_cluster_umap',
+    'group_cluster_umap': 'group_cluster_umap',
+}
+
+
+def parse_variant(adata: ad.AnnData, variant: str = 'norm:full') -> 'VariantTag':
+    '''
+    Parse a `--variant` string of the form "<norm>:<tag>" (tag defaults to 'full' if omitted).
+    <norm> must be one of 'norm', 'raw', 'allfeatures', 'vst'. If <tag> is not 'full', it must
+    already exist in adata.uns['size_splits'] (i.e. a split variant added via `analyze build
+    --readlengthsplit`/`analyze addsplit`).
+    '''
+    norm, sep, tag = variant.partition(':')
+    tag = tag if sep else 'full'
+    if norm not in _VARIANT_LAYER_MAP:
+        raise ValueError(f"Unknown normalization '{norm}' in --variant '{variant}'. Expected one of: {list(_VARIANT_LAYER_MAP)}.")
+    if tag != 'full':
+        available = list(adata.uns.get('size_splits', {}).keys())
+        if tag not in available:
+            raise ValueError(f"Split tag '{tag}' not found in this AnnData object (in --variant '{variant}'). Available split tags: {available or 'none (no splits added yet)'}.")
+    return VariantTag(raw=variant, norm=norm, tag=tag)
+
+
+def build_variant_view(adata: ad.AnnData, spec: 'VariantTag') -> ad.AnnData:
+    '''
+    Return a working COPY of `adata` with .X swapped to the layer `spec` selects, and, for a
+    split variant (spec.tag != 'full'), the split's adata.obsm[f'size_split_{tag}'] columns
+    overlaid onto the copy's .obs, and applicable adata.uns['size_splits'][tag] entries
+    overlaid onto the copy's .uns -- all under the same (unsuffixed) names used by the
+    default/full variant, so downstream plotting/clustering/DE code needs no changes at all.
+
+    IMPORTANT: this returns a disposable working copy. Never write it back to `adata`'s
+    original h5ad path -- doing so would overwrite the real full/default variant's data with
+    the split variant's overlaid values. Callers that compute new results against this view
+    (e.g. a fresh log2FC cache entry, new cluster output) must write those results back onto
+    the ORIGINAL (unresolved) adata, into its namespaced location (uns['size_splits'][tag],
+    obsm[f'size_split_{tag}']), not onto this view.
+    '''
+    view = adata.copy()
+    if spec.tag == 'full':
+        if spec.norm != 'norm':
+            view.X = view.layers[_VARIANT_LAYER_MAP[spec.norm]]
+        return view
+
+    layer_name = f'{_VARIANT_LAYER_MAP[spec.norm]}_{spec.tag}' if spec.norm != 'norm' else f'norm_{spec.tag}'
+    if layer_name not in view.layers:
+        raise ValueError(f"--variant '{spec.raw}' resolves to layer '{layer_name}', which is not present in this AnnData object (was this normalization computed for this split?).")
+    view.X = view.layers[layer_name]
+
+    split_obs = adata.obsm.get(f'size_split_{spec.tag}')
+    if split_obs is not None:
+        for col in split_obs.columns:
+            view.obs[col] = split_obs[col].reindex(view.obs.index).values
+
+    split_uns = adata.uns.get('size_splits', {}).get(spec.tag, {})
+    for split_key, default_key in _VARIANT_UNS_KEY_MAP.items():
+        if split_key in split_uns:
+            view.uns[default_key] = split_uns[split_key]
+
+    return view
+
+
+def scatter_subset_graph_to_full(subset_graph, subset_index, full_index):
+    '''
+    Embed a sparse pairwise graph computed over a SUBSET of observations (e.g. UMAP's
+    fuzzy-simplicial-set `.graph_`, sized [n_subset, n_subset]) into a full [n_obs, n_obs]
+    sparse matrix aligned to `full_index`, so it can be stored in adata.obsp. Rows/columns
+    for observations not present in `subset_index` (e.g. excluded by --readcutoff or the
+    'Und' amino-acid filter) are left as all-zero connectivity.
+    '''
+    import scipy.sparse as sp
+    subset_graph = sp.csr_matrix(subset_graph)
+    n_full = len(full_index)
+    full_pos = {name: i for i, name in enumerate(full_index)}
+    rows = [full_pos[name] for name in subset_index if name in full_pos]
+    if len(rows) != len(subset_index):
+        missing = [name for name in subset_index if name not in full_pos]
+        raise ValueError(f"scatter_subset_graph_to_full: {len(missing)} subset observations not found in full_index (e.g. {missing[:3]}).")
+    row_map = np.array(rows)
+    # Embed subset_graph[i, j] at full[row_map[i], row_map[j]] via a sparse selector matrix.
+    selector = sp.csr_matrix((np.ones(len(row_map)), (np.arange(len(row_map)), row_map)), shape=(len(row_map), n_full))
+    full_graph = selector.T @ subset_graph @ selector
+    return full_graph.tocsr()
+
+
 class adataLog2FC:
     def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False):
         self.adata = adata

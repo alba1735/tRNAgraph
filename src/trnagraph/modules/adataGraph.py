@@ -16,7 +16,13 @@ class anndataGrapher:
     '''
     def __init__(self, args):
         self.args = args
-        self.adata = ad.read_h5ad(self.args.anndata)
+        self.adata_original = ad.read_h5ad(self.args.anndata)
+        # Resolve the requested normalization:split-tag ONCE, into a working copy, so every
+        # downstream plot module reads .X/.obs[...]/.uns[...] exactly as it does for the
+        # full/default variant -- see toolsTG.build_variant_view() for why this resolved copy
+        # must never be written back to self.args.anndata directly.
+        self.variant_spec = toolsTG.parse_variant(self.adata_original, getattr(self.args, 'variant', 'norm:full'))
+        self.adata = toolsTG.build_variant_view(self.adata_original, self.variant_spec)
         self.config_name = 'default'
         # Load cmap dict for each graph type
         self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
@@ -101,7 +107,14 @@ class anndataGrapher:
                 toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
         if log2FC_dict != self.adata.uns['log2FC'] or self.args.regen_uns:
             print('The log2FC uns dictionary has been updated.\n')
-            self.adata.write(self.args.anndata)
+            # Persist onto the ORIGINAL (unresolved) adata, into the correct namespaced
+            # location -- never write self.adata (the resolved view) back to disk, since for a
+            # split variant it would overwrite the real full/default variant's data.
+            if self.variant_spec.tag == 'full':
+                self.adata_original.uns['log2FC'] = self.adata.uns['log2FC']
+            else:
+                self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['log2FC'] = self.adata.uns['log2FC']
+            self.adata_original.write(self.args.anndata)
 
     def main(self):
         # Generate graphs
@@ -155,8 +168,11 @@ class anndataGrapher:
         if self.args.colormap:
             if cmappar in self.args.colormap:
                 colormap = self.args.colormap[cmappar]
-        # Create the output directory
+        # Create the output directory (namespaced by --variant when non-default, so different
+        # --variant runs into the same --output don't overwrite each other's files)
         output = self.args.output + '/' + gt + '/'
+        if self.variant_spec.raw != 'norm:full':
+            output = self.args.output + '/' + gt + '/' + self.variant_spec.raw.replace(':', '_') + '/'
         if threaded:
             threaded += toolsTG.builder(output) + '\n'
         else:
