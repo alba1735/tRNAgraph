@@ -37,6 +37,11 @@ dependencies = [
   "umap-learn==0.5.9.post2"
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest"
+]
+
 [project.scripts]
 trnagraph = "trnagraph.cli:app"
 
@@ -48,3 +53,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 trnagraph = ["assets/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]

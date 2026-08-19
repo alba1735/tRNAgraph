@@ -25,7 +25,7 @@ python trnagraph.py tools test [options]
 
 - `--all`: Run the complete pipeline including split analysis (cleans existing test data first).
 - `--cleanrun`: Clean up all generated files after the run completes.
-- `--directory`: Specify a custom working directory (Default: `tests/`).
+- `--directory`: Specify a custom working directory (Default: `test_vibrChol1/`).
 - `--maponly`: Stop after the mapping step.
 
 **Step-specific flags:**

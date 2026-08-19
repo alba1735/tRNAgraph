@@ -811,8 +811,34 @@ class AnnDataBuilder():
                 quiet=True
             )
 
-            # Attach the pre-calculated (tRNA-control, default) size factors so VST reflects the same scaling
-            vst_dds.obsm['size_factors'] = np.asarray(sizefactor_values) if sizefactor_values is not None else np.ones(vst_dds.n_obs)
+            # Attach the pre-calculated (tRNA-control, default) size factors so VST reflects
+            # the same scaling as the rest of the pipeline.
+            #
+            # PyDESeq2's own vst_fit() only skips its internal fit_size_factors() call when
+            # BOTH obsm['size_factors'] is set AND self.logmeans is not None (pydeseq2/dds.py,
+            # vst_fit). self.logmeans is only ever set inside fit_size_factors() itself, so
+            # setting obsm['size_factors'] alone was not enough -- fit_size_factors() silently
+            # reran and discarded the size factors set here. Because tRNA coverage data is
+            # zero-heavy enough that nearly every feature has at least one zero-count sample,
+            # that fallback landed in PyDESeq2's "iterative" size-factor method, which jointly
+            # optimizes one size factor per SAMPLE via scipy.optimize.minimize(method="Powell")
+            # -- a derivative-free search whose cost blows up non-linearly with sample count,
+            # hanging on any dataset with more than roughly 50-100 samples.
+            #
+            # We avoid both problems by computing logmeans/filtered_genes the same cheap,
+            # vectorized way PyDESeq2's own "poscounts" fit_type does (no optimization loop),
+            # and deriving normed_counts from our own pre-computed size factors so
+            # fit_size_factors() is skipped entirely.
+            sf = np.asarray(sizefactor_values) if sizefactor_values is not None else np.ones(vst_dds.n_obs)
+            nz_log_counts = np.zeros_like(vst_dds.X, dtype=float)
+            np.log(vst_dds.X, out=nz_log_counts, where=vst_dds.X != 0)
+            logmeans = nz_log_counts.mean(axis=0)
+            vst_dds.filtered_genes = (~np.isinf(logmeans)) & (logmeans > 0)
+            vst_dds.logmeans = logmeans
+            vst_dds.obsm['size_factors'] = sf
+            vst_dds.obs['size_factors'] = sf
+            vst_dds.layers['normed_counts'] = vst_dds.X / sf[:, None]
+            vst_dds.var['_normed_means'] = vst_dds.layers['normed_counts'].mean(axis=0)
 
             # Calculate vst
             vst_dds.vst(use_design=False)

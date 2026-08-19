@@ -30,7 +30,7 @@ class demoPipeline:
         if self.args.directory:
              work_dir = os.path.abspath(self.args.directory)
         else:
-             work_dir = os.path.join(self.repo_root, "tests")
+             work_dir = os.path.join(self.repo_root, "test_vibrChol1")
 
         os.makedirs(work_dir, exist_ok=True)
         os.chdir(work_dir)

@@ -145,4 +145,6 @@ config.json
 /config
 /figures
 /csv
-/tests
+/tests/*
+!/tests/unit
+/test_vibrChol1
