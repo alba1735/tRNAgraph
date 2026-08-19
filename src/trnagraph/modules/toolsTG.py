@@ -13,6 +13,8 @@ import tempfile
 import subprocess
 import pysam
 from shutil import which
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
 from typing import Generator, Iterable, Tuple, Union, TextIO, Dict, Optional, List, Any
 from collections import defaultdict
 from pathlib import Path
@@ -174,36 +176,73 @@ class adataLog2FC:
         return df, self.log2fc_dict
 
     def log2fc_df(self) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
-        df = pd.DataFrame(self.adata.obs, columns=['trna', self.compare, self.readtype])
-        # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
-        sdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='std', observed=True)
-        mdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
-        cdf = df.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='count', observed=True)
-        
-        # For rows in df if a value is less than readcount_cutoff, drop the row from df
-        mean_drop_list = mdf.mean(axis=1) >= int(self.readcount_cutoff)
-        
-        sdf = sdf[mean_drop_list].dropna()
-        mdf = mdf[mean_drop_list].dropna()
-        cdf = cdf[mean_drop_list].dropna()
-        
-        # Replace 0 with small epsilon to avoid log2(0) = -inf
-        mdf = mdf.replace(0, 1e-20)
-        
+        '''
+        Compute pairwise log2FC/significance between every pair of self.compare's levels,
+        using PyDESeq2's own dispersion/GLM model rather than a manual two-sample t-test on
+        precomputed per-group mean/std -- this gets a real negative-binomial fit (appropriate
+        for count data, unlike a t-test's normality assumption) and BH-adjusted p-values
+        (multiple-testing correction the old t-test never applied) essentially for free, since
+        adataBuild.py already runs the equivalent PyDESeq2 flow for the build-time --pairs
+        comparisons. Every caller of adataLog2FC passes a NORMALIZED ('..._norm') readtype
+        (used for the readcount_cutoff filter, matching prior behavior exactly); this method
+        derives the matching RAW ('..._raw') column to actually feed PyDESeq2, since it does
+        its own internal normalization and dispersion modeling -- feeding it already-normalized
+        values would double-normalize and bias the fit.
+        '''
+        if not self.readtype.endswith('_norm') or self.readtype.replace('_norm', '_raw') not in self.adata.obs.columns:
+            raise ValueError(
+                f"log2fc_df expects a '..._norm' readtype with a matching '..._raw' obs column "
+                f"(got '{self.readtype}')."
+            )
+        raw_readtype = self.readtype.replace('_norm', '_raw')
+        obs = self.adata.obs
+
+        # Same readcount-cutoff filter as before: mean of the per-compare-group NORMALIZED
+        # readtype average must clear the cutoff.
+        mdf = obs.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
+        keep_trnas = mdf.index[mdf.mean(axis=1) >= int(self.readcount_cutoff)]
+
         # Create permutations of pairings of groups for heatmap
         pairs = list(itertools.combinations(mdf.columns, 2))
-        
-        # Create df of log2FC values for each pair from adata.obs nreads_total_raw
-        df_pairs = pd.DataFrame()
+        # Always create the log2_<pair>/pval_<pair> columns (pairs come from self.compare's
+        # column labels, independent of which/how many trna rows pass the cutoff below) even
+        # if no rows end up surviving -- callers (e.g. plotsVolcano.py) index these columns
+        # unconditionally, so an empty-but-column-less df breaks them with a KeyError.
+        pair_columns = sorted(c for p in pairs for c in (f'log2_{p[0]}-{p[1]}', f'pval_{p[0]}-{p[1]}'))
+        df_pairs = pd.DataFrame(index=keep_trnas, columns=pair_columns, dtype=float)
+        if not pairs or len(keep_trnas) == 0:
+            return df_pairs, pairs
+
+        # Build the RAW per-(trna, sample) counts matrix PyDESeq2 needs, and each sample's
+        # condition (self.compare is a per-sample covariate: samples sharing a value are
+        # replicates of that group).
+        wide_raw = obs.pivot_table(index='trna', columns='sample', values=raw_readtype, aggfunc='first').loc[keep_trnas]
+        sample_condition = obs.drop_duplicates('sample').set_index('sample')[self.compare]
+
+        counts_df = wide_raw.T.fillna(0).clip(lower=0).round().astype(int)  # samples x trna, as PyDESeq2 expects
+        meta_df = pd.DataFrame({'condition': sample_condition.reindex(counts_df.index)}).dropna()
+        counts_df = counts_df.loc[meta_df.index]
+
+        # size_factors_fit_type='poscounts' avoids PyDESeq2's "iterative" size-factor fallback
+        # (a scipy.optimize Powell search over one parameter per sample) that the default
+        # 'ratio' method silently falls into on zero-heavy count data like this -- see the VST
+        # hang fix in adataBuild.py._compute_vst_ for the full story on why that path is
+        # pathologically slow at anything beyond ~50-100 samples.
+        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True)
+        dds.deseq2()
+
         for pair in pairs:
             col_name = f'{pair[0]}-{pair[1]}'
-            df_pairs[f'log2_{col_name}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
-            _, pval = stats.ttest_ind_from_stats(
-                mdf[pair[0]].values, sdf[pair[0]].values, cdf[pair[0]].values, 
-                mdf[pair[1]].values, sdf[pair[1]].values, cdf[pair[1]].values
-            )
-            df_pairs[f'pval_{col_name}'] = pval
-            
+            # contrast=[factor, test_level, ref_level] -> log2FoldChange = log2(test/ref);
+            # test=pair[1], ref=pair[0] matches the previous log2(mean(pair[1])/mean(pair[0])) convention.
+            stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True)
+            stat_res.summary()
+            res = stat_res.results_df
+            df_pairs[f'log2_{col_name}'] = res['log2FoldChange'].reindex(keep_trnas)
+            # BH-adjusted p-value (padj), not the raw per-comparison p-value -- the old t-test
+            # never applied any multiple-testing correction.
+            df_pairs[f'pval_{col_name}'] = res['padj'].reindex(keep_trnas)
+
         # sort the columns alphabetically so log2FC are followed by pvals
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
         return df_pairs, pairs

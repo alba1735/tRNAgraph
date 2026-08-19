@@ -1,0 +1,85 @@
+"""Regression tests for toolsTG.adataLog2FC.log2fc_df (roadmap.md Phase 1: "Replace manual log2FC with native DESeq2 output")."""
+import anndata as ad
+import numpy as np
+import pandas as pd
+import pytest
+
+from trnagraph.modules.toolsTG import adataLog2FC
+
+READTYPE = "nreads_total_unique_norm"
+RAW_READTYPE = "nreads_total_unique_raw"
+
+
+def _make_adata(trna_group_means, n_per_group=4, seed=0):
+    """
+    trna_group_means: {trna_name: {group_name: mean_raw_count}}. Builds a synthetic obs
+    dataframe (one row per trna x sample) shaped like the real pipeline's adata.obs, with a
+    NORMALIZED readtype column equal to the raw column (sizefactor=1, irrelevant here since
+    PyDESeq2 refits its own size factors from raw counts regardless).
+    """
+    rng = np.random.default_rng(seed)
+    groups = sorted({g for means in trna_group_means.values() for g in means})
+    samples = [f"{g}_rep{i}" for g in groups for i in range(n_per_group)]
+    sample_group = {s: s.rsplit("_rep", 1)[0] for s in samples}
+
+    rows = []
+    for trna, group_means in trna_group_means.items():
+        for sample in samples:
+            group = sample_group[sample]
+            mean = group_means[group]
+            raw = rng.negative_binomial(n=10, p=10 / (10 + mean))
+            rows.append({"trna": trna, "sample": sample, "group": group, RAW_READTYPE: raw, READTYPE: raw})
+
+    obs = pd.DataFrame(rows)
+    obs.index = [f"{r.trna}_{r['sample']}" for _, r in obs.iterrows()]
+    adata = ad.AnnData(X=np.zeros((len(obs), 1)), obs=obs)
+    return adata
+
+
+def test_log2fc_df_keeps_pair_columns_when_no_trna_passes_cutoff():
+    """
+    pairs (and therefore the log2_<pair>/pval_<pair> column set) come from self.compare's
+    column labels, independent of which/how many trna rows survive the readcount_cutoff
+    filter. Callers (e.g. plotsVolcano.py) index those columns unconditionally, so an empty
+    result must still have them -- a column-less empty df caused a KeyError downstream.
+    """
+    adata = _make_adata({"trnaLow": {"A": 5, "B": 6}}, n_per_group=3)
+    log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=80)
+
+    df, pairs = log2fc.log2fc_df()
+
+    assert pairs == [("A", "B")]
+    assert list(df.columns) == ["log2_A-B", "pval_A-B"]
+    assert len(df) == 0
+
+
+def test_log2fc_df_detects_real_signal_and_reports_valid_pvalues():
+    """
+    Sanity check for the PyDESeq2-based replacement: a trna with a strong, consistent
+    between-group difference should get a log2FC of the right sign/magnitude, a flat trna
+    should get a log2FC near zero, and every padj must be a valid probability (or NaN, which
+    PyDESeq2 uses for independent-filtering-excluded features -- never out of [0, 1]).
+    """
+    # DESeq2-style size-factor estimation assumes most features are NOT differentially
+    # expressed, so it needs several stable ("flat") features alongside the one differential
+    # feature under test -- with too few features and one wildly differential, the size
+    # factors themselves get skewed by it, which would bias even the "flat" gene's apparent
+    # fold change. This mirrors having a real multi-hundred-feature tRNA panel.
+    trna_group_means = {"trnaHigh": {"A": 800, "B": 50}}  # ~16x, A > B
+    trna_group_means.update({f"trnaFlat{i}": {"A": 400, "B": 400} for i in range(8)})
+    adata = _make_adata(trna_group_means, n_per_group=5)
+    log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=80)
+
+    df, pairs = log2fc.log2fc_df()
+
+    assert pairs == [("A", "B")]
+    assert set(df.index) == set(trna_group_means)
+
+    # contrast=[condition, "B", "A"] -> log2FoldChange = log2(B/A); B << A so this is strongly negative.
+    assert df.loc["trnaHigh", "log2_A-B"] < -1.5
+    for i in range(8):
+        assert abs(df.loc[f"trnaFlat{i}", "log2_A-B"]) < 1.0
+
+    pvals = df["pval_A-B"].dropna()
+    assert not pvals.empty
+    assert ((pvals >= 0) & (pvals <= 1)).all()
