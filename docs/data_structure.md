@@ -199,6 +199,15 @@ Reads that align to multiple transcripts (common for conserved tRNA isodecoders)
 > [!CAUTION]
 > The `other` category types are comprised of 'antisense', 'wholeprecounts', 'partialprecounts', and 'trailercounts' found via alignment and are highly dependent on the sequencing method.
 
+### Extensions of the Observation Axis (`adata.obsm` / `adata.obsp`)
+
+`adata.obsm` and `adata.obsp` share `adata.obs`'s row count and order, but hold observation-level data that doesn't fit as flat scalar columns:
+
+- `adata.obsm['size_split_<tag>']`: a full table of per-observation numeric columns for one read-length split variant, mirroring `adata.obs`'s own numeric columns under the same names. See [Split Variants](#split-variants---readlengthsplit).
+- `adata.obsp['sample_umap_connectivities'...]`: a sparse observation-by-observation matrix — the UMAP neighbor graph produced by clustering. See [Clustering Results](#clustering-results).
+
+Keeping this data in `obsm`/`obsp` rather than as additional `obs` columns keeps `adata.obs` itself limited to identity/metadata columns plus the full/default variant's numeric columns, regardless of how many split variants or cluster runs an object accumulates.
+
 ---
 
 ## 3. Variables (`adata.var`)

@@ -44,8 +44,6 @@ graph TD
         MP & MD --> B
         SP --> B
         B --> AS
-        SP --> AS
-        AS --> C
         B --> C
         B --> MG
     end
@@ -65,7 +63,6 @@ graph TD
 
         C --> V
         B --> V
-        AS --> V
         L2FC --> V
     end
 
