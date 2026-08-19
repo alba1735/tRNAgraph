@@ -21,71 +21,62 @@ graph TD
     end
 
     subgraph Preprocess
-        direction TB
-        DB[Make Database]
-        TR[Trim Reads]
-        MP[Map Reads]
-        SP[Split BAMs]
+        DB[makedb]
+        TR[trim]
+        MP[map]
 
         G & T --> DB
         FQ & M --> TR
-        TR --> MP
-        DB --> MP
-        MP --> SP
     end
+
+    IDX[("Bowtie2 index\n&lt;output&gt;.*.bt2")]
+    TRIMMED[("Trimmed reads\nprocessed/trimmed/")]
+    DB --> IDX --> MP
+    TR --> TRIMMED --> MP
+
+    BAMDIR[("BAM directory\nprocessed/&lt;name&gt;/bam/")]
+    MP --> BAMDIR
 
     subgraph Analyze
-        direction TB
-        B[Build AnnData]
-        AS[Add Split]
-        C[Cluster Data]
-        MG[Merge Datasets]
-
-        MP & MD --> B
-        SP --> B
-        B --> AS
-        B --> C
-        B --> MG
+        B["build\n(--readlengthsplit: split reads by\nlength internally, temp BAMs)"]
+        AS["addsplit\n(adds another split cutoff)"]
+        C["cluster\n(adds UMAP/HDBSCAN labels)"]
     end
+
+    BAMDIR & MD --> B
+    ADATA[("AnnData object\n&lt;out_dir&gt;/&lt;name&gt;.h5ad")]
+    RESULTS[("Results directory\n&lt;out_dir&gt;/results/, graphs/\n(+ results_&lt;tag&gt;/graphs_&lt;tag&gt; per split)")]
+    B -->|creates| ADATA
+    B -->|creates| RESULTS
+    AS -.->|updates in place| ADATA
+    AS -.->|adds results_&lt;tag&gt;/graphs_&lt;tag&gt;| RESULTS
+    C -.->|updates in place| ADATA
 
     subgraph Tools
-        direction TB
-        L2FC[Log2 Fold Change]
-        CSV[Export CSV]
-
-        B --> L2FC
-        B --> CSV
+        L2FC[log2fc]
+        CSV[csv]
+        MG["merge\n(combines two objects)"]
     end
+    L2FC -.->|updates in place| ADATA
+    ADATA --> CSV --> CSVO[("CSV directory")]
+    ADATA -->|one of two inputs| MG -->|new file| MERGED[("Merged .h5ad")]
 
     subgraph Graph
-        direction TB
-        V[Generate Graphs]
-
-        C --> V
-        B --> V
-        L2FC --> V
+        V[graph]
     end
-
-    subgraph Outputs
-        H5[AnnData .h5ad]
-        H5C[Clustered .h5ad]
-        FIG[Figures PDF/PNG]
-        CSVO[CSV Files]
-    end
-
-    B --> H5
-    AS -.-> H5
-    C --> H5C
-    V --> FIG
-    CSV --> CSVO
-    L2FC -.-> H5
+    ADATA --> V --> FIG[("Figures directory\nPDF / PNG")]
 
     %% Apply Classes
     class M,MD,FQ,G,T input;
-    class DB,TR,MP,SP,B,AS,C,MG,L2FC,CSV,V process;
-    class H5,H5C storage;
+    class DB,TR,MP,B,AS,C,MG,L2FC,CSV,V process;
+    class IDX,TRIMMED,BAMDIR,ADATA,RESULTS,MERGED storage;
     class FIG,CSVO output;
 ```
+
+> [!NOTE]
+> `addsplit`, `cluster`, and `log2fc` all take an existing `.h5ad` as input (`-i`/`--anndata`) and, by default, write their result back into that same object — the dashed arrows above represent that in-place update, not a new file. `cluster` and `addsplit` accept `-o`/`--output` to write to a new path instead if you don't want to modify the original.
+>
+> Read-length splitting (`build --readlengthsplit` / `analyze addsplit`) works by splitting the mapped BAMs into `u<N>`/`o<N>` subsets, running the analysis pipeline on each, and merging the result into the AnnData object as `_<tag>`-suffixed layers/obsm/uns entries — no separate `_uN.h5ad`/`_oN.h5ad` files are produced. The intermediate `u<N>`/`o<N>` BAM files are scratch files deleted once that merge completes; pass `--savesplitbams` to keep them on disk instead.
 
 ## Workflow Steps
 
@@ -96,16 +87,14 @@ The preprocessing module handles raw data preparation.
 - **[makedb](cli_reference.md#makedb)**: Creates a Bowtie2 index from a reference genome and tRNA predictions.
 - **[trim](cli_reference.md#trim)**: Uses `fastp` to remove adapters and process UMIs from raw FASTQ files.
 - **[map](cli_reference.md#map)**: Aligns trimmed reads to the tRNA database using Bowtie2.
-- **[split](cli_reference.md#split)**: Splits BAM files based on read length (e.g., <60bp and >=60bp).
 
 ### 2. Analyze
 
 The analysis module builds and refines the core database.
 
-- **[build](cli_reference.md#build)**: Aggregates alignment data (BAMs) and metadata into a structured AnnData object (`.h5ad`). Optionally adds an initial read-length split variant via `--readlengthsplit`.
-- **[addsplit](cli_reference.md#addsplit)**: Adds a further read-length split variant to an existing AnnData object, alongside any already present.
+- **[build](cli_reference.md#build)**: Aggregates alignment data (BAMs) and metadata into a structured AnnData object (`.h5ad`). Optionally adds an initial read-length split variant via `--readlengthsplit` (e.g., <60bp and >=60bp), which internally splits BAMs by read length, analyzes each subset, and discards the intermediate split BAM files afterward unless `--savesplitbams` is passed.
+- **[addsplit](cli_reference.md#addsplit)**: Adds a further read-length split variant to an existing AnnData object, alongside any already present. Uses the same internal split-then-discard BAM handling as `build --readlengthsplit`.
 - **[cluster](cli_reference.md#cluster)**: Performs dimensionality reduction (UMAP) and density-based clustering (HDBSCAN) on the dataset.
-- **[merge](cli_reference.md#merge)**: Combines multiple AnnData objects into a single dataset.
 
 ### 3. Graph
 
@@ -117,6 +106,7 @@ Utility functions for specific data operations.
 
 - **[log2fc](cli_reference.md#log2fc)**: Calculates Log2 Fold Change statistics for differential expression analysis.
 - **[csv](cli_reference.md#csv)**: Exports the internal data structures (obs, var, X) to CSV format for external use.
+- **[merge](cli_reference.md#merge)**: Combines two existing AnnData objects into a single dataset.
 - **[test](testSuite.md)**: Runs the test suite to validate installation and functionality.
 
 ## Configuration Files

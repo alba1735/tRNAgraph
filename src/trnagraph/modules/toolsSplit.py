@@ -11,7 +11,11 @@ import pysam
 
 class BamSplitter:
     '''
-    Class to split BAM files based on read length.
+    Splits BAM files by read length. Internal helper used by `analyze build
+    --readlengthsplit`/`analyze addsplit` (adataBuild.py) -- not exposed as its own CLI
+    command. Callers treat the `u<N>`/`o<N>` output directories this writes under `bamdir`
+    as scratch: by default they're deleted once merged into the AnnData object, unless
+    `--savesplitbams` is passed.
     '''
     def __init__(self, args):
         self.args = args

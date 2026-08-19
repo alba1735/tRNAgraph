@@ -114,6 +114,9 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 > [!IMPORTANT]
 > Each split variant gets its **own independently-fit** DESeq2 size factors/dispersion, computed from that variant's own read-length-restricted BAMs — not a shared/global normalization derived from the full dataset. This is intentional: a split subset's read-depth and length-composition profile can differ substantially from the full dataset, so sharing size factors across variants would bias comparisons within a split subset.
 
+> [!NOTE]
+> The read-length-restricted `u<N>`/`o<N>` BAM files used to compute a variant are scratch files, not a retained output — by default they're deleted once merged into the AnnData object, since only the resulting layers/`obsm`/`uns` entries above (plus the `results_<tag>`/`graphs_<tag>` directories) need to persist. Pass `--savesplitbams` to `build`/`addsplit` to keep them under `--bamdir` instead.
+
 ### On-Disk Result Files (`results/<exp>/`)
 
 `trnagraph analyze build` always runs DESeq2 twice on the main feature matrix and writes both sets of outputs to disk before they're loaded into the `.h5ad`. The default (tRNA-controlled) run's files keep their original, unprefixed names at the top of `results/<exp>/`; the secondary (all-feature-controlled) run's files live in an `allfeature/` subdirectory with an `allfeature_` filename prefix:

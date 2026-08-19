@@ -300,22 +300,6 @@ class demoPipeline:
         self.logger.info("Done.")
         print("Done.")
 
-    def split_bam(self) -> None:
-        """Splits BAM files based on read length."""
-        self.logger.info("Splitting BAM files...")
-        print("Splitting BAM files...")
-        
-        cmd = (
-            f"{self.trnagraph_path} tools split "
-            "-i config/vibrChol1.metadata.txt "
-            "--readlengthsplit 60 "
-            "--bamdir processed/vibrChol1/bam"
-        )
-        self._run_command(cmd, "Running split command...")
-        
-        self.logger.info("Done.")
-        print("Done.")
-
     def build_db(self) -> None:
         """Builds the AnnData object from the tRNAgraph output."""
         self.logger.info("Building AnnData object...")
@@ -437,7 +421,7 @@ class demoPipeline:
             specific_flags = [
                 self.args.metadata, self.args.fastq, self.args.trna,
                 self.args.genome, self.args.trim, self.args.makedb, self.args.map,
-                self.args.split, self.args.build, getattr(self.args, 'split_build', False),
+                self.args.build, getattr(self.args, 'split_build', False),
                 self.args.cluster, self.args.merge, self.args.graph, getattr(self.args, 'split_graph', False),
                 self.args.hubonly, self.args.maponly
             ]
@@ -457,8 +441,6 @@ class demoPipeline:
                 self.create_index()
             if run_all or self.args.map or self.args.maponly:
                 self.map_reads()
-            if run_all or self.args.split:
-                self.split_bam()
             if (run_all and not self.args.maponly) or self.args.build or self.args.hubonly:
                 self.build_db()
             # split_build runs build with readlengthsplit

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 # These objects are proxies that only import the actual module when an attribute is accessed
 try:
     from .modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit,
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG,
         toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
@@ -25,7 +25,7 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     from tRNAgraph.modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit,
+        toolsMap, toolsTDatabase, toolsTrim, toolsTG,
         toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
@@ -85,7 +85,7 @@ def main_callback(
 preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
 app.add_typer(preprocess_app, name="preprocess")
 
-analyze_app = typer.Typer(help="Analyze tRNA-seq data (Build, Merge, Cluster)", no_args_is_help=True)
+analyze_app = typer.Typer(help="Analyze tRNA-seq data (Build, Addsplit, Cluster)", no_args_is_help=True)
 app.add_typer(analyze_app, name="analyze")
 
 tools_app = typer.Typer(help="Extra utilities for working with tRNAgraph objects", no_args_is_help=True)
@@ -197,6 +197,7 @@ def build(
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
+    savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object"),
     vst: str = typer.Option("log1p", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
     
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
@@ -221,7 +222,7 @@ def build(
             bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
-            readlengthsplit=readlengthsplit, overwritebams=overwritebams,
+            readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
             vst=vst,
             log=log, quiet=quiet
         )
@@ -241,6 +242,7 @@ def addsplit(
     dispfittype: Optional[str] = typer.Option(None, "--dispfittype", help="Override DESeq2 dispersion fit type (default: recovered from provenance)"),
     vst: Optional[str] = typer.Option(None, "--vst", help="VST strategy for this split's vst layer (default: recovered from provenance)"),
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
+    savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) instead of deleting them once merged into the AnnData object"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite this cutoff's u<N>/o<N> data if already present in the object"),
@@ -255,43 +257,12 @@ def addsplit(
         args = SimpleNamespace(
             mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
             bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst,
-            overwritebams=overwritebams, threads=threads, output=output, overwrite=overwrite, force=force,
+            overwritebams=overwritebams, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
             log=log, quiet=quiet
         )
 
         print('Adding split variant to database object...\n')
         adataBuild.add_split(args)
-        print('Done!\n')
-
-@analyze_app.command("merge", help="Merge data from two existing h5ad AnnData objects")
-def merge(
-    anndata1: str = typer.Option(..., "-i1", "--anndata1", help="Specify location of first h5ad object"),
-    anndata2: str = typer.Option(..., "-i2", "--anndata2", help="Specify location of second h5ad object"),
-    dropno: bool = typer.Option(False, "--dropno", help="Drop non tRNAs genes that are not present in both AnnData objects"),
-    droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
-    output: str = typer.Option("trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file path"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
-    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
-):
-    with handle_output(log, quiet):
-        if not os.path.isfile(anndata1):
-            raise Exception('Error: first h5ad file does not exist.')
-        if not os.path.isfile(anndata2):
-            raise Exception('Error: second h5ad file does not exist.')
-            
-        # Output is a h5ad file path - create parent directory if needed
-        output_path = os.path.abspath(output)
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            print(toolsTG.builder(output_dir))
-            
-        args = SimpleNamespace(
-            mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
-            output=output_path, log=log, quiet=quiet
-        )
-        
-        print('Merging database objects...\n')
-        adataMerge.anndataMerger(args).merge()
         print('Done!\n')
 
 @analyze_app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
@@ -492,30 +463,35 @@ def csv_cmd(
         adata.write_csvs(output_path, skip_data=False)
         print('Done!\n')
 
-@tools_app.command("split", help="Split BAM files based on read length")
-def split(
-    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited metadata file"),
-    readlengthsplit: int = typer.Option(60, "-c", "--readlengthsplit", help="Read length cutoff for splitting"),
-    bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory containing input BAM files (default: current directory)"),
-    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
-    threads: int = typer.Option(0, "-n", "--threads", help="Number of threads to use (0 = 1 thread per sample)"),
+@tools_app.command("merge", help="Merge data from two existing h5ad AnnData objects")
+def merge(
+    anndata1: str = typer.Option(..., "-i1", "--anndata1", help="Specify location of first h5ad object"),
+    anndata2: str = typer.Option(..., "-i2", "--anndata2", help="Specify location of second h5ad object"),
+    dropno: bool = typer.Option(False, "--dropno", help="Drop non tRNAs genes that are not present in both AnnData objects"),
+    droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
+    output: str = typer.Option("trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     with handle_output(log, quiet):
-        import shutil
-        if shutil.which('samtools') is None:
-            raise Exception("Error: 'samtools' is not installed or not in PATH. Please install it.")
-        if not os.path.isfile(input):
-            raise Exception(f'Error: Metadata file does not exist: {input}')
-            
+        if not os.path.isfile(anndata1):
+            raise Exception('Error: first h5ad file does not exist.')
+        if not os.path.isfile(anndata2):
+            raise Exception('Error: second h5ad file does not exist.')
+
+        # Output is a h5ad file path - create parent directory if needed
+        output_path = os.path.abspath(output)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            print(toolsTG.builder(output_dir))
+
         args = SimpleNamespace(
-            mode='split', input=input, readlengthsplit=readlengthsplit, bamdir=bamdir,
-            overwritebams=overwritebams, threads=threads, log=log, quiet=quiet
+            mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
+            output=output_path, log=log, quiet=quiet
         )
-        
-        print('Splitting BAM files...')
-        toolsSplit.BamSplitter(args).process()
+
+        print('Merging database objects...\n')
+        adataMerge.anndataMerger(args).merge()
         print('Done!\n')
 
 @tools_app.command("test", help="Run pipeline demo tests")
@@ -527,7 +503,6 @@ def test(
     trim: bool = typer.Option(False, "--trim", help="Run trim test"),
     makedb: bool = typer.Option(False, "--makedb", help="Run makedb test"),
     map: bool = typer.Option(False, "--map", help="Run map test"),
-    split: bool = typer.Option(False, "--split", help="Run split test"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Run map test with hubonly flag"),
     maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
     build: bool = typer.Option(False, "--build", help="Run build test (no split)"),
@@ -545,7 +520,7 @@ def test(
     with handle_output(log, quiet):
         args = SimpleNamespace(
             mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-            makedb=makedb, map=map, split=split, hubonly=hubonly, maponly=maponly, build=build,
+            makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build,
             split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
             all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
         )

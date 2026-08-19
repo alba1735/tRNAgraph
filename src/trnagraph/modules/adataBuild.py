@@ -2,6 +2,7 @@ import pandas as pd
 import anndata as ad
 import os
 import sys
+import shutil
 import datetime
 import subprocess
 import numpy as np
@@ -864,7 +865,10 @@ class AnnDataBuilder():
         .readlengthsplit` into `adata` in place, as new layers/obsm/uns entries (see
         merge_variant_into_adata()) -- replaces the old behavior of writing separate
         `_u{N}.h5ad`/`_o{N}.h5ad` files. On-disk `results_u{N}`/`graphs_u{N}` (and o{N})
-        directories are still produced via AnalysisPipeline, unchanged.
+        directories are still produced via AnalysisPipeline, unchanged. The split BAM files
+        themselves (under `<bamdir>/u{N}`/`o{N}`) are temporary scratch files by default and
+        are deleted once this variant has been merged into `adata` -- pass `--savesplitbams`
+        to keep them on disk instead.
         '''
         cutoff = self.analysis_args.readlengthsplit
         abs_output = os.path.abspath(self.output)
@@ -872,29 +876,37 @@ class AnnDataBuilder():
         default_bamdir = self.analysis_args.bamdir if self.analysis_args.bamdir else os.path.join("processed", "bam")
         vst_strategy = str(getattr(self.analysis_args, 'vst', 'vst')).lower()
         dispfittype = getattr(self.analysis_args, 'dispfittype', 'parametric')
+        savesplitbams = getattr(self.analysis_args, 'savesplitbams', False)
 
-        for direction, prefix in [('under', 'u'), ('over', 'o')]:
-            tag = f'{prefix}{cutoff}'
-            print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
+        try:
+            for direction, prefix in [('under', 'u'), ('over', 'o')]:
+                tag = f'{prefix}{cutoff}'
+                print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
 
-            args_variant = SimpleNamespace(**vars(self.analysis_args))
-            args_variant.bamdir = os.path.join(default_bamdir, tag)
-            # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
-            args_variant.readlengthsplit = None
-            args_variant.results_dir_name = f"results_{tag}"
-            args_variant.graphs_dir_name = f"graphs_{tag}"
-            args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(abs_output))[0]}_{tag}.h5ad")
+                args_variant = SimpleNamespace(**vars(self.analysis_args))
+                args_variant.bamdir = os.path.join(default_bamdir, tag)
+                # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
+                args_variant.readlengthsplit = None
+                args_variant.results_dir_name = f"results_{tag}"
+                args_variant.graphs_dir_name = f"graphs_{tag}"
+                args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(abs_output))[0]}_{tag}.h5ad")
 
-            pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
-            pipeline_variant.run()
+                pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
+                pipeline_variant.run()
 
-            print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
-            loader = AnnDataBuilder(base_output_dir, self.metadata_path, None, analysis_args=None,
-                                     results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
-            contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype)
+                print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
+                loader = AnnDataBuilder(base_output_dir, self.metadata_path, None, analysis_args=None,
+                                         results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
+                contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype)
 
-            build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
-            merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=True)
+                build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+                merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=True)
+        finally:
+            if not savesplitbams:
+                for tag in (f'u{cutoff}', f'o{cutoff}'):
+                    split_dir = os.path.join(default_bamdir, tag)
+                    if os.path.isdir(split_dir):
+                        shutil.rmtree(split_dir, ignore_errors=True)
 
     def _seq_build_(self, gap=False):
         # Build reference sequence dataframe
@@ -1289,7 +1301,9 @@ def add_split(args):
     disturbing any variant already present. Implements `trnagraph analyze addsplit`. Uses
     the same compute_variant_contribution()/merge_variant_into_adata() unit that
     AnnDataBuilder._apply_readlength_split_() uses at initial build time, so both paths
-    produce identical results for the same cutoff/data.
+    produce identical results for the same cutoff/data. The split BAM files this generates
+    (under `<bamdir>/u<N>`/`o<N>`) are temporary scratch files by default and are deleted
+    once merged into `adata` -- pass `--savesplitbams` to keep them on disk instead.
     '''
     adata = ad.read_h5ad(args.anndata)
 
@@ -1335,40 +1349,48 @@ def add_split(args):
             raise ValueError(f"Split variant '{tag}' already exists in this AnnData object. Pass --overwrite to replace it.")
 
     base_output_dir = os.path.dirname(os.path.abspath(args.anndata))
+    savesplitbams = getattr(args, 'savesplitbams', False)
 
     from . import toolsSplit
     split_args = SimpleNamespace(input=effective_input, readlengthsplit=cutoff, bamdir=effective_bamdir,
                                   overwritebams=args.overwritebams, threads=args.threads)
     toolsSplit.BamSplitter(split_args).process()
 
-    for direction, prefix in [('under', 'u'), ('over', 'o')]:
-        tag = f'{prefix}{cutoff}'
-        print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
+    try:
+        for direction, prefix in [('under', 'u'), ('over', 'o')]:
+            tag = f'{prefix}{cutoff}'
+            print(f"Running analysis pipeline ({direction.capitalize()} {cutoff})...")
 
-        args_variant = SimpleNamespace(**recorded_flags)
-        args_variant.input = effective_input
-        args_variant.database = effective_database
-        args_variant.gtf = effective_gtf
-        args_variant.dispfittype = effective_dispfittype
-        args_variant.vst = effective_vst
-        args_variant.bamdir = os.path.join(effective_bamdir, tag)
-        args_variant.readlengthsplit = None
-        args_variant.overwritebams = args.overwritebams
-        args_variant.threads = args.threads
-        args_variant.results_dir_name = f"results_{tag}"
-        args_variant.graphs_dir_name = f"graphs_{tag}"
-        args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")
+            args_variant = SimpleNamespace(**recorded_flags)
+            args_variant.input = effective_input
+            args_variant.database = effective_database
+            args_variant.gtf = effective_gtf
+            args_variant.dispfittype = effective_dispfittype
+            args_variant.vst = effective_vst
+            args_variant.bamdir = os.path.join(effective_bamdir, tag)
+            args_variant.readlengthsplit = None
+            args_variant.overwritebams = args.overwritebams
+            args_variant.threads = args.threads
+            args_variant.results_dir_name = f"results_{tag}"
+            args_variant.graphs_dir_name = f"graphs_{tag}"
+            args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")
 
-        pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
-        pipeline_variant.run()
+            pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
+            pipeline_variant.run()
 
-        print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
-        loader = AnnDataBuilder(base_output_dir, effective_input, None, analysis_args=None,
-                                 results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
-        contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype)
+            print(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
+            loader = AnnDataBuilder(base_output_dir, effective_input, None, analysis_args=None,
+                                     results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
+            contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype)
 
-        build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
-        merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=args.overwrite)
+            build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+            merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=args.overwrite)
+    finally:
+        if not savesplitbams:
+            for tag in (f'u{cutoff}', f'o{cutoff}'):
+                split_dir = os.path.join(effective_bamdir, tag)
+                if os.path.isdir(split_dir):
+                    shutil.rmtree(split_dir, ignore_errors=True)
 
     output_path = os.path.abspath(args.output) if args.output else os.path.abspath(args.anndata)
     adata.write(output_path)

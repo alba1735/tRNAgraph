@@ -37,7 +37,6 @@ python trnagraph.py tools test [options]
 - `--trim`: Run adapter trimming.
 - `--makedb`: Create tRNA database.
 - `--map`: Run read mapping.
-- `--split`: Run BAM splitting (creates u60/o60 BAM files).
 - `--build`: Build the AnnData object (no split analysis).
 - `--split-build`: Build with read length split enabled (creates main + u60/o60 h5ad files).
 - `--cluster`: Run clustering algorithms.
@@ -73,14 +72,13 @@ The suite uses data from:
 - **Trimming**: Runs `preprocess trim` using `fastp` with specific adapter sequences to clean raw reads.
 - **Database Generation**: Runs `preprocess makedb` to create a Bowtie2 index using the standardized genome and tRNA sequences (`-s bact` mode).
 - **Mapping**: Runs `preprocess map` to align trimmed reads to the generated index, producing BAM files in `processed/vibrChol1/bam`.
-- **Splitting**: Runs `preprocess split` to separate BAM files based on read length. Reads < N bp go to `uN/`, reads >= N bp go to `oN/`.
 
 ### 4. Database Construction (Build)
 
 Runs `trnagraph.py build` to aggregate the coverage data.
 
 - **Inputs**: Uses the generated BAM files, the downloaded GTF for non-tRNA features, and a pairs file (`config/vibrChol1.pair.txt`).
-- **Configuration**: Runs with `--uniqueonly` to test strict filtering capabilities.
+- **Configuration**: Runs with `--uniqueonly` to test strict filtering capabilities. The `--split-build` test step re-runs build with `--readlengthsplit 60`, which splits BAM files by read length internally (into temporary `u60`/`o60` BAM files that are deleted once merged into the AnnData object) rather than as a separate preprocessing command.
 
 ### 5. Post-Processing & Visualization
 
