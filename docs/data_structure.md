@@ -42,11 +42,14 @@ classDiagram
         +log2FC : dict<group, df>
         +amino_counts : dataframe
         +sample_cluster_umap : array
-        +runinfo : dict
+        +trnagraphruninfo : dict
+        +deseq2_sizefactors_trna : dict
+        +deseq2_sizefactors_allfeatures : dict
     }
 
     class Layers_Matrices {
         +raw : matrix (int64)
+        +norm_allfeatures : matrix (float32)
     }
 
     AnnData *-- Obs_Metadata
@@ -65,15 +68,35 @@ tRNAgraph inherits normalization logic from DESeq2.
 
 - **Raw Counts**: Integer counts of reads mapping to a feature.
 - **Normalized Counts**: Raw counts divided by the **DESeq2 Size Factor** associated with the sample.
+- DESeq2 size factors are always computed twice: once using only tRNA/tRX features as the normalization reference (the **default**), and once using all features (tRNAs + non-tRNA GTF features) as the reference. `adata.X` and `adata.layers["raw"]` are always built from the tRNA-controlled (default) size factors; the all-feature-controlled normalization is kept alongside it in `adata.layers["norm_allfeatures"]` for comparison. See `adata.uns` below for the corresponding per-sample size factor values.
 
 ### Layers
 
-To ensure reproducibility and allow for on-the-fly re-normalization, data is stored in two states:
+To ensure reproducibility and allow for on-the-fly re-normalization, data is stored in multiple states:
 
-| Layer          | Accessor              | Description                                                                                  |
-| :------------- | :-------------------- | :------------------------------------------------------------------------------------------- |
-| **Normalized** | `adata.X`             | Float32. Coverage depth normalized by sample size factors. Used for all plotting by default. |
-| **Raw**        | `adata.layers["raw"]` | Int64. Raw alignment counts derived directly from BAM files.                                 |
+| Layer                            | Accessor                           | Description                                                                                                                |
+| :------------------------------- | :--------------------------------- | :--------------------------------------------------------------------------------------------------------------------------|
+| **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default. |
+| **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.      |
+| **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                               |
+
+### On-Disk Result Files (`results/<exp>/`)
+
+`trnagraph analyze build` always runs DESeq2 twice on the main feature matrix and writes both sets of outputs to disk before they're loaded into the `.h5ad`. The default (tRNA-controlled) run's files keep their original, unprefixed names at the top of `results/<exp>/`; the secondary (all-feature-controlled) run's files live in an `allfeature/` subdirectory with an `allfeature_` filename prefix:
+
+| Output                           | Default (tRNA-controlled) — `results/<exp>/` | Secondary (all-feature) — `results/<exp>/allfeature/` |
+| :------------------------------- | :------------------------------------------- | :---------------------------------------------------- |
+| Size factors                     | `<exp>-SizeFactors.txt`                      | `<exp>-allfeature_SizeFactors.txt`                    |
+| Normalized counts                | `<exp>-normalizedreadcounts.txt`             | `<exp>-allfeature_normalizedreadcounts.txt`           |
+| Dispersions                      | `<exp>-dispersions.txt`                      | `<exp>-allfeature_dispersions.txt`                    |
+| Per-condition avgs               | `<exp>-avgs.txt`                             | `<exp>-allfeature_avgs.txt`                           |
+| Per-condition medians            | `<exp>-medians.txt`                          | `<exp>-allfeature_medians.txt`                        |
+| Adjusted p-values                | `<exp>-padjs.txt`                            | `<exp>-allfeature_padjs.txt`                          |
+| Log2 fold changes                | `<exp>-logvals.txt`                          | `<exp>-allfeature_logvals.txt`                        |
+| Combined DE summary              | `<exp>-combine.txt`                          | `<exp>-allfeature_combine.txt`                        |
+| Pairwise DE (if `--pairs` given) | `de_results/<cond1>_vs_<cond2>.txt`          | `allfeature/de_results/<cond1>_vs_<cond2>.txt`        |
+
+The default (tRNA-controlled) size factors and normalized counts are what get read back into the `.h5ad` (`adata.uns['deseq2_sizefactors_trna']`, `adata.X`); the all-feature-controlled size factors are also read back in as `adata.uns['deseq2_sizefactors_allfeatures']` and used to derive `adata.layers['norm_allfeatures']`. The rest of the `allfeature/`-prefixed files (dispersions, avgs, medians, padjs, logvals, combine, pairwise DE) are written to disk for reference/comparison but are not loaded into the `.h5ad` object. This mirrors the existing pattern used for the tRNA-only-matrix DESeq2 run, whose outputs live under `results/<exp>/trna/`.
 
 ---
 
@@ -99,12 +122,12 @@ These columns define the identity of the tRNA molecule.
 
 These columns are imported from the user-provided `metadata.tsv` file.
 
-| Column              | Type     | Description                                                                          |
-| :------------------ | :------- | :----------------------------------------------------------------------------------- |
-| `sample`            | Category | The sample identifier (matches FASTQ/BAM filenames).                                 |
-| `group`             | Category | Experimental grouping (e.g., `Control`, `Treatment`).                                |
-| `deseq2_sizefactor` | Float    | The scaling factor calculated by DESeq2 to account for sequencing depth differences. |
-| `dataset`           | Category | Label for the source dataset (useful after `merge` operations).                      |
+| Column              | Type     | Description                                                                                                                                                       |
+| :------------------ | :------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`            | Category | The sample identifier (matches FASTQ/BAM filenames).                                                                                                              |
+| `group`             | Category | Experimental grouping (e.g., `Control`, `Treatment`).                                                                                                             |
+| `deseq2_sizefactor` | Float    | The tRNA/tRX-controlled (default) DESeq2 size factor for the sample. See `adata.uns["deseq2_sizefactors_trna"]` / `deseq2_sizefactors_allfeatures` for both sets. |
+| `dataset`           | Category | Label for the source dataset (useful after `merge` operations).                                                                                                   |
 
 ### Read Count Aggregates
 
@@ -205,7 +228,9 @@ Pre-summed tables useful for bar charts and high-level overviews.
 
 Provenance metadata for reproducibility.
 
-- `trnagraphruninfo`: Parameters used during the `trnagraph analyze build` command.
+- `trnagraphruninfo`: Provenance for the `trnagraph analyze build` run — `expname`, `time`, `trnagraph_directory`, `git version`, `git version hash`, and a `flags` sub-dict containing every CLI flag the `build` command was invoked with (e.g. `database`, `dispfittype`, `vst`, `nofrag`, `pairs`, ...). `None`-valued flags are stored as the string `'None'`.
+- `deseq2_sizefactors_trna`: Per-sample DESeq2 size factors computed with tRNA/tRX features as the normalization reference (the default; identical to `adata.obs['deseq2_sizefactor']`).
+- `deseq2_sizefactors_allfeatures`: Per-sample DESeq2 size factors computed with all features (tRNAs + non-tRNA GTF features) as the normalization reference — the secondary set backing `adata.layers['norm_allfeatures']`, kept for comparison against the default.
 
 ---
 
@@ -235,4 +260,20 @@ tRNAgraph (via tRAX) categorizes reads into specific fragment classes based on a
 
 ### Non-tRNA Features
 
-If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`).
+If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`). Unlike `adata.X`/`adata.obs`, these counts are normalized against the **all-feature-controlled** DESeq2 size factors (`adata.uns['deseq2_sizefactors_allfeatures']`), not the tRNA/tRX-controlled default — tRNA-controlled size factors are not representative of non-tRNA library composition. If no GTF was provided, `nontRNA_counts` is an empty DataFrame. See [Graphing Notes](#6-graphing-notes) for how this feeds into PCA plots.
+
+---
+
+## 6. Graphing Notes
+
+Nuances specific to individual `trnagraph graph` plot types that aren't obvious from the schema alone.
+
+### PCA Plots
+
+`trnagraph graph -g pca` generates two families of plots that use **different DESeq2 normalizations** and should not be compared directly:
+
+- **`tRNA_<pcamarkers>_by_<pcacolors>_<readtype>_*`**: one set per `--pcareadtypes` value, built from `adata.obs['nreads_<readtype>_norm']` — normalized against the default **tRNA/tRX-controlled** size factors (`adata.uns['deseq2_sizefactors_trna']`), matching `adata.X`.
+- **`nontRNA_<pcamarkers>_by_<pcacolors>_*`**: non-tRNA feature counts alone (`adata.uns['nontRNA_counts']`), normalized against the **all-feature-controlled** size factors (`adata.uns['deseq2_sizefactors_allfeatures']`).
+- **`allRNA_<pcamarkers>_by_<pcacolors>_*`**: all tRNA reads (`total`, not unique-only) combined with non-tRNA feature counts, both normalized against the all-feature-controlled size factors. tRNA total counts are re-derived from raw counts (`adata.obs['nreads_total_raw']`) and re-normalized specifically for this comparison — they are **not** the same values used in the `tRNA_*` plots.
+
+The `nontRNA_*` and `allRNA_*` plots require `adata.uns['nontRNA_counts']` to be present and non-empty (i.e., `--gtf` was provided at `analyze build`); they are skipped with a log message otherwise. See [Non-tRNA Features](#non-trna-features) and [Normalization Logic](#normalization-logic) for background on the two size factor sets.

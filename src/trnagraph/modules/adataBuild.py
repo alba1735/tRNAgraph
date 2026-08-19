@@ -61,7 +61,7 @@ class AnalysisPipeline:
             os.makedirs(self.expinfo.graphsdir)
             
         # Subdirectories in results
-        for subdir in ["mismatch", "pretRNAs", "unique", "trna"]:
+        for subdir in ["mismatch", "pretRNAs", "unique", "trna", "allfeature"]:
             path = os.path.join(self.expinfo.resultsdir, subdir)
             if not os.path.exists(path):
                 os.makedirs(path)
@@ -163,16 +163,26 @@ class AnalysisPipeline:
                             nofrag=self.nofrag, cores=self.cores, maxmismatches=self.maxmismatches)
 
     def run_deseq2(self):
-        # 1. Main Counts
+        # 1. Main Counts - tRNA/tRX-controlled size factors (default; drives adata.X/obs/raw)
         self.run_deseq2_on_file(
             counts_file=self.expinfo.genecounts,
             norm_counts_file=self.expinfo.normalizedcounts,
             size_factors_file=self.expinfo.sizefactors,
             output_dir=self.expinfo.resultsdir,
             prefix="",
-            use_trna_control=getattr(self.args, 'trna_size_factors', False)
+            use_trna_control=True
         )
-        
+
+        # 1b. Main Counts - all-feature size factors (secondary, kept for comparison)
+        self.run_deseq2_on_file(
+            counts_file=self.expinfo.genecounts,
+            norm_counts_file=self.expinfo.normalizedcounts_allfeatures,
+            size_factors_file=self.expinfo.allfeaturesizefactors,
+            output_dir=os.path.join(self.expinfo.resultsdir, "allfeature"),
+            prefix="allfeature_",
+            use_trna_control=False
+        )
+
         # 2. tRNA Counts
         self.run_deseq2_on_file(
             counts_file=self.expinfo.trnacounts,
@@ -610,25 +620,38 @@ class AnnDataBuilder():
         sizefactors = self.expinfo.sizefactors
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.size_factors_list = None
+        # Secondary, all-feature-controlled size factors kept for comparison against the tRNA-controlled default
+        self.size_factors_allfeatures = pd.read_csv(self.expinfo.allfeaturesizefactors, sep=" ", header=0).to_dict('index')[0]
         # For adding unique counts to coverage file
         trnauniquecounts = self.expinfo.trnauniqcountsfile #'-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
         # For adding normalized read counts to coverage file split by read type
-        normalizedreadcounts = self.expinfo.normalizedcounts
-        normalized_read_counts = pd.read_csv(normalizedreadcounts, sep='\t', header=0)
+        def _fix_index(df):
+            # Fallback for when the feature/gene index isn't auto-detected on read: PyDESeq2's
+            # var_names has no .name set, so to_csv writes it as an unnamed column, which
+            # pd.read_csv then reads back as a numeric-dtype "Unnamed: 0" column instead of the index.
+            if df.index.dtype != 'object':
+                if 'Unnamed: 0' in df.columns:
+                    df = df.set_index('Unnamed: 0')
+                    df.index.name = None
+                elif df.shape[1] > 0 and df.iloc[:, 0].astype(str).str.contains('tRNA').any():
+                    df = df.set_index(df.columns[0])
+                    df.index.name = None
+            return df
 
-        # Fallback for different file formats where index is not automatically detected - aka tRAX generates tsv/csv strangely sometimes
-        if normalized_read_counts.index.dtype != 'object':
-             if 'Unnamed: 0' in normalized_read_counts.columns:
-                 normalized_read_counts = normalized_read_counts.set_index('Unnamed: 0')
-                 normalized_read_counts.index.name = None
-             elif normalized_read_counts.shape[1] > 0 and normalized_read_counts.iloc[:, 0].astype(str).str.contains('tRNA').any():
-                 normalized_read_counts = normalized_read_counts.set_index(normalized_read_counts.columns[0])
-                 normalized_read_counts.index.name = None
+        normalizedreadcounts = self.expinfo.normalizedcounts
+        normalized_read_counts = _fix_index(pd.read_csv(normalizedreadcounts, sep='\t', header=0))
+
+        # Non-tRNA (small RNA) features must not be normalized against tRNA/tRX-controlled size
+        # factors -- those are only representative of the tRNA population, not the whole library.
+        # Use the all-feature-controlled normalized counts (same combined counts file, but
+        # size factors estimated over all features) so adata.uns['nontRNA_counts'] is on a
+        # statistically appropriate scale for non-tRNA analysis.
+        normalized_read_counts_allfeatures = _fix_index(pd.read_csv(self.expinfo.normalizedcounts_allfeatures, sep='\t', header=0))
+        non_trna_read_counts = normalized_read_counts_allfeatures[~(normalized_read_counts_allfeatures.index.str.contains('tRNA'))]
+        self.non_trna_read_counts = non_trna_read_counts[~(non_trna_read_counts.index.str.contains('tRX'))]
 
         # Clean all non tRNAs from normalized read counts by removing all rows that do not have a tRNA in the feature column
-        non_trna_read_counts = normalized_read_counts[~(normalized_read_counts.index.str.contains('tRNA'))]
-        self.non_trna_read_counts = non_trna_read_counts[~(non_trna_read_counts.index.str.contains('tRX'))]
         normalized_read_counts = normalized_read_counts[(normalized_read_counts.index.str.contains('tRNA')) | (normalized_read_counts.index.str.contains('tRX'))]
         self.read_types = pd.unique(normalized_read_counts.index.str.split('_').str[1])
         self.normalized_read_counts = normalized_read_counts.to_dict('index')
@@ -712,11 +735,17 @@ class AnnDataBuilder():
             git_version = 'unknown (not a git repository)'
             git_hash = 'unknown'
         
-        self.trnagraph_run_info = {'expname': resultsdir.split('/')[-1], 
+        # Capture the CLI flags used to build this object, sanitizing None (anndata's h5ad uns writer
+        # doesn't reliably round-trip None values, so substitute a string sentinel like adataCluster.py does)
+        run_flags = {}
+        if self.analysis_args:
+            run_flags = {k: (v if v is not None else 'None') for k, v in vars(self.analysis_args).items()}
+        self.trnagraph_run_info = {'expname': resultsdir.split('/')[-1],
                                    'time': os.popen('date').read().rstrip(),
                                    'trnagraph_directory': resultsdir,
                                    'git version': git_version,
-                                   'git version hash': git_hash}
+                                   'git version hash': git_hash,
+                                   'flags': run_flags}
         # Output file name
         self.output = output
         # Names of coverage types to add to adata object from coverage file
@@ -756,7 +785,11 @@ class AnnDataBuilder():
 
         # Add size factors to adata object as raw layer
         adata.layers['raw'] = adata.X * adata.obs['deseq2_sizefactor'].values[:,None]
-        
+
+        # Add the secondary, all-feature-controlled normalization as an independent layer for comparison
+        allfeature_sf = np.array([self.size_factors_allfeatures.get(s, 1.0) for s in obs_df['sample'].values])
+        adata.layers['norm_allfeatures'] = adata.layers['raw'] / allfeature_sf[:, None]
+
         # Determine vst strategy
         vst_strategy = 'vst'
         if self.analysis_args and hasattr(self.analysis_args, 'vst'):
@@ -791,7 +824,7 @@ class AnnDataBuilder():
                         quiet=True
                     )
                     
-                    # Attach the pre-calculated size factors to preserve `--trna-size-factors` scaling impacts
+                    # Attach the pre-calculated (tRNA-control, default) size factors so VST reflects the same scaling
                     if 'deseq2_sizefactor' in adata.obs:
                         vst_dds.obsm['size_factors'] = adata.obs['deseq2_sizefactor'].values
                     else:
@@ -1036,6 +1069,9 @@ class AnnDataBuilder():
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
         adata.uns['trnagraphruninfo'] = self.trnagraph_run_info
+        # Add both DESeq2 size factor sets as uns (tRNA-controlled default, and all-feature secondary)
+        adata.uns['deseq2_sizefactors_trna'] = self.size_factors
+        adata.uns['deseq2_sizefactors_allfeatures'] = self.size_factors_allfeatures
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
         for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
             toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()

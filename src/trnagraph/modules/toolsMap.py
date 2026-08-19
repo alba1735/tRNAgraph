@@ -387,6 +387,8 @@ class expdatabase:
         self.normalizedtrnacounts = res_path("trna/"+basename+"-trna_normalizedreadcounts.txt")
         self.sizefactors = res_path(basename+"-SizeFactors.txt")
         self.trnasizefactors = res_path("trna/"+basename+"-trna_SizeFactors.txt")
+        self.allfeaturesizefactors = res_path("allfeature/"+basename+"-allfeature_SizeFactors.txt")
+        self.normalizedcounts_allfeatures = res_path("allfeature/"+basename+"-allfeature_normalizedreadcounts.txt")
 
         self.genetypecounts=res_path(basename+"-typecounts.txt")
         self.genetypeplot=graph_path(basename+"-typecounts.pdf")

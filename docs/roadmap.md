@@ -9,7 +9,6 @@ This document outlines the planned features and current areas of focus for tRNAg
 - **Alternative Normalization**: Add options to compute with RAW counts and normalization methods other than DESeq2 size factors.
 - **External Analysis Integration**: Allow new DESeq2 or other analyses to be run directly on the combined object.
 - **Correlation**: Add function to plot correlation with smallRNAs included.
-- **PCA**: Add function to plot PCA with smallRNAs included.
 
 ### Visualization Enhancements
 

@@ -6,12 +6,12 @@ This document provides a detailed reference for all command-line commands and fl
 
 These options apply to most commands in the toolkit.
 
-| Flag              | Description                                                    | Default         |
-| :---------------- | :------------------------------------------------------------- | :-------------- |
-| `--log <file>`    | Redirects all output logging to the specified file.            | `None` (Stdout) |
-| `-q`, `--quiet`   | Suppresses standard output (stdout). Errors are still printed. | `False`         |
-| `-v`, `--verbose` | Enables detailed execution logs.                               | `False`         |
-| `--skip-env-check`| Skips the environment validation checks (dependencies and versions). | `False` |
+| Flag               | Description                                                          | Default         |
+| :----------------- | :------------------------------------------------------------------- | :-------------- |
+| `--log <file>`     | Redirects all output logging to the specified file.                  | `None` (Stdout) |
+| `-q`, `--quiet`    | Suppresses standard output (stdout). Errors are still printed.       | `False`         |
+| `-v`, `--verbose`  | Enables detailed execution logs.                                     | `False`         |
+| `--skip-env-check` | Skips the environment validation checks (dependencies and versions). | `False`         |
 
 ---
 
@@ -140,12 +140,14 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--dispfittype`**: Dispersion fit type for DESeq2. parametric`(default, standard for DESeq2),`mean`(robust for small sample sizes). Default:`parametric`
 - **`-c`, `--readlengthsplit`**: Read length cutoff for splitting. When specified, generates additional under/over analyses (e.g., `_u60.h5ad` and `_o60.h5ad`). Default: `None` (disabled)
 - **`--overwritebams`**: Force overwrite of existing BAM files during map/split. Default: `False`
-- **`--trna-size-factors`**: Configures PyDESeq2 to compute size factors using *only* tRNA and tRX features, rather than all features in the count matrix. If omitted, size factors are safely computed using *all* available features (the standard default behavior of DESeq2). Default: `False`
 - **`--vst`**: Sets the Variance Stabilizing Transformation (VST) computation method. Options: `vst` (native PyDESeq2 VST), `log1p` (np.log1p + StandardScaler, Default), or `none` (disable VST computation).
 - **`-n`, `--threads`**: Number of threads to use for processing. Default: `8`
 
 > [!NOTE]
 > PyDeseq2 will automatically switch to `mean` dispersion fitting if the number of samples is too small for `parametric` to be stable.
+
+> [!NOTE]
+> DESeq2 size factors are always computed twice for the main feature matrix: once using only tRNA/tRX features as the normalization reference (the **default**, backing `adata.X`, `adata.layers["raw"]`, and `adata.obs["deseq2_sizefactor"]`), and once using all features as the reference (a secondary set kept for comparison). Both are stored in `adata.uns["deseq2_sizefactors_trna"]` / `adata.uns["deseq2_sizefactors_allfeatures"]`, and the all-feature-normalized layer is available as `adata.layers["norm_allfeatures"]`. If a GTF file is not provided no non-tRNA features are counted and the two sizefactor sets should be identical.
 
 ### `cluster`
 
@@ -250,6 +252,9 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`--pcamarkers`**: Marker style grouping. Default: `sample`.
 - **`--pcacolors`**: Color grouping. Default: `group`.
+- **`--pcareadtypes`**: Read types to generate per-readtype tRNA PCA plots for (`tRNA_<pcamarkers>_by_<pcacolors>_<readtype>_*`). Default: `total_unique`, `total`.
+
+Two extra plots are generated automatically whenever `adata.uns['nontRNA_counts']` is non-empty (i.e., `--gtf` was used at `analyze build`): a non-tRNA-only plot (`nontRNA_<pcamarkers>_by_<pcacolors>_*`) and a combined tRNA + non-tRNA plot (`allRNA_<pcamarkers>_by_<pcacolors>_*`). No additional flags are needed, and both are skipped with a log message if non-tRNA counts are unavailable. These use a different DESeq2 normalization than the per-readtype plots — see [Data Structure: Graphing Notes](data_structure.md#6-graphing-notes).
 
 **Radar Options:**
 
@@ -317,20 +322,20 @@ trnagraph tools test [options]
 
 **Step Flags (run specific steps):**
 
-| Flag | Description |
-| :--- | :---------- |
-| `--metadata` | Download metadata |
-| `--fastq` | Download FASTQ files |
-| `--trna` | Download tRNA sequences |
-| `--genome` | Download reference genome |
-| `--trim` | Run adapter trimming |
-| `--makedb` | Create tRNA database |
-| `--map` | Run read mapping |
-| `--split` | Run BAM splitting |
-| `--build` | Build AnnData object (no split analysis) |
+| Flag            | Description                                                    |
+| :-------------- | :------------------------------------------------------------- |
+| `--metadata`    | Download metadata                                              |
+| `--fastq`       | Download FASTQ files                                           |
+| `--trna`        | Download tRNA sequences                                        |
+| `--genome`      | Download reference genome                                      |
+| `--trim`        | Run adapter trimming                                           |
+| `--makedb`      | Create tRNA database                                           |
+| `--map`         | Run read mapping                                               |
+| `--split`       | Run BAM splitting                                              |
+| `--build`       | Build AnnData object (no split analysis)                       |
 | `--split-build` | Build AnnData with read length split (generates u60/o60 files) |
-| `--cluster` | Run clustering algorithms |
-| `--graph` | Generate visualization plots (main h5ad only) |
-| `--split-graph` | Generate plots for split h5ad files |
-| `--hubonly` | Generate UCSC track hubs only |
-| `--maponly` | Stop after mapping step |
+| `--cluster`     | Run clustering algorithms                                      |
+| `--graph`       | Generate visualization plots (main h5ad only)                  |
+| `--split-graph` | Generate plots for split h5ad files                            |
+| `--hubonly`     | Generate UCSC track hubs only                                  |
+| `--maponly`     | Stop after mapping step                                        |
