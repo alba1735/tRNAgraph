@@ -26,42 +26,45 @@ flowchart LR
   I3[/"Genomic References"/]
   I4[/"metadata.tsv"/]
 
-  %% Processing Nodes
-  P1[Trim Reads]
-  P2[Make Database]
-  P3[Map Reads]
-  B1[Build AnnData]
-  C1[Cluster Data]
-
-  %% Data/Storage Nodes
-  D1[("Bowtie2 Index")]
-  D2[("tRNAgraph.h5ad")]
-  D3[("Clustered .h5ad")]
-
   %% Output Nodes
   O1[Visualizations]
 
-  %% Flow
   subgraph Step1 [1. Preprocess]
-    direction TB
-    I3 --> P2 --> D1
-    I2 & I1 --> P1
-    P1 & D1 --> P3
-    I1 -.-> P3
+    P1[Trim Reads]
+    P2[Make Database]
+    P3[Map Reads]
   end
+
+  I3 --> P2
+  I2 & I1 --> P1
+
+  D1[("Bowtie2 Index")]
+  D2[("Trimmed Reads")]
+  P2 --> D1
+  P1 --> D2
+  D1 & D2 --> P3
+
+  D3[("BAM Directory")]
+  P3 --> D3
 
   subgraph Step2 [2. Analyze]
-    P3 --> B1
-    I4 --> B1
-    B1 --> D2
-    D2 --> C1
-    C1 --> D3
+    B1[Build AnnData]
+    C1[Cluster Data]
   end
 
+  D3 & I4 --> B1
+
+  D4[("tRNAgraph.h5ad")]
+  D5[("Results Directory")]
+  B1 -->|creates| D4
+  B1 -->|creates| D5
+  C1 -.->|updates in place| D4
+
   subgraph Step3 [3. Graph]
-    D3 --> O1
-    D2 --> O1
+    V1[Generate Graphs]
   end
+
+  D4 --> V1 --> O1
 
   %% Styling
   classDef input fill:#000000,stroke:#01579b,stroke-width:2px;
@@ -70,8 +73,8 @@ flowchart LR
   classDef output fill:#000000,stroke:#7b1fa2,stroke-width:2px;
 
   class I1,I2,I3,I4 input;
-  class P1,P2,P3,B1,C1 process;
-  class D1,D2,D3 storage;
+  class P1,P2,P3,B1,C1,V1 process;
+  class D1,D2,D3,D4,D5 storage;
   class O1 output;
 ```
 
