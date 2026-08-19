@@ -162,6 +162,43 @@ def log2fc_compare_df(adata: ad.AnnData, countgrp: str, comparison_groups: List[
 
     return df_pairs
 
+def log2fc_from_wide_df(df: pd.DataFrame, sample_group_map: Dict[str, str], readcount_cutoff: int = 80) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
+    '''
+    Compute pairwise log2FC/p-value statistics from a wide (feature x sample) dataframe using an
+    explicit sample->group mapping. Mirrors adataLog2FC.log2fc_df()'s statistics (mean/std/count
+    per group, ttest_ind_from_stats) but for data that isn't stored per-tRNA in adata.obs, e.g.
+    adata.uns['nontRNA_counts'] or a combined tRNA+non-tRNA dataframe, as used by the non-tRNA and
+    combined volcano plots in plotsVolcano.py.
+    '''
+    tdf = df.T
+    tdf.index = tdf.index.astype(str)
+    groups = tdf.index.map(sample_group_map)
+
+    mdf = tdf.groupby(groups).mean().T
+    sdf = tdf.groupby(groups).std().T
+    cdf = tdf.groupby(groups).count().T
+
+    mean_drop_list = mdf.mean(axis=1) >= int(readcount_cutoff)
+    sdf = sdf[mean_drop_list].dropna()
+    mdf = mdf[mean_drop_list].dropna()
+    cdf = cdf[mean_drop_list].dropna()
+
+    mdf = mdf.replace(0, 1e-20)
+
+    pairs = list(itertools.combinations(mdf.columns, 2))
+    df_pairs = pd.DataFrame()
+    for pair in pairs:
+        col_name = f'{pair[0]}-{pair[1]}'
+        df_pairs[f'log2_{col_name}'] = np.log2(mdf[pair[1]]) - np.log2(mdf[pair[0]])
+        _, pval = stats.ttest_ind_from_stats(
+            mdf[pair[0]].values, sdf[pair[0]].values, cdf[pair[0]].values,
+            mdf[pair[1]].values, sdf[pair[1]].values, cdf[pair[1]].values
+        )
+        df_pairs[f'pval_{col_name}'] = pval
+
+    df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
+    return df_pairs, pairs
+
 def read_multi_fasta(fa_file: str) -> Generator[Tuple[str, str], None, None]:
     """
     Iterates over a FASTA file and yields (header, sequence) tuples.

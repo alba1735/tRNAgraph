@@ -75,7 +75,7 @@ tRNAgraph inherits normalization logic from DESeq2.
 To ensure reproducibility and allow for on-the-fly re-normalization, data is stored in multiple states:
 
 | Layer                            | Accessor                           | Description                                                                                                                |
-| :------------------------------- | :--------------------------------- | :--------------------------------------------------------------------------------------------------------------------------|
+| :------------------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
 | **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default. |
 | **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.      |
 | **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                               |
@@ -260,7 +260,7 @@ tRNAgraph (via tRAX) categorizes reads into specific fragment classes based on a
 
 ### Non-tRNA Features
 
-If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`). Unlike `adata.X`/`adata.obs`, these counts are normalized against the **all-feature-controlled** DESeq2 size factors (`adata.uns['deseq2_sizefactors_allfeatures']`), not the tRNA/tRX-controlled default — tRNA-controlled size factors are not representative of non-tRNA library composition. If no GTF was provided, `nontRNA_counts` is an empty DataFrame. See [Graphing Notes](#6-graphing-notes) for how this feeds into PCA plots.
+If an Ensembl GTF file was provided during `trnagraph analyze build`, non-tRNA features (rRNA, snoRNA, mRNA) are included in the dataset but only included in the unstructured data (`adata.uns['nontRNA_counts']`). Unlike `adata.X`/`adata.obs`, these counts are normalized against the **all-feature-controlled** DESeq2 size factors (`adata.uns['deseq2_sizefactors_allfeatures']`), not the tRNA/tRX-controlled default — tRNA-controlled size factors are not representative of non-tRNA library composition. If no GTF was provided, `nontRNA_counts` is an empty DataFrame. See [Graphing Notes](#6-graphing-notes) for how this feeds into PCA and volcano plots.
 
 ---
 
@@ -277,3 +277,11 @@ Nuances specific to individual `trnagraph graph` plot types that aren't obvious 
 - **`allRNA_<pcamarkers>_by_<pcacolors>_*`**: all tRNA reads (`total`, not unique-only) combined with non-tRNA feature counts, both normalized against the all-feature-controlled size factors. tRNA total counts are re-derived from raw counts (`adata.obs['nreads_total_raw']`) and re-normalized specifically for this comparison — they are **not** the same values used in the `tRNA_*` plots.
 
 The `nontRNA_*` and `allRNA_*` plots require `adata.uns['nontRNA_counts']` to be present and non-empty (i.e., `--gtf` was provided at `analyze build`); they are skipped with a log message otherwise. See [Non-tRNA Features](#non-trna-features) and [Normalization Logic](#normalization-logic) for background on the two size factor sets.
+
+### Volcano Plots
+
+`trnagraph graph -g volcano` follows the same naming and normalization pattern as PCA, and (like coverage plots).
+
+As with PCA, the non-tRNA and combined volcano plots require `adata.uns['nontRNA_counts']` to be present and non-empty (i.e., `--gtf` was provided at `analyze build`); they are skipped with a log message otherwise, and the combined overview page correspondingly drops to 2 plots. See [Non-tRNA Features](#non-trna-features) and [Normalization Logic](#normalization-logic) for background on the two size factor sets.
+
+Points are classified significant when `|log2FoldChange| > 1.5` and `p < 0.05` (a second `p < 0.001` line is drawn as an additional, non-classifying reference). Significant points are colored by comparison direction using `--colormap`'s colors for `--volgrp` (falling back to a default red/blue if a group has no configured color) and drawn at full opacity; non-significant points are grey and drawn at reduced opacity. Labeling of significant points is controlled by `--vollabels` — see [CLI Reference: Volcano Options](cli_reference.md#graph).

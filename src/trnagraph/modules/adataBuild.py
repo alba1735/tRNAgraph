@@ -642,7 +642,7 @@ class AnnDataBuilder():
         normalizedreadcounts = self.expinfo.normalizedcounts
         normalized_read_counts = _fix_index(pd.read_csv(normalizedreadcounts, sep='\t', header=0))
 
-        # Non-tRNA (small RNA) features must not be normalized against tRNA/tRX-controlled size
+        # Non-tRNA features must not be normalized against tRNA/tRX-controlled size
         # factors -- those are only representative of the tRNA population, not the whole library.
         # Use the all-feature-controlled normalized counts (same combined counts file, but
         # size factors estimated over all features) so adata.uns['nontRNA_counts'] is on a

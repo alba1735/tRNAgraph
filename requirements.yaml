@@ -3,6 +3,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - "adjusttext=1.4.0"
   - "anndata=0.12.6"
   - "bedtools=2.31.1"
   - "bowtie2=2.5.4"

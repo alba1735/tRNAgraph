@@ -119,7 +119,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
 
     tRNA-driven plots (per readtype, e.g. total/total_unique) use tRNAgraph's default
     tRNA/tRX-controlled DESeq2 normalization (adata.obs 'nreads_*_norm', matching adata.X).
-    The small RNA (non-tRNA) plot and the combined tRNA+small RNA plot instead use the
+    The non-tRNA plot and the combined tRNA + non-tRNA plot instead use the
     all-feature-controlled DESeq2 normalization (adata.uns['nontRNA_counts'] and
     adata.uns['deseq2_sizefactors_allfeatures']), since tRNA-controlled size factors are not
     representative of non-tRNA library composition.
@@ -134,7 +134,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
 
     # Create dictionary of sample and pcamarkers parameter for use in seaborn, and validate the
     # colormap. This only depends on pcamarkers/pcacolors (not on readtype), so it's computed once
-    # up front and reused for the per-readtype plots as well as the small RNA / combined plots below.
+    # up front and reused for the per-readtype plots as well as the non-tRNA / combined plots below.
     if pcamarkers == pcacolors:
         meta_df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers])
         hue_dict = dict(zip(meta_df[pcamarkers], meta_df[pcamarkers]))
@@ -162,28 +162,28 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
             df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, rt, pcacolors])
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
         df = df.pivot_table(index='trna', columns='sample', values=rt, observed=True)
-        threaded = _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'tRNA_{pcamarkers}_by_{pcacolors}_{readtype}', title_suffix='', threaded=threaded)
+        threaded = _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'tRNA_{pcamarkers}_by_{pcacolors}_{readtype}', title_suffix=readtype.replace('_', ' ').title(), threaded=threaded)
 
-    # Small RNA (non-tRNA) and combined tRNA+small RNA PCA plots. These run automatically
-    # alongside the per-readtype plots above (no separate flag), but only when non-tRNA feature
-    # counts are available -- adata.uns['nontRNA_counts'] is only populated with real rows when
+    # Non-tRNA and combined tRNA + non-tRNA PCA plots. These run automatically alongside the
+    # per-readtype plots above (no separate flag), but only when non-tRNA feature counts are
+    # available -- adata.uns['nontRNA_counts'] is only populated with real rows when
     # `trnagraph analyze build` was given a --gtf; otherwise it's present but empty.
     nontrna_df = adata.uns.get('nontRNA_counts')
     if nontrna_df is None or nontrna_df.empty:
         msg = ('No non-tRNA feature counts found in AnnData object '
-               '(uns[\'nontRNA_counts\'] missing or empty). Skipping small RNA PCA plots. '
+               '(uns[\'nontRNA_counts\'] missing or empty). Skipping non-tRNA PCA plots. '
                'Re-run `trnagraph analyze build` with --gtf to enable these plots.')
         if threaded:
             threaded += msg + '\n'
         else:
             print(msg)
     else:
-        # Small-RNA-only PCA. adata.uns['nontRNA_counts'] is normalized against the
+        # Non-tRNA-only PCA. adata.uns['nontRNA_counts'] is normalized against the
         # all-feature-controlled DESeq2 size factors (see adataBuild.py), which is the
         # statistically appropriate normalization for non-tRNA feature counts.
-        threaded = _generate_pca_plots(nontrna_df.copy(), hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'nontRNA_{pcamarkers}_by_{pcacolors}', title_suffix='Small RNAs', threaded=threaded)
+        threaded = _generate_pca_plots(nontrna_df.copy(), hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'nontRNA_{pcamarkers}_by_{pcacolors}', title_suffix='Non-tRNA RNAs', threaded=threaded)
 
-        # Combined PCA: all tRNA reads (total, not unique-only) + small RNAs, both normalized
+        # Combined PCA: all tRNA reads (total, not unique-only) + non-tRNA RNAs, both normalized
         # against the all-feature-controlled size factors so the two feature sets are on the
         # same scale. This requires re-deriving tRNA total counts from raw counts, since
         # adata.obs only stores the tRNA/tRX-controlled (default) normalization.
@@ -191,7 +191,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
         if allfeature_sizefactors is None or 'nreads_total_raw' not in adata.obs.columns:
             msg = ('No all-feature-controlled DESeq2 size factors found in AnnData object '
                    '(uns[\'deseq2_sizefactors_allfeatures\'] missing, or obs[\'nreads_total_raw\'] '
-                   'unavailable). Skipping combined tRNA + small RNA PCA plot. Rebuild with the '
+                   'unavailable). Skipping combined tRNA + non-tRNA PCA plot. Rebuild with the '
                    'current `trnagraph analyze build` to enable this plot.')
             if threaded:
                 threaded += msg + '\n'
@@ -232,7 +232,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                     print(msg)
             else:
                 combined_df = pd.concat([total_df[shared_cols], nontrna_df[shared_cols]], axis=0)
-                threaded = _generate_pca_plots(combined_df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'allRNA_{pcamarkers}_by_{pcacolors}', title_suffix='All tRNA + Small RNAs', threaded=threaded)
+                threaded = _generate_pca_plots(combined_df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'allRNA_{pcamarkers}_by_{pcacolors}', title_suffix='All tRNA + Non-tRNA RNAs', threaded=threaded)
 
     if threaded:
         return threaded

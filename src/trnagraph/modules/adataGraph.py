@@ -20,7 +20,8 @@ class anndataGrapher:
         self.config_name = 'default'
         # Load cmap dict for each graph type
         self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
-                          'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp}
+                          'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
+                          'volcano':self.args.volgrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
             self.args.graphtypes = ['cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
@@ -93,6 +94,11 @@ class anndataGrapher:
                 for readtype in [f'nreads_{i}_norm' for i in self.args.diffrts]: #list(set(self.args.heatrts+self.args.volrts))]:
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
                         toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
+        if 'volcano' in self.args.graphtypes:
+            # The volcano combined overview page always uses these two read types (mirroring
+            # PCA's default --pcareadtypes), regardless of what --diffrts requests.
+            for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
+                toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
         if log2FC_dict != self.adata.uns['log2FC'] or self.args.regen_uns:
             print('The log2FC uns dictionary has been updated.\n')
             self.adata.write(self.args.anndata)
@@ -194,7 +200,7 @@ class anndataGrapher:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.diffrts, self.args.volcutoff, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.diffrts, self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'

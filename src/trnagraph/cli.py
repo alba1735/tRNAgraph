@@ -17,18 +17,20 @@ try:
         anndata, matplotlib
     )
     from .modules import env_check
+    from . import __version__
 except ImportError:
     # Fallback for script execution: add parent directory to path and import as package
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
+
     from tRNAgraph.modules.lazy_imports import (
         toolsMap, toolsTDatabase, toolsTrim, toolsTG, toolsSplit,
         toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from tRNAgraph.modules import env_check
+    from tRNAgraph import __version__
 
 @contextlib.contextmanager
 def handle_output(log_file: Optional[str] = None, quiet: bool = False):
@@ -62,9 +64,17 @@ def validate_environment():
     """
     env_check.validate_environment()
 
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"tRNAgraph {__version__}")
+        raise typer.Exit()
+
 @app.callback()
 def main_callback(
-    skip_env_check: bool = typer.Option(False, "--skip-env-check", help="Skip environment validation checks")
+    skip_env_check: bool = typer.Option(False, "--skip-env-check", help="Skip environment validation checks"),
+    version: Optional[bool] = typer.Option(
+        None, "--version", callback=version_callback, is_eager=True, help="Show the tRNAgraph version and exit"
+    )
 ):
     """
     tRNAgraph is a tool for for advanced analysis of tRNA-seq data.
@@ -347,6 +357,7 @@ def graph(
     logornamode: bool = typer.Option(False, "--logornamode", help="Specify wether to print the output as RNA rather than DNA"),
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
+    vollabels: Optional[int] = typer.Option(None, "--vollabels", help="Specify number of top significant markers to label on each volcano plot; omit to label all significant markers, or pass 0 to disable labels"),
 ):
     with handle_output(log, quiet):
         # Set matplotlib backend to Agg to avoid display issues
@@ -367,7 +378,8 @@ def graph(
             heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, pcamarkers=pcamarkers, pcacolors=pcacolors,
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
-            ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, volgrp=volgrp, volcutoff=volcutoff
+            ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, volgrp=volgrp, volcutoff=volcutoff,
+            vollabels=vollabels
         )
         
         print('Graphing data from database object...\n')

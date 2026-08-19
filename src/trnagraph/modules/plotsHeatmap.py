@@ -16,10 +16,17 @@ plt.rcParams['ps.fonttype'] = 42
 
 def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False):
     '''
-    Generate heatmap visualizations for each group in an AnnData object.
+    Generate heatmap visualizations for each group in an AnnData object. The combined,
+    multi-comparison heatmap PDFs are saved at the top level; when --heatsubplots is set, the
+    individual per-comparison heatmaps are also saved to an `individual/` subfolder, mirroring
+    plotsCoverage.py's split-vs-combined output layout.
     '''
     if grp not in adata.obs.columns:
         raise ValueError('Specified group not found in AnnData object.')
+
+    individual_output = f'{output}individual/'
+    if heatsubplots:
+        print(toolsTG.builder(individual_output))
 
     # Create an empty df to store the log2FC values for each group so a combined heatmap can be generated as well
     df_combine = pd.DataFrame()
@@ -54,7 +61,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
                 else:
                     print(f'Saving heatmap for {readtype} {col}...')
                 if heatsubplots:
-                    plt.savefig(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
+                    plt.savefig(f'{individual_output}{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
                 plt.close()
     # Create a heatmap for the combined groups
@@ -68,7 +75,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
                 else:
                     print(f'Saving heatmap for combine {col}...')
                 if heatsubplots:
-                    plt.savefig(f'{output}{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
+                    plt.savefig(f'{individual_output}{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
                 plt.close()
     if threaded:
