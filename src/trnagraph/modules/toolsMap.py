@@ -461,7 +461,8 @@ class MapSamples:
         self.minnontrnasize = args.minnontrnasize
         self.local = args.local
         self.skipfqcheck = args.skipcheck
-        
+        self.quiet = getattr(args, 'quiet', False)
+
         self.trnainfo = trnadatabase(self.dbname)
         self.expinfo = expdatabase(self.expname)
         
@@ -533,7 +534,11 @@ class MapSamples:
         mapresults = {}
         if map_args:
             with Pool(processes=pool_size) as pool:
-                for result in pool.imap_unordered(map_sample_wrapper, map_args):
+                for result in toolsTG.progress_iterator(
+                    pool.imap_unordered(map_sample_wrapper, map_args),
+                    total=len(map_args), desc="Mapping samples", logger=self.logger,
+                    quiet=self.quiet,
+                ):
                     if result.failedrun:
                         self.logger.error("Failure to Bowtie2 map")
                         result.printbowtie()
