@@ -1,0 +1,58 @@
+"""Regression tests for adataBuild.py's build-progress phase list assembly (roadmap.md Phase 2:
+"tqdm" -- post-Stage-3 design follow-up). `_analysis_pipeline_phase_names()`/
+`_full_build_phase_names()` compute the exact, fixed phase sequence a `toolsTG.PhaseTracker` needs
+upfront -- everything here is knowable from the CLI args before any work starts (nosizefactors,
+vst strategy, readlengthsplit), so the shared tracker's percentage is accurate across the whole
+`analyze build` command instead of just one class's slice of it."""
+from types import SimpleNamespace
+
+from trnagraph.modules.adataBuild import _analysis_pipeline_phase_names, _full_build_phase_names
+
+
+def test_analysis_pipeline_phases_include_deseq2_steps_by_default():
+    assert _analysis_pipeline_phase_names(nosizefactors=False) == [
+        "Counting Reads", "Analyzing counts", "Counting Read Types",
+        "Analyzing unique counts", "Generating Read Coverage plots",
+    ]
+
+
+def test_analysis_pipeline_phases_skip_deseq2_steps_when_nosizefactors():
+    assert _analysis_pipeline_phase_names(nosizefactors=True) == [
+        "Counting Reads", "Counting Read Types", "Generating Read Coverage plots",
+    ]
+
+
+def _args(**overrides):
+    defaults = dict(nosizefactors=False, vst="vst", readlengthsplit=None)
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_full_build_phases_simple_case_no_split():
+    phases = _full_build_phase_names(_args())
+    assert phases == [
+        "Counting Reads", "Analyzing counts", "Counting Read Types", "Analyzing unique counts",
+        "Generating Read Coverage plots", "Building AnnData object", "Computing VST", "Writing h5ad",
+    ]
+
+
+def test_full_build_phases_skip_vst_when_vst_strategy_is_none():
+    phases = _full_build_phase_names(_args(vst="none"))
+    assert "Computing VST" not in phases
+    assert phases[-1] == "Writing h5ad"
+
+
+def test_full_build_phases_repeat_analysis_block_twice_when_readlengthsplit_set():
+    phases = _full_build_phase_names(_args(readlengthsplit=60))
+    analysis_block = ["Counting Reads", "Analyzing counts", "Counting Read Types", "Analyzing unique counts", "Generating Read Coverage plots"]
+    assert phases == (
+        analysis_block + ["Building AnnData object", "Computing VST"]
+        + analysis_block + analysis_block
+        + ["Writing h5ad"]
+    )
+
+
+def test_full_build_phases_respect_nosizefactors_in_every_repeated_block():
+    phases = _full_build_phase_names(_args(readlengthsplit=60, nosizefactors=True))
+    assert phases.count("Analyzing counts") == 0
+    assert phases.count("Counting Reads") == 3  # main + under + over

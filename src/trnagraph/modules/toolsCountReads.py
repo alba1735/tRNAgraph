@@ -894,11 +894,12 @@ def countreads_main(**argdict):
     #setting up all the feature count dictionaries
                             
     allcounts = dict()
+    quiet = bool(argdict["quiet"])
     #threadmode = False
     #print  list(curr.name for curr in trnalist)
     #print >>sys.stderr, "**||"
     #print >>sys.stderr, maxmismatches
-    
+
     #sys.exit()
     if threadmode:
 
@@ -908,14 +909,20 @@ def countreads_main(**argdict):
             currbam = sampledata.getbam(currsample)
             arglist.append(compressargs(currbam, currsample,trnainfo, trnaloci, trnalist, otherseqdict = otherseqdict, embllist = embllist, featurelist = featurelist, maxmismatches = maxmismatches))
         #arglist = list((tuple([currsample, sampledata.getbam(currsample)]) for currsample in samples))
-        results = countpool.map(countreadspool, arglist)
+        # imap() (not imap_unordered) -- the reassembly loop below relies on positional
+        # correspondence with `samples`, same as the .map() this replaces; progress_iterator just
+        # adds per-sample completion feedback to what was previously a single blocking call.
+        results = list(toolsTG.progress_iterator(
+            countpool.imap(countreadspool, arglist),
+            total=len(arglist), desc="Counting reads", logger=logger, quiet=quiet,
+        ))
         for i, curr in enumerate(samples):
             allcounts[curr] = results[i]
 
     else:
 
-        for currsample in samples:
-            
+        for currsample in toolsTG.progress_iterator(samples, total=len(samples), desc="Counting reads", logger=logger, quiet=quiet):
+
             currbam = sampledata.getbam(currsample)
             allcounts[currsample] = getbamcounts(currbam, currsample,trnainfo, trnaloci, trnalist, otherseqdict = otherseqdict,embllist = embllist, featurelist = featurelist, bedfiles = bedfiles, maxmismatches = maxmismatches)
             #getbamcountsthr(allcounts, allcounts)
@@ -1261,7 +1268,8 @@ def main(**argdict):
     maxmismatches = None
     allcounts = dict()
     poolmode = True
-    
+    quiet = bool(argdict["quiet"])
+
     if threadmode:
         countqueue = Queue()
         threads = dict()
@@ -1271,7 +1279,12 @@ def main(**argdict):
             for currsample in samples:
                 currbam = sampledata.getbam(currsample)
                 arglist.append(compressargs(currbam,currsample, trnainfo, trnaloci, trnalist,maturenames, otherseqlist = otherseqlist, embllist = embllist, featurelist = featurelist, maxmismatches = maxmismatches, bamnofeature = bamnofeature))
-            results = countpool.map(counttypereadspool, arglist)
+            # imap() (not imap_unordered) -- the reassembly loop below relies on positional
+            # correspondence with `samples`, same as the .map() this replaces.
+            results = list(toolsTG.progress_iterator(
+                countpool.imap(counttypereadspool, arglist),
+                total=len(arglist), desc="Counting reads", logger=logger, quiet=quiet,
+            ))
             for i, curr in enumerate(samples):
                 allcounts[curr] = results[i]
         else:
@@ -1282,9 +1295,9 @@ def main(**argdict):
             for sample in threads.keys():
                 currsample, counts = countqueue.get()
                 allcounts[currsample] = counts
-            
+
     else:
-        for currsample in samples:
+        for currsample in toolsTG.progress_iterator(samples, total=len(samples), desc="Counting reads", logger=logger, quiet=quiet):
             currbam = sampledata.getbam(currsample)
             allcounts[currsample] = counttypereads(currbam, currsample,trnainfo, trnaloci, trnalist,maturenames, otherseqlist = otherseqlist, embllist = embllist, featurelist = featurelist, maxmismatches = maxmismatches, bamnofeature = bamnofeature)
         

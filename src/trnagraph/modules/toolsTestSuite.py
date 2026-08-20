@@ -13,25 +13,65 @@ import argparse
 class _LiveBoxHandler(logging.Handler):
     '''
     Feeds demoPipeline._live_box()'s live display: captures every log message into a bounded
-    tail (the "Recent activity" panel) and watches for progress_iterator()'s own milestone
-    format ("N/Total (X%) complete") to drive the box's bar from real percentages whenever a
-    wrapped subcommand emits one -- toolsTG.py's progress_iterator always falls back to exactly
-    this format for anything wrapped here, since a subprocess's piped stdout is never a real
-    terminal from its own point of view, regardless of whether THIS process is interactive.
-    '''
-    _MILESTONE_RE = re.compile(r'(\d+)/(\d+) \(\d+%\) complete')
+    tail (the "Recent activity" panel) and watches for a milestone format to drive the box's bar
+    from real percentages whenever a wrapped subcommand emits one -- a subprocess's piped stdout
+    is never a real terminal from its own point of view, regardless of whether THIS process is
+    interactive, so toolsTG.py's progress_iterator/PhaseTracker always fall back to logging one of
+    the two formats below rather than a live rich display.
 
-    def __init__(self, tail, on_milestone):
+    Two distinct formats exist, and this handler must tell them apart:
+
+    - toolsTG.PhaseTracker's OUTER, phase-level format ("<desc> phase N/Total (P%) complete:
+      <label>", e.g. "Build phase 2/6 (33%) complete: Analyzing counts") -- the literal word
+      "phase" immediately before the fraction is the distinguishing marker.
+    - toolsTG.progress_iterator's bare, per-item format ("N/Total (P%) complete", e.g.
+      "Counting reads: 7/10 (70%) complete"), used both standalone (trim/map, which have no
+      phase concept) and for the INNER per-sample loop within a phase-tracked command's
+      "Counting Reads"/"Counting Read Types" phases.
+
+    `phase_only=True` (set by whichever `_live_box()` call wraps a phase-tracked command, e.g.
+    "Building AnnData object...") makes bare per-item milestones never drive the bar at all --
+    they're still captured into the tail, just not used to move it. This has to be an upfront
+    flag (known from which step this is), not something inferred reactively from whichever
+    milestone type happens to arrive first: a phase-tracked command's FIRST phase can itself wrap
+    an inner per-item loop (e.g. "Counting Reads"), whose own milestones would otherwise fire
+    *before* that phase's own completion line does -- reactively waiting for "the first phase
+    signal seen so far" would let the bar climb through the inner loop's 10/20/.../100% and then
+    visibly drop back down to that phase's real (much lower) outer percentage once its
+    completion line finally arrives, a jarring glitch. `phase_only=False` (the default, used by
+    every other step -- trim/map/etc, which have no phase concept at all) leaves the original
+    behavior fully intact: bare per-item milestones always drive the bar, exactly as before.
+
+    This exists to fix a real regression: without `phase_only`, an inner per-sample counting
+    milestone reaching "10/10 (100%) complete" almost immediately during a build used to pin the
+    box at 100% through everything that ran afterward (DESeq2 fitting, coverage generation, VST,
+    writing the h5ad), since the old bare-only regex matched both formats identically and simply
+    took whichever line came last.
+    '''
+    _PHASE_MILESTONE_RE = re.compile(r'\bphase (\d+)/(\d+) \(\d+%\) complete\b')
+    _ITEM_MILESTONE_RE = re.compile(r'(\d+)/(\d+) \(\d+%\) complete')
+
+    def __init__(self, tail, on_milestone, phase_only: bool = False):
         super().__init__()
         self.tail = tail
         self.on_milestone = on_milestone
+        self.phase_only = phase_only
 
     def emit(self, record: logging.LogRecord) -> None:
         message = self.format(record)
         self.tail.append(message)
-        match = self._MILESTONE_RE.search(message)
-        if match:
-            self.on_milestone(int(match.group(1)), int(match.group(2)))
+
+        phase_match = self._PHASE_MILESTONE_RE.search(message)
+        if phase_match:
+            self.on_milestone(int(phase_match.group(1)), int(phase_match.group(2)))
+            return
+
+        if self.phase_only:
+            return
+
+        item_match = self._ITEM_MILESTONE_RE.search(message)
+        if item_match:
+            self.on_milestone(int(item_match.group(1)), int(item_match.group(2)))
 
 
 class demoPipeline:
@@ -104,7 +144,7 @@ class demoPipeline:
             self._run_command(f"cp --update {self.assets_dir}/*.json config/.")
 
     @contextlib.contextmanager
-    def _live_box(self, description: str):
+    def _live_box(self, description: str, phase_only: bool = False):
         """
         Wrap one whole step (e.g. a single download_*()/trim_fastq()/etc. call, including every
         self.logger.info() and _run_command() subprocess it runs) in a single live rich display:
@@ -113,6 +153,11 @@ class demoPipeline:
         whatever gets logged during the step -- so the terminal shows one clean, auto-refreshing
         box per step instead of scrolling raw log lines. Falls back to plain logging (no display
         at all) when this isn't a real interactive terminal, or --quiet/--log is set.
+
+        `phase_only=True` for a step whose wrapped command is phase-tracked (toolsTG.PhaseTracker,
+        e.g. `analyze build`) -- see _LiveBoxHandler for why this must be an upfront flag set by
+        the caller (who knows what it's wrapping) rather than inferred from whichever milestone
+        format happens to arrive first.
         """
         use_live = sys.stdout.isatty() and self.console_handler is not None and not getattr(self.args, 'log', None)
         if not use_live:
@@ -146,7 +191,7 @@ class demoPipeline:
             header = progress if state['has_milestone'] else spinner
             return Group(header, Panel(tail_text, title='Recent activity', border_style='cyan', height=12))
 
-        box_handler = _LiveBoxHandler(tail, on_milestone)
+        box_handler = _LiveBoxHandler(tail, on_milestone, phase_only=phase_only)
         box_handler.setFormatter(logging.Formatter('%(message)s'))
 
         # Swap the console handler out for the box's capturing handler for the whole step --
@@ -412,7 +457,7 @@ class demoPipeline:
 
     def build_db(self) -> None:
         """Builds the AnnData object from the tRNAgraph output."""
-        with self._live_box("Building AnnData object..."):
+        with self._live_box("Building AnnData object...", phase_only=True):
             extra_flags = ""
             if self.args.hubonly:
                 extra_flags += " --hubonly"

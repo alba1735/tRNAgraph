@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 from scipy import stats
+import contextlib
 import itertools
 import os
 import sys
@@ -143,6 +144,68 @@ def progress_iterator(
         if completed % milestone_step == 0 or completed == total:
             pct = int(completed / total * 100)
             logger.info(f"{desc}: {completed}/{total} ({pct}%) complete")
+
+
+class PhaseTracker:
+    '''
+    Shared outer-progress tracker for a fixed, named sequence of build/graph phases. Each phase
+    is announced via one INFO log line the moment it *completes*, weighted by an optional
+    per-phase `weight` (default 1, i.e. equal weighting) -- the outer percentage is cumulative
+    completed weight over total weight, so callers that want proportional progress (e.g. a future
+    graphing command weighting each graph-type phase by its own plot count) get it for free by
+    just passing that count as the weight, with no extra bookkeeping.
+
+    Deliberately NOT a rich Live/spinner owner like progress_iterator: phases that have their own
+    inner per-item loop (e.g. toolsCountReads.py's per-sample counting, already wired via
+    progress_iterator) keep using that exactly as before for fine-grained feedback -- this class
+    only reports coarse, phase-level progress on top, so a real terminal running a phase-tracked
+    command directly sees both: a plain log line at each phase boundary from this class, plus
+    progress_iterator's own rich bar/milestones whenever the current phase happens to wrap one.
+
+    The message format ("<desc> phase N/Total (P%) complete: <label>") is deliberately NOT the
+    same shape as progress_iterator's bare "N/Total (P%) complete" -- note the literal word
+    "phase" immediately before the fraction. toolsTestSuite.py's _LiveBoxHandler uses that to tell
+    the two apart, so a phase-tracked command's box only ever reflects genuine phase-level
+    progress and never gets overridden mid-phase by an inner per-item milestone. That was the
+    actual bug this was built to fix: Stage 3's per-sample counting milestones reached "10/10
+    (100%) complete" almost immediately during a build, pinning the box at 100% for everything
+    that ran afterward (DESeq2 fitting, coverage generation, VST, writing the h5ad).
+    '''
+    def __init__(
+        self, phases: List[str], logger: logging.Logger, desc: str = "Build",
+        weights: Optional[List[float]] = None,
+    ):
+        if weights is None:
+            weights = [1] * len(phases)
+        if len(weights) != len(phases):
+            raise ValueError("weights must be the same length as phases")
+        self.phases = list(phases)
+        self.weights = list(weights)
+        self.total_weight = sum(self.weights) or 1
+        self.logger = logger
+        self.desc = desc
+        self._done_weight: float = 0
+        self._index = 0
+
+    @contextlib.contextmanager
+    def phase(self, variant: Optional[str] = None) -> Generator[None, None, None]:
+        '''
+        Wrap one phase's work. Advances to the next phase in `phases` automatically on each call
+        -- pass `variant` (e.g. "Under60") to fold a split-build variant's name into the log line
+        without treating it as a separate nesting level (the phase sequence just restarts/repeats
+        per variant, labeled, rather than adding a third rendered level).
+        '''
+        if self._index >= len(self.phases):
+            raise IndexError(f"{self.desc}: no more phases registered (declared {len(self.phases)})")
+        index = self._index
+        self._index += 1
+        name = self.phases[index]
+        weight = self.weights[index]
+        full_name = f"[{variant}] {name}" if variant else name
+        yield
+        self._done_weight += weight
+        pct = int(round(100 * self._done_weight / self.total_weight))
+        self.logger.info(f"{self.desc} phase {index + 1}/{len(self.phases)} ({pct}%) complete: {full_name}")
 
 
 from .toolsSchemas import VariantTag
