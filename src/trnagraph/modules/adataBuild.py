@@ -679,6 +679,9 @@ class AnnDataBuilder():
         # Add align observation categories to metadata
         self.metadata.columns = self.observations
         self.metadata.set_index('sample', inplace=True)
+        # Sample names as given in the metadata file, kept before the to_dict() conversion below
+        # so create() can check them against the samples actually present in the coverage file.
+        self.metadata_samples = set(self.metadata.index)
         self.metadata = self.metadata.to_dict()
         # Add trnagraph version to run info based on github hash - Will be changed to git describe once the package is deployed
         git_version, git_hash = _get_git_version_()
@@ -708,6 +711,7 @@ class AnnDataBuilder():
         # Build obs and x dataframes
         x_df, self.size_factors_list = self._build_coverage_matrix_()
         obs_df = self._obs_build_(x_df)
+        self._check_metadata_sample_match_(obs_df)
         # obs_df,x_df = self._group_sort_(obs_df,x_df) # Not sure if I need this function
         # Check that the index of the obs and x dataframes are the same
         if not obs_df.index.equals(x_df.index):
@@ -751,6 +755,38 @@ class AnnDataBuilder():
         # Save adata object
         adata.write(self.output)
         print(f'Writing h5ad database object to {self.output}')
+
+    def _check_metadata_sample_match_(self, obs_df):
+        '''
+        Validate that sample names in the metadata file line up with the samples actually
+        present in the coverage file (i.e. the samples that were mapped/counted by the
+        pipeline), before the AnnData object is written.
+
+        A coverage sample missing from the metadata is fatal: `_obs_build_` looks it up with
+        `dict.get()`, so it silently fills every metadata column with NaN for that sample's
+        rows instead of failing -- this is the exact failure mode this check exists to catch
+        early, with an actionable message, instead of downstream as an opaque NaN warning.
+        A metadata sample with no matching coverage sample is not fatal (e.g. a metadata file
+        intentionally kept as a superset across runs) and is only reported as a warning.
+        '''
+        coverage_samples = set(obs_df['sample'].unique())
+        missing_from_metadata = sorted(coverage_samples - self.metadata_samples)
+        unused_in_metadata = sorted(self.metadata_samples - coverage_samples)
+
+        if missing_from_metadata:
+            raise ValueError(
+                'Metadata Check failed: the following sample(s) appear in the coverage/count '
+                f'output but not in the metadata file ({self.metadata_path}), which would '
+                f'otherwise silently produce NaN metadata columns for them: {missing_from_metadata}\n'
+                'Add these samples to the metadata file, or check that the "sample" column '
+                'spelling matches the samples file exactly.'
+            )
+        if unused_in_metadata:
+            print(
+                'WARNING: the following sample(s) in the metadata file have no matching sample '
+                f'in the coverage/count output and will not be used: {unused_in_metadata}',
+                file=sys.stderr
+            )
 
     def _build_coverage_matrix_(self):
         '''

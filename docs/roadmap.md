@@ -8,7 +8,7 @@ Phase 1 is complete: the VST hang, the `obs`/`obsm`/`obsp`/`uns` mapping audit, 
 
 Landmines hit while doing Phase 1's work, relevant to any future code that touches PyDESeq2, AnnData slots, or log2FC/DE -- most directly Phase 4's multi-factor DE engine, which will construct fresh `DeseqDataSet`s the same way these fixes did.
 
-- **PyDESeq2 + zero-heavy tRNA count data hangs on its default size-factor method.** `DeseqDataSet`'s default `size_factors_fit_type='ratio'` silently falls back to its `'iterative'` method whenever every feature has at least one zero-count sample -- normal for tRNA coverage data -- and that method's cost (a `scipy.optimize` Powell search over one parameter per *sample*) blows up non-linearly with sample count: fine at ~50 samples, unresponsive past ~100. Any new code constructing a `DeseqDataSet` (Phase 4's multi-factor engine included) should pass `size_factors_fit_type='poscounts'` explicitly rather than relying on the default. See `adataBuild.py._compute_vst_` and `toolsTG.py.adataLog2FC.log2fc_df` for the fix in place.
+- **PyDESeq2 + zero-heavy tRNA count data hangs on its default size-factor method.** `DeseqDataSet`'s default `size_factors_fit_type='ratio'` silently falls back to its `'iterative'` method whenever every feature has at least one zero-count sample -- normal for tRNA coverage data -- and that method's cost (a `scipy.optimize` Powell search over one parameter per _sample_) blows up non-linearly with sample count: fine at ~50 samples, unresponsive past ~100. Any new code constructing a `DeseqDataSet` (Phase 4's multi-factor engine included) should pass `size_factors_fit_type='poscounts'` explicitly rather than relying on the default. See `adataBuild.py._compute_vst_` and `toolsTG.py.adataLog2FC.log2fc_df` for the fix in place.
 - **Reusing externally-precomputed size factors needs more than `obsm['size_factors']`.** `DeseqDataSet.vst_fit()` only skips its own size-factor recompute when `self.logmeans` is also set (not just `obsm['size_factors']`) -- `logmeans` is otherwise only ever set inside `fit_size_factors()` itself, so setting `obsm['size_factors']` alone gets silently overwritten. See the workaround in `adataBuild.py._compute_vst_` if a future change needs to inject size factors again.
 - **AnnData slot convention: per-obs-aligned data goes in `obsm`, not `uns`.** Anything with one row per (a subset of) `adata.obs_names`, reindexable onto the full obs axis, belongs in `obsm` -- `uns` is for data that genuinely doesn't conform to any axis (different cardinality/shape entirely). See `adataCluster.py.adataCombine`'s sample-vs-group split for a worked example of telling the two cases apart.
 - **DE code must feed PyDESeq2 raw counts, never pre-normalized ones.** PyDESeq2 does its own internal normalization; feeding it an already-normalized (`_norm`) column double-normalizes and biases the fit. Every `adata.obs` readtype column has a raw/normalized pair (`_raw`/`_norm`); always derive the `_raw` column for anything DESeq2-based.
@@ -16,15 +16,8 @@ Landmines hit while doing Phase 1's work, relevant to any future code that touch
 
 ## Phase 2 — Known Issues & Refactoring
 
-Refined 2026-08-19 after a full investigation pass into each item below (current code behavior, tRAX provenance where relevant, and — for the flag/CLI items — which are still load-bearing vs. genuinely dead). Items are scoped to concrete decisions, not open questions; see git history for the investigation this refresh was based on.
-
-### Visualization Enhancements
-
-- **Correlation**: Extend `plotsCorrelation.py` to include non-tRNA features, reusing the three-way pattern (`adata.uns['nontRNA_counts']` / tRNA-only / combined) already implemented in `plotsPca.py`, rather than a new approach.
-
 ### Data Validation
 
-- **Metadata Check**: Add validation to ensure `sample` names in metadata match those in the samples file before writing the AnnData object (currently only column *count* is checked, so mismatches only surface later as a runtime NaN warning).
 - **Parameter Fallback**: Add checks for graphing parameters; default to `sample` if the requested column does not exist in `adata` (currently `plotsCoverage.py`, `plotsCompare.py`, and `plotsHeatmap.py` raise `ValueError` instead of falling back).
 - **Pydantic validation across input files**: Extend the existing pydantic models in `toolsSchemas.py` (currently `VariantTag`/`VariantContribution`, used only internally by the size-split machinery) to cover all four user-facing input files at the point they're read: the metadata/samples file, the `--pairs` file, `--config` filter JSON, and `--colormap` JSON. All four currently use ad hoc parsing (bare `pd.read_csv`/`json.load` with manual, inconsistent checks) that fails late as a downstream `KeyError`, silent `None`, or misleading warning rather than failing fast with a clear validation error.
 
