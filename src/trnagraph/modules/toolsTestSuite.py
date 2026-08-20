@@ -254,7 +254,7 @@ class demoPipeline:
         
         cmd = (
             f"{self.trnagraph_path} preprocess trim "
-            "-i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC"
+            "-i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC --colormap config/colormap.json"
         )
         self._run_command(cmd, "Running trim command...")
         

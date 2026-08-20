@@ -150,12 +150,21 @@ Define custom colors for groups or features. Supports Hex, RGB, or Matplotlib na
   "amino": {
     "Ala": "royalblue",
     "Gly": "#FF9896"
+  },
+  "trimtype": {
+    "Merged": "royalblue",
+    "Unmerged": "lightgrey",
+    "Trimmed": "royalblue",
+    "Discarded": "#B0B0B0"
   }
 }
 ```
 
 > [!NOTE]
 > Some plots default to using group as the default category for plotting making a colormap with this name will override the default colormap in those cases.
+
+> [!NOTE]
+> `preprocess trim --colormap` runs before any AnnData object exists, so it only reads the `trimtype` key -- it doesn't use `group` or any other `adata.obs`-derived key. `Merged`/`Unmerged` only ever appear for paired-end samples (fastp only merges paired input); single-end samples' filter-passing reads are labeled `Trimmed` instead, so the bar categories a given plot shows depend on which library types are in the manifest.
 
 ## Custom Downstream Analysis
 

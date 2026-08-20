@@ -59,6 +59,7 @@ trnagraph preprocess trim -i <manifest> [options]
 - **`-u`, `--umilength`**: Length of the Unique Molecular Identifier (UMI) in base pairs. Set to `0` to disable UMI extraction. Default: `0`.
 - **`--umi3`**: Specifies that the UMI is located at the 3' end of the read. If not set, it is assumed to be at the 5' end. Default: `False` (5' end).
 - **`-n`, `--threads`**: Number of threads to use for fastp. Default: max_cores.
+- **`--colormap`**: Path to a JSON file specifying custom colors for the trim-stats plot's read-type bars, under a top-level `trimtype` key (see [Custom Colormaps](advanced_usage.md#custom-colormaps---colormap)). Falls back to the default palette if omitted or if the file has no `trimtype` key. Recognized bar categories: `Merged`/`Unmerged` (paired-end samples only -- fastp's merge step doesn't run on single-end input), `Trimmed` (single-end samples' filter-passing reads), `Discarded` (either type).
 
 > [!NOTE]
 > If R2_Path is omitted in the manifest file, the sample will be treated as single-end.

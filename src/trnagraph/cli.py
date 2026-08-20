@@ -129,6 +129,7 @@ def trim(
     umilength: int = typer.Option(0, "-u", "--umilength", help="Length of UMI (0 to disable)"),
     umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
+    colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the trim stats plot (top-level 'trimtype' key)"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
@@ -139,10 +140,11 @@ def trim(
             raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
         if not os.path.isfile(input):
             raise Exception(f'Error: Manifest file does not exist: {input}')
-            
+
         args = SimpleNamespace(
             mode='trim', input=input, adapter1=adapter1, adapter2=adapter2,
-            length=length, umilength=umilength, umi3=umi3, threads=threads, log=log, quiet=quiet, verbose=verbose
+            length=length, umilength=umilength, umi3=umi3, threads=threads, colormap=colormap,
+            log=log, quiet=quiet, verbose=verbose
         )
         
         print('Starting fastp trimming pipeline...')

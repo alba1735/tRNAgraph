@@ -15,7 +15,15 @@ class FastpTrimmer:
     def __init__(self, args):
         self.args = args
         self.manifest = args.input
-        
+
+        # Load the colormap if specified (same JSON convention as `analyze graph`'s --colormap,
+        # namespaced under a 'trimtype' top-level key since there's no adata/obs column here)
+        self.colormap = None
+        if getattr(args, 'colormap', None):
+            print('Loading colormap file: ' + args.colormap)
+            with open(args.colormap, 'r') as f:
+                self.colormap = json.load(f).get('trimtype', None)
+
         # Parse Manifest
         self.samples = self._parse_manifest()
 
@@ -225,14 +233,18 @@ class FastpTrimmer:
                 adapter_stats = data.get('adapter_cutting', {})
                 row['Reads_With_Adapter'] = adapter_stats.get('adapter_trimmed_reads', 0)
                 
-                # Merging stats (if paired)
+                # Merging stats -- fastp only attempts merging for paired-end input, so a
+                # single-end sample has no "unmerged" concept at all (every filter-passing
+                # read is simply trimmed, never a merge candidate in the first place).
                 if 'merged_and_filtered' in data:
                     merge_stats = data['merged_and_filtered']
                     row['Merged_Reads'] = merge_stats.get('total_reads', 0)
-                    row['Unmerged_Reads'] = row['Clean_Reads'] - row['Merged_Reads'] 
+                    row['Unmerged_Reads'] = row['Clean_Reads'] - row['Merged_Reads']
+                    row['Trimmed_Reads'] = 0
                 else:
                     row['Merged_Reads'] = 0
-                    row['Unmerged_Reads'] = row['Clean_Reads']
+                    row['Unmerged_Reads'] = 0
+                    row['Trimmed_Reads'] = row['Clean_Reads']
 
                 summary_data.append(row)
 
@@ -266,7 +278,7 @@ class FastpTrimmer:
             # Generate Plot
             plot_out = os.path.join(output_dir, "trim_feature_types.pdf")
             print("Generating feature types plot...")
-            plotsTrimmingStats.visualizer(stats_out, plot_out).plot()
+            plotsTrimmingStats.visualizer(stats_out, plot_out, colormap=self.colormap).plot()
         else:
             print("No JSON reports found to summarize.")
 
