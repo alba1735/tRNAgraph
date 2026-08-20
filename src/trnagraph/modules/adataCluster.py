@@ -1,3 +1,4 @@
+import logging
 import anndata as ad
 import os
 import pandas as pd
@@ -10,6 +11,7 @@ class anndataCluster():
     Class for performing UMAP clustering on an AnnData object
     '''
     def __init__(self, args):
+        self.logger = logging.getLogger(__name__)
         self.adata_original = ad.read_h5ad(args.anndata)
         # Resolve the requested normalization:split-tag ONCE, into a working copy, so
         # adataPreprocess()/adataCluster() read .X/.obs[...] exactly as they do for the
@@ -47,25 +49,25 @@ class anndataCluster():
                 existing_uns = ad.read_h5ad(self.output).uns
                 existing_info = existing_uns if self.variant_spec.tag == 'full' else existing_uns.get('size_splits', {}).get(self.variant_spec.tag, {})
                 if 'cluster_runinfo' in existing_info:
-                    print('Cluster information already present in AnnData object for this variant. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
+                    self.logger.info('Cluster information already present in AnnData object for this variant. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
                     exit()
             except:
-                print('Output file already exists but not in AnnData format. Please remove the file or use the --overwrite option.')
+                self.logger.info('Output file already exists but not in AnnData format. Please remove the file or use the --overwrite option.')
                 exit()
         # Subset the AnnData object to only include samples with a minimum number of reads
-        print('Performing UMAP clustering...')
+        self.logger.info('Performing UMAP clustering...')
         # Preprocess AnnData object
-        print('Preprocessing AnnData object...')
+        self.logger.info('Preprocessing AnnData object...')
         adata_sub_sample = self.adataPreprocess(self.adata.copy())
         adata_sub_group = self.adataPreprocess(self.adata.copy(), grpby='group')
         # # Cluster the data
-        print('Clustering AnnData object...')
+        self.logger.info('Clustering AnnData object...')
         sample_df, sample_graph = self.adataCluster(adata_sub_sample, self.sample_neighbors_plot, self.sample_neighbors_cluster, self.sample_hdbscan_min_samples, self.sample_hdbscan_min_cluster_size, self.sample_n_components, return_graph=True)
         group_df = self.adataCluster(adata_sub_group, self.group_neighbors_plot, self.group_neighbors_cluster, self.group_hdbscan_min_samples, self.group_hdbscan_min_cluster_size, self.group_n_components)
         # Add the cluster information to the ORIGINAL AnnData object (never the resolved
         # view), namespaced per variant so a split-variant cluster run never clobbers another
         # variant's stored cluster results.
-        print('Adding cluster information to original AnnData object...')
+        self.logger.info('Adding cluster information to original AnnData object...')
         self.adata_original = self.adataCombine(self.adata_original, sample_df, 'sample')
         self.adata_original = self.adataCombine(self.adata_original, group_df, 'group')
 
@@ -91,7 +93,7 @@ class anndataCluster():
         else:
             self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['cluster_runinfo'] = cluster_runinfo
         # Save the AnnData object
-        print(f'Writing h5ad database object to: {self.output}')
+        self.logger.info(f'Writing h5ad database object to: {self.output}')
         self.adata_original.write(f'{self.output}')
 
     def adataPreprocess(self, adata, grpby=None):

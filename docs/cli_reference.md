@@ -8,10 +8,11 @@ These options apply to most commands in the toolkit.
 
 | Flag               | Description                                                          | Default         |
 | :----------------- | :------------------------------------------------------------------- | :-------------- |
-| `--log <file>`     | Redirects all output logging to the specified file.                  | `None` (Stdout) |
-| `-q`, `--quiet`    | Suppresses standard output (stdout). Errors are still printed.       | `False`         |
+| `-q`, `--quiet`    | Suppresses console output. A run's log is always persisted regardless -- see below. | `False`         |
 | `-v`, `--verbose`  | Enables detailed execution logs.                                     | `False`         |
 | `--skip-env-check` | Skips the environment validation checks (dependencies and versions). | `False`         |
+
+Every command except `tools test` (which keeps its own fixed `toolsTestSuite.log`, overwritten each run) always writes a timestamped log under `./.log/` (e.g. `.log/20260101_120000_trim.log`), unconditionally -- even under `--quiet`, which only suppresses the console, never the file. There is no `--log <path>` flag to redirect this; on success the log moves into the command's real output directory (next to whatever it produced); on a crash or premature exit, a warning is printed pointing at the log still sitting in `.log/`, and it's left there rather than moved to a possibly-incomplete destination. `.log/` is untracked by git.
 
 ---
 
@@ -344,7 +345,8 @@ trnagraph tools test [options]
 
 **General Options:**
 
-- **`--all`**: Run all tests including split analysis.
+- **`--all`**: Run all tests including split analysis, forcing a clean workspace and full redownload.
+- **`--skip-download`**: Skip the metadata/fastq/tRNA/genome download steps and run everything else. Downloads are already skipped by default when the target files are already present; this forces the skip regardless.
 - **`--cleanrun`**: Clean up test files after completion.
 - **`-d`, `--directory`**: Directory to run tests in.
 

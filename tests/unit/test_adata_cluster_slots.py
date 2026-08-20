@@ -1,4 +1,6 @@
 """Regression tests for anndataCluster.adataCombine's AnnData slot placement (roadmap.md Phase 1: "obs/obsm/obsp/uns mapping audit")."""
+import logging
+
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -21,6 +23,7 @@ def _make_adata(n_obs=6):
 
 def _make_cluster(tag="full"):
     cluster = anndataCluster.__new__(anndataCluster)
+    cluster.logger = logging.getLogger("trnagraph.modules.adataCluster")
     cluster.variant_spec = VariantTag(raw=f"norm:{tag}", norm="norm", tag=tag)
     return cluster
 

@@ -3,10 +3,13 @@
 import pysam
 import sys
 import os.path
+import logging
 from collections import defaultdict
 import itertools
 from multiprocessing import Process, Queue, Pool
 from . import toolsTG
+
+logger = logging.getLogger(__name__)
 
 def getdupes(namelist):
     allset = set()
@@ -331,11 +334,11 @@ def getbamcounts(bamfile, samplename,trnainfo, trnaloci, trnalist,featurelist = 
         bamfile = pysam.Samfile(""+currbam, "rb" )  
     except IOError as xxx_todo_changeme1:
         ( strerror) = xxx_todo_changeme1
-        print(strerror, file=sys.stderr)
+        logger.error(strerror)
         sys.exit(1)
     except pysam.utils.SamtoolsError:
-        print("Can not index "+currbam, file=sys.stderr)
-        print("Exiting...", file=sys.stderr)
+        logger.error("Can not index "+currbam)
+        logger.error("Exiting...")
         sys.exit(1)
         
     
@@ -474,7 +477,7 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
             outbamnofeature =  pysam.Samfile( outname, "wb", template =  bamfile)
     except IOError as xxx_todo_changeme1:
         ( strerror) = xxx_todo_changeme1
-        print(strerror, file=sys.stderr)
+        logger.error(strerror)
         sys.exit()
     #continue #point0
     #print >>sys.stderr, "**||"+currbam
@@ -709,7 +712,7 @@ def printcountfile(countfile, samples,  samplecounts, trnalist, trnaloci, featur
         trnanames.add(genename)
         
         if genename is None:
-            print(currfeat.name, file=sys.stderr)
+            logger.error(currfeat.name)
             sys.exit(1)
         #print >>sys.stderr, list(samplecounts[currsample].getgenecount(currfeat.name) for currsample in samples)
         if max(samplecounts[currsample].getgenecount(genename) for currsample in samples) > minreads:
@@ -878,11 +881,11 @@ def countreads_main(**argdict):
             otherseqdict[name] = list(toolsTG.readbed(currfile))
 
     except IOError as e:
-        print(e, file=sys.stderr)
+        logger.error(e)
         sys.exit()
     allfeats = trnaloci+trnalist
     if len(set(curr.name for curr in allfeats)) < len(list(curr.name for curr in allfeats )):
-        print("Duplicate names in feature list", file=sys.stderr)
+        logger.warning("Duplicate names in feature list")
     
     
     #featurelist = list(curr for curr in featurelist if curr.name == 'unknown20') 
@@ -1197,7 +1200,7 @@ def main(**argdict):
         sizefactor = toolsTG.getsizefactors(argdict["sizefactors"]) 
         for currsample in sampledata.getsamples():
             if currsample not in sizefactor:
-                print("Size factor file "+argdict["sizefactors"]+" missing "+currsample, file=sys.stderr)
+                logger.error("Size factor file "+argdict["sizefactors"]+" missing "+currsample)
                 sys.exit(1)
         
     bedfiles = list()
@@ -1252,7 +1255,7 @@ def main(**argdict):
         for currname, currfile in otherseqs.getseqbeds().items():
             otherseqlist[currname] = getchromdict(toolsTG.readbed(currfile))
     except IOError as e:
-        print(e, file=sys.stderr)
+        logger.error(e)
         sys.exit()
     
     maxmismatches = None

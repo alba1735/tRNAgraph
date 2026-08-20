@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -11,6 +13,7 @@ plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
     def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True):
+        self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.output = output
         self.threaded = threaded
@@ -97,7 +100,7 @@ class visualizer():
         if self.threaded:
             self.threaded += f'Saving figure: {output}umap_{umapgroup}_overview.pdf\n'
         else:
-            print(f'Saving figure: {output}overview_{umapgroup}_overview.pdf')
+            self.logger.info(f'Saving figure: {output}overview_{umapgroup}_overview.pdf')
         plt.savefig(f'{output}overview_{umapgroup}.pdf', bbox_inches='tight')
         plt.close()
 

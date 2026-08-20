@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys
+import logging
 
 import numpy as np
 
@@ -12,6 +12,8 @@ plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
+
+logger = logging.getLogger(__name__)
 
 def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True):
     # Fall back to 'sample' (with a warning) if the specified columns aren't in the AnnData object
@@ -33,9 +35,8 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True)
         # the Parameter Fallback default) -- its 'log2'/'pval' column levels don't exist at all
         # in that case, so skip this countgrp instead of a KeyError on the .loc[:, ('log2')] below.
         if 'log2' not in df.columns.get_level_values('stats'):
-            print(
-                f'WARNING: no valid {comparegrp1}/{comparegrp2} pairs found for {countgrp}; skipping compare plot.',
-                file=sys.stderr
+            logger.warning(
+                f'WARNING: no valid {comparegrp1}/{comparegrp2} pairs found for {countgrp}; skipping compare plot.'
             )
             continue
         # Sort the df by the mean of the log2 fold change
@@ -91,7 +92,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True)
                 threaded += f'Saving figure to {output}...\n'
                 return threaded
             else:
-                print(f'Saving figure to {output}...')
+                logger.info(f'Saving figure to {output}...')
 
 if __name__ == '__main__':
     pass

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import pandas as pd
 import anndata as ad
 
@@ -8,6 +10,8 @@ plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
+
+logger = logging.getLogger(__name__)
 
 def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title, threaded):
     '''
@@ -20,14 +24,14 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
         if threaded:
             threaded += msg + '\n'
         else:
-            print(msg)
+            logger.warning(msg)
         return threaded
 
     msg = f'Generating correlation matrix for {title}'
     if threaded:
         threaded += msg + '\n'
     else:
-        print(msg)
+        logger.info(msg)
 
     df_corr = df_wide.corr(method=corr_method)
     plt.figure(figsize=(6, 6))
@@ -42,7 +46,7 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
     if threaded:
         threaded += msg + '\n'
     else:
-        print(msg)
+        logger.info(msg)
     plt.close()
     return threaded
 
@@ -88,7 +92,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
         if threaded:
             threaded += msg + '\n'
         else:
-            print(msg)
+            logger.warning(msg)
     else:
         sample_to_group = dict(zip(adata.obs['sample'].astype(str), adata.obs[corr_group].astype(str)))
 
@@ -113,7 +117,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
             if threaded:
                 threaded += msg + '\n'
             else:
-                print(msg)
+                logger.warning(msg)
         else:
             sf_map = {k: float(v) for k, v in dict(allfeature_sizefactors).items()}
             total_df = pd.DataFrame(adata.obs, columns=['trna', 'sample', 'nreads_total_raw'])
@@ -123,7 +127,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             total_df['nreads_total_norm_allfeatures'] = total_df['nreads_total_raw'] / total_df['sample'].astype(str).map(lambda s: sf_map.get(s, 1.0))
             total_wide = total_df.pivot_table(index='trna', columns='sample', values='nreads_total_norm_allfeatures', observed=True)
 
@@ -139,14 +143,14 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
 
             if len(shared_cols) == 0:
                 msg = 'No overlapping sample columns between tRNA and non-tRNA counts. Skipping combined correlation matrix.'
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             else:
                 combined_df = pd.concat([total_wide[shared_cols], nontrna_df[shared_cols]], axis=0)
                 combined_grouped = _collapse_to_corr_group(combined_df, sample_to_group, corr_group)

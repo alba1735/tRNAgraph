@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+import logging
 import pysam
 from pathlib import Path
 from typing import List, Optional, Union, Any
@@ -40,7 +41,8 @@ class TrackHubBuilder:
         self.samplefilename = samplefilename
         self.expname = expname
         self.threads = threads
-        
+        self.logger = logging.getLogger(__name__)
+
         self.sampledata = samplefile(self.samplefilename)
         self.trackdir = Path(self.expname) / "trackhub"
         
@@ -53,8 +55,8 @@ class TrackHubBuilder:
     def get_location(self, program: str, allowfail: bool = False) -> Optional[str]:
         progloc = which(program)
         if progloc is None and not allowfail:
-            print(f"Could not find {program} in path", file=sys.stderr)
-            print("Aborting", file=sys.stderr)
+            self.logger.error(f"Could not find {program} in path")
+            self.logger.error("Aborting")
             sys.exit(1)
         return progloc
 
@@ -63,7 +65,7 @@ class TrackHubBuilder:
             tempprefix = f"{Path(inputbam).stem}_{os.getpid()}"
             temp_dir = tempfile.gettempdir()
             
-            print(f"Converting {inputbam} to genome coordinates...", file=sys.stderr)
+            self.logger.info(f"Converting {inputbam} to genome coordinates...")
             
             # Prepare sorting process
             sort_cmd = f"samtools sort -T {temp_dir}/convert{tempprefix} - -o {outputbam}"
@@ -200,29 +202,29 @@ class TrackHubBuilder:
                 sort_process.wait()
                 
                 if sort_process.returncode != 0:
-                    print("Failure to convert bam to genome space", file=sys.stderr)
+                    self.logger.error("Failure to convert bam to genome space")
                     sys.exit(1)
                 
                 subprocess.check_call(f"samtools index {outputbam}", shell=True, stderr=logfile)
                 
             except Exception as e:
-                print(f"Error converting BAM: {e}", file=sys.stderr)
+                self.logger.error(f"Error converting BAM: {e}")
                 if sort_process.poll() is None:
                     sort_process.kill()
                 sys.exit(1)
-                
+
         else:
-            print(f"Skipping {outputbam} (already exists)", file=sys.stderr)
+            self.logger.warning(f"Skipping {outputbam} (already exists)")
 
     def samtoolsmerge(self, bamfiles: List[str], outbam: str, force: bool = False) -> None:
         samtoolsloc = self.get_location("samtools")
         if not os.path.isfile(outbam) or force:
             samcommand = [samtoolsloc, "merge", "-f", outbam] + bamfiles
             
-            print(" ".join(samcommand), file=sys.stderr)
+            self.logger.info(" ".join(samcommand))
             result = subprocess.run(samcommand, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, check=False)
             if result.stdout:
-                print(result.stdout, file=sys.stderr)
+                self.logger.info(result.stdout)
 
     def createmultiwigtrackdb(self, trackfile: Any, shortlabel: str = "", longlabel: str = "", suffix: str = '', startpriority: float = 3.0, stacked: bool = False) -> None:
         trackcolors = ['0,217,47', '47,142,248', '220,21,235', '264,115,6', '95,238,230']
@@ -310,7 +312,7 @@ class TrackHubBuilder:
                 currpriority += 0.2
 
     def makebigwigs(self, bamfile: str, repname: str, faifile: str, directory: Union[str, Path], suffix: str = '', scalefactor: float = 1) -> None:
-        print(faifile, file=sys.stderr)
+        self.logger.info(faifile)
         
         # Pipeline: samtools view -> genomeCoverageBed -> sort -> temp_bedgraph
         
@@ -320,7 +322,7 @@ class TrackHubBuilder:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp_plus:
             tmp_plus_name = tmp_plus.name
             
-        print(f"Generating Plus strand BigWig for {repname}...", file=sys.stderr)
+        self.logger.info(f"Generating Plus strand BigWig for {repname}...")
         # Run pipeline to generate bedgraph
         full_cmd_plus = f"{cmd_pipeline} > {tmp_plus_name}"
         subprocess.run(full_cmd_plus, shell=True, check=True)
@@ -336,7 +338,7 @@ class TrackHubBuilder:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp_minus:
             tmp_minus_name = tmp_minus.name
             
-        print(f"Generating Minus strand BigWig for {repname}...", file=sys.stderr)
+        self.logger.info(f"Generating Minus strand BigWig for {repname}...")
         full_cmd_minus = f"{cmd_pipeline_minus} > {tmp_minus_name}"
         subprocess.run(full_cmd_minus, shell=True, check=True)
         
@@ -376,11 +378,11 @@ class TrackHubBuilder:
             with Pool(processes=self.threads) as pool:
                 results = pool.starmap(self.maketracks, trackargs)
                 for i, res in enumerate(results):
-                    print(f"{res}:{time.time() - starttime}", file=sys.stderr)
+                    self.logger.info(f"{res}:{time.time() - starttime}")
         else:
             for args in trackargs:
                 res = self.maketracks(*args)
-                print(f"{res}:{time.time() - starttime}", file=sys.stderr)
+                self.logger.info(f"{res}:{time.time() - starttime}")
 
         with open(self.trackdir / "trackdb.txt", "w") as trackfile:
             self.createmultiwigtrackdb(trackfile, shortlabel="all", longlabel="all")

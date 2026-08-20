@@ -2,6 +2,7 @@ import anndata as ad
 import os
 import multiprocessing
 import json
+import logging
 import warnings
 from pydantic import ValidationError
 warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
@@ -17,6 +18,7 @@ class anndataGrapher:
     Class to generate graphs from an AnnData object by calling the appropriate graphing functions
     '''
     def __init__(self, args):
+        self.logger = logging.getLogger(__name__)
         self.args = args
         self.adata_original = ad.read_h5ad(self.args.anndata)
         # Resolve the requested normalization:split-tag ONCE, into a working copy, so every
@@ -47,7 +49,7 @@ class anndataGrapher:
                 self.args.threads = multiprocessing.cpu_count()
         # Load config file if specified
         if self.args.config:
-            print('Loading config file: ' + self.args.config)
+            self.logger.info('Loading config file: ' + self.args.config)
             with open(self.args.config, 'r') as f:
                 raw_config = json.load(f)
             try:
@@ -56,7 +58,7 @@ class anndataGrapher:
                 raise ValueError(f'Invalid config file {self.args.config}:\n{e}') from e
             self.args.output += '/' + config.name
             self.config_name = config.name
-            print(toolsTG.builder(self.args.output))
+            self.logger.info(toolsTG.builder(self.args.output))
             if config.obs is not None or config.obs_r is not None:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
@@ -67,7 +69,7 @@ class anndataGrapher:
                     for k,v in config.obs_r.items():
                         filter_dict[k] = [i for i in self.adata.obs[k].unique() if i not in v]
                 for k,v in filter_dict.items():
-                    print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
+                    self.logger.info('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
                     # Filter all uns columns by the observation and update the obs_dict
                     sub_obs_dict = dict(zip(self.adata.obs['sample'], self.adata.obs[k]))
                     sub_obs_dict.update(dict(zip(self.adata.obs['group'], self.adata.obs[k])))
@@ -87,22 +89,22 @@ class anndataGrapher:
                     for k,v in config.var_r.items():
                         filter_dict[k] = [i for i in self.adata.var[k].unique() if i not in v]
                 for k,v in filter_dict.items():
-                    print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
+                    self.logger.info('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
                     self.adata = self.adata[:, self.adata.var[k].isin(v)]
-            print('Config file loaded.\n')
+            self.logger.info('Config file loaded.\n')
 
         else:
             self.args.config = {}
         # Load the colormap if specified
         if self.args.colormap:
-            print('Loading colormap file: ' + self.args.colormap)
+            self.logger.info('Loading colormap file: ' + self.args.colormap)
             with open(self.args.colormap, 'r') as f:
                 raw_colormap = json.load(f)
             try:
                 self.args.colormap = ColormapFile.model_validate(raw_colormap).root
             except ValidationError as e:
                 raise ValueError(f'Invalid colormap file {self.args.colormap}:\n{e}') from e
-            print('Colormap loaded.\n')
+            self.logger.info('Colormap loaded.\n')
         # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
         # This is done now to prevent saving issues later if multiprocessing is used
         log2FC_dict = self.adata.uns['log2FC'].copy()
@@ -117,7 +119,7 @@ class anndataGrapher:
             for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
                 toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
         if log2FC_dict != self.adata.uns['log2FC'] or self.args.regen_uns:
-            print('The log2FC uns dictionary has been updated.\n')
+            self.logger.info('The log2FC uns dictionary has been updated.\n')
             # Persist onto the ORIGINAL (unresolved) adata, into the correct namespaced
             # location -- never write self.adata (the resolved view) back to disk, since for a
             # split variant it would overwrite the real full/default variant's data.
@@ -142,9 +144,9 @@ class anndataGrapher:
     def main(self):
         # Generate graphs
         if self.args.verbose:
-            print('Generating graphs with the following parameters:\n')
-            for i in self.args.__dict__: print(f'{i}: {self.args.__dict__[i]}')
-            print('')
+            self.logger.info('Generating graphs with the following parameters:\n')
+            for i in self.args.__dict__: self.logger.info(f'{i}: {self.args.__dict__[i]}')
+            self.logger.info('')
         # Remove coverage from self.args.graphtypes and add it to non_pooled_graphs
         non_pooled_graphs = []
         # if 'bar' in self.args.graphtypes:
@@ -156,7 +158,7 @@ class anndataGrapher:
             non_pooled_graphs.append('coverage')
         # Pool if applicable
         if self.args.threads > 1 and len(self.args.graphtypes) > 1:
-            print(f'Multithreading enabled with {self.args.threads} threads to generate plots\n')
+            self.logger.info(f'Multithreading enabled with {self.args.threads} threads to generate plots\n')
             # Create a multiprocessing pool
             pool = multiprocessing.Pool(self.args.threads)
             # Generate graphs
@@ -168,7 +170,7 @@ class anndataGrapher:
                 self.plot(gt)
             for po in pool_output:
                 if po:
-                    print(po + '\n')
+                    self.logger.info(po + '\n')
         else:
             # Combine non_pooled_graphs with self.args.graphtypes
             self.args.graphtypes += non_pooled_graphs
@@ -179,7 +181,7 @@ class anndataGrapher:
         if threaded:
             threaded = f'Generating {gt} plots...\n'
         else:
-            print(f'Generating {gt} plots...')
+            self.logger.info(f'Generating {gt} plots...')
         adata_c = self.adata.copy()
         # Define the colormap to use for the graph type
         colormap = None
@@ -199,14 +201,14 @@ class anndataGrapher:
         if threaded:
             threaded += toolsTG.builder(output) + '\n'
         else:
-            print(toolsTG.builder(output))
+            self.logger.info(toolsTG.builder(output))
         # Plot specific parameters
         if gt == 'cluster':
             if not 'cluster_runinfo' in self.adata.uns:
                 if threaded:
                     threaded += 'No cluster run information found in AnnData object. Please run the cluster command first.\n'
                 else:
-                    print('No cluster run information found in AnnData object. Please run the cluster command first.\n')
+                    self.logger.warning('No cluster run information found in AnnData object. Please run the cluster command first.\n')
             else:
                 threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded).generate_plots()
         if gt == 'compare':
@@ -218,13 +220,13 @@ class anndataGrapher:
         if gt == 'coverage':
             pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output)
             # Generate folders/subfolders if coveragecombine is specified
-            print(toolsTG.builder(f'{output}{self.args.covobs}/'))
-            print(toolsTG.builder(f'{output}{self.args.covobs}/low_coverage/'))
+            self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/'))
+            self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/low_coverage/'))
             # Generate coverage plots with combine or split pdfs
             if not self.args.combinedpdfonly:
-                print('Generating individual coverage plots pdfs...')
+                self.logger.info('Generating individual coverage plots pdfs...')
                 pcV.generate_split()
-            print('Generating combined coverage plots pdf...')
+            self.logger.info('Generating combined coverage plots pdf...')
             pcV.generate_combine()
         if gt == 'heatmap':
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.diffrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
@@ -245,4 +247,4 @@ class anndataGrapher:
             threaded += f'{gt.capitalize()} plots generated!\n'
             return threaded
         else:
-            print(f'{gt.capitalize()} plots generated!\n')
+            self.logger.info(f'{gt.capitalize()} plots generated!\n')

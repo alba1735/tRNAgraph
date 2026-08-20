@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -10,6 +12,8 @@ from matplotlib.lines import Line2D
 from adjustText import adjust_text
 
 from . import toolsTG
+
+logger = logging.getLogger(__name__)
 
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
@@ -139,7 +143,7 @@ def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output
     if threaded:
         threaded += f'Saving figure: {filename}\n'
     else:
-        print(f'Saving figure: {filename}')
+        logger.info(f'Saving figure: {filename}')
     plt.savefig(filename, bbox_inches='tight')
     plt.close(fig)
     return threaded
@@ -190,7 +194,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
     if threaded:
         threaded += toolsTG.builder(individual_output) + '\n'
     else:
-        print(toolsTG.builder(individual_output))
+        logger.info(toolsTG.builder(individual_output))
 
     if colormap:
         colormap = {k: v if v[0] != '#' else mplcolors.to_rgb(v) for k, v in colormap.items()}
@@ -228,7 +232,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
         if threaded:
             threaded += msg + '\n'
         else:
-            print(msg)
+            logger.warning(msg)
     else:
         sample_group_map = dict(zip(adata.obs['sample'].astype(str), adata.obs[grp]))
 
@@ -252,7 +256,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
             if threaded:
                 threaded += msg + '\n'
             else:
-                print(msg)
+                logger.warning(msg)
         else:
             sf_map = {k: float(v) for k, v in dict(allfeature_sizefactors).items()}
             total_df = pd.DataFrame(adata.obs, columns=['trna', 'sample', 'nreads_total_raw'])
@@ -262,7 +266,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             total_df['nreads_total_norm_allfeatures'] = total_df['nreads_total_raw'] / total_df['sample'].astype(str).map(lambda s: sf_map.get(s, 1.0))
             total_df = total_df.pivot_table(index='trna', columns='sample', values='nreads_total_norm_allfeatures', observed=True)
 
@@ -278,14 +282,14 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
 
             if len(shared_cols) == 0:
                 msg = 'No overlapping sample columns between tRNA and non-tRNA counts. Skipping combined volcano plot.'
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             else:
                 combined_df = pd.concat([total_df[shared_cols], nontrna_df[shared_cols]], axis=0)
                 combined_feature_types = pd.Series(
@@ -313,7 +317,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
         if threaded:
             threaded += f'Saving combined volcano overview: {overview_path}\n'
         else:
-            print(f'Saving combined volcano overview: {overview_path}')
+            logger.info(f'Saving combined volcano overview: {overview_path}')
 
     if threaded:
         return threaded

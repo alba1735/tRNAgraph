@@ -1,4 +1,5 @@
 """Regression tests for AnnDataBuilder._compute_vst_ (roadmap.md Phase 1: "VST hanging/failing on large datasets")."""
+import logging
 import signal
 import time
 
@@ -52,6 +53,7 @@ def test_compute_vst_stays_fast_at_moderate_sample_count():
     n_obs = 150
     x_norm, x_raw, sizefactors, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
     builder = AnnDataBuilder.__new__(AnnDataBuilder)
+    builder.logger = logging.getLogger("test_vst")
 
     def _handler(signum, frame):
         raise TimeoutError(f"_compute_vst_ exceeded the {ALARM_S}s alarm bound")
@@ -84,6 +86,7 @@ def test_compute_vst_uses_provided_size_factors():
     n_obs = 40
     x_norm, x_raw, _, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
     builder = AnnDataBuilder.__new__(AnnDataBuilder)
+    builder.logger = logging.getLogger("test_vst")
 
     sf_uniform = np.ones(n_obs)
     sf_skewed = np.concatenate([np.full(n_obs // 2, 0.3), np.full(n_obs - n_obs // 2, 3.0)])

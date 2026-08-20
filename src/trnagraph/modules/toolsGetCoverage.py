@@ -6,12 +6,15 @@ import re
 import gzip
 import string
 import itertools
+import logging
 import multiprocessing
 from collections import defaultdict
 from typing import List, Dict, Set, Tuple, Optional, Union, Generator, Any, Iterable
 import pysam
 import numpy as np
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # --- Helper functions and classes from trnasequtils (modernized) ---
 try:
@@ -54,6 +57,7 @@ class ReadCoverage:
         self.coverage = [0] * region.length()
         self.totalreads = 0
         self.length = region.length()
+        self.logger = logging.getLogger(__name__)
 
     def coveragealign(self, alignment: str, sizefactor: float = 1.0) -> Generator[Optional[float], None, None]:
         # Check alignment length
@@ -62,7 +66,7 @@ class ReadCoverage:
              # This might happen if the bed file and alignment don't match
              # For now, we'll just print a warning and return None or 0s?
              # The original code exits.
-             print(f"Alignment length mismatch: Cov={len(self.coverage)}, Align={len(align_no_gaps)}", file=sys.stderr)
+             self.logger.warning(f"Alignment length mismatch: Cov={len(self.coverage)}, Align={len(align_no_gaps)}")
              return
 
         i = 0
@@ -101,7 +105,7 @@ def nasum(operands: Iterable[Any]) -> Any:
     if all(curr == "NA" for curr in ops):
         return "NA"
     if any(curr == "NA" for curr in ops):
-        print("Trying to add incompatible alignments", file=sys.stderr)
+        logger.error("Trying to add incompatible alignments")
         sys.exit(1)
     return sum(ops)
 
@@ -222,7 +226,7 @@ def getlocicoverage(currsample: str, sampledata: toolsTG.samplefile, trnaloci: L
             pysam.index(currbam)
         bamfile = pysam.AlignmentFile(currbam, "rb")
     except IOError as e:
-        print(f"{e}", file=sys.stderr)
+        logger.error(f"{e}")
         sys.exit(1)
         
     for currfeat in trnaloci:
@@ -278,7 +282,7 @@ def getsamplecoverage(currsample: str, sampledata: toolsTG.samplefile, trnalist:
             pysam.index(currbam)
         bamfile = pysam.AlignmentFile(currbam, "rb")
     except IOError as e:
-        print(f"{e}", file=sys.stderr)
+        logger.error(f"{e}")
         sys.exit(1)
         
     for currfeat in trnalist:
@@ -593,7 +597,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
         sizefactor_dict.update(toolsTG.getsizefactors(sizefactors))
         for currsample in sampledata.getsamples():
             if currsample not in sizefactor_dict:
-                print(f"Size factor file {sizefactors} missing {currsample}", file=sys.stderr)
+                logger.error(f"Size factor file {sizefactors} missing {currsample}")
                 sys.exit(1)
 
     with open(stkfile, "r") as f:

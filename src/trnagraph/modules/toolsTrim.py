@@ -8,7 +8,7 @@ import subprocess
 import pandas as pd
 import multiprocessing
 from pydantic import ValidationError
-from . import plotsTrimmingStats
+from . import plotsTrimmingStats, toolsTG
 from .toolsSchemas import ColormapFile
 
 class FastpTrimmer:
@@ -191,6 +191,14 @@ class FastpTrimmer:
         except FileNotFoundError:
             return (output_prefix, False, "fastp executable not found in PATH.")
 
+    def _run_process_unpacked(self, task):
+        '''
+        pool.imap_unordered() calls its worker function with a single argument, unlike
+        starmap's automatic tuple-unpacking -- this just adapts _run_process() to that.
+        '''
+        name, files = task
+        return self._run_process(name, files)
+
     def process(self):
         '''
         Main execution block
@@ -200,13 +208,22 @@ class FastpTrimmer:
 
         tasks = [(name, files) for name, files in self.samples.items()]
 
+        # imap_unordered (rather than starmap) so progress_iterator gets a real per-sample
+        # completion signal to report on -- starmap blocks and hands back every result at once,
+        # with no way to know how far through a many-hour run it is. Safe to consume out of
+        # task order: the loop below reads `name` out of each result tuple rather than relying
+        # on positional alignment with `tasks`.
         with multiprocessing.Pool(self.jobs) as pool:
-            results = pool.starmap(self._run_process, tasks)
+            results = list(toolsTG.progress_iterator(
+                pool.imap_unordered(self._run_process_unpacked, tasks),
+                total=len(tasks), desc="Trimming samples", logger=self.logger,
+                quiet=getattr(self.args, 'quiet', False),
+            ))
 
         # Check results. fastp's own stderr (per-sample summary/diagnostic output) is logged
         # here -- back in the parent process, sequentially, after the pool returns -- for every
-        # sample regardless of success/failure, so --log captures it even on success instead of
-        # discarding it entirely.
+        # sample regardless of success/failure, so it's persisted to the run's log file even on
+        # success instead of discarding it entirely.
         failed = []
         for name, success, stderr in results:
             if not success:

@@ -3,9 +3,11 @@
 import os
 import sys
 import json
+import shutil
 import logging
 import contextlib
 import typer
+from datetime import datetime
 from typing import Optional, List
 from types import SimpleNamespace
 
@@ -33,20 +35,46 @@ except ImportError:
     from tRNAgraph.modules import env_check
     from tRNAgraph import __version__
 
-def configure_logging(log_file: Optional[str] = None, quiet: bool = False) -> logging.Logger:
-    """
-    Configure the shared 'trnagraph' logger's handlers for one CLI invocation, from the
-    --log/--quiet flags common to most commands. This is the ONE place handlers get attached:
-    per Python's own logging documentation, library/module code should never configure its own
-    handlers, only call `logging.getLogger(__name__)` and log -- messages then propagate up
-    from e.g. 'trnagraph.modules.toolsTrim' to this 'trnagraph' logger for free. Centralizing
-    it here means every module converted under the roadmap's "Logging" item gets --log/--quiet
-    support automatically, without reimplementing handler setup per file.
 
-    --log and stdout are mutually exclusive (matching handle_output()'s own all-or-nothing
-    stdout redirect below) rather than both active, since handle_output() may *also* redirect
-    sys.stdout to this same --log path -- a StreamHandler(sys.stdout) attached here as well
-    would duplicate every line into the file.
+def _adata_basename(anndata_path: str) -> str:
+    """Basename of an .h5ad path, extension stripped -- used to disambiguate log filenames for
+    commands centered on a single anndata object, since multiple .h5ad files commonly live in
+    the same directory."""
+    return os.path.splitext(os.path.basename(anndata_path))[0]
+
+
+class _Tee:
+    """
+    Duplicates writes to multiple underlying streams. Used to make print() calls (not yet
+    converted to logging -- most of the codebase, per the roadmap's "Logging" item) land in
+    both the persisted .log/ file and the console (unless --quiet), without needing every call
+    site converted first.
+    """
+    def __init__(self, *streams):
+        self._streams = [s for s in streams if s is not None]
+
+    def write(self, data):
+        for s in self._streams:
+            s.write(data)
+
+    def flush(self):
+        for s in self._streams:
+            s.flush()
+
+    def isatty(self):
+        return any(getattr(s, 'isatty', lambda: False)() for s in self._streams)
+
+
+def configure_logging(log_path: str, quiet: bool) -> logging.Logger:
+    """
+    Configure the shared 'trnagraph' logger's handlers for one CLI invocation: a FileHandler on
+    `log_path` (always attached -- file logging is unconditional, independent of --quiet, which
+    only ever suppresses the console) plus a StreamHandler on the real console (only if not
+    quiet, tagged `_is_console_handler` so toolsTG.progress_iterator() can find and temporarily
+    detach exactly this one handler for a live rich display, without touching the FileHandler).
+    Per Python's own logging documentation, library/module code should never configure its own
+    handlers, only call `logging.getLogger(__name__)` and log -- messages then propagate up
+    from e.g. 'trnagraph.modules.toolsTrim' to this 'trnagraph' logger for free.
     """
     logger = logging.getLogger('trnagraph')
     logger.setLevel(logging.INFO)
@@ -54,42 +82,57 @@ def configure_logging(log_file: Optional[str] = None, quiet: bool = False) -> lo
     for handler in logger.handlers[:]:
         handler.close()
         logger.removeHandler(handler)
-    if log_file:
-        file_handler = logging.FileHandler(log_file, mode='w')
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(file_handler)
-    elif not quiet:
+
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
+
+    if not quiet:
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(logging.Formatter('%(message)s'))
+        stream_handler._is_console_handler = True
         logger.addHandler(stream_handler)
+
     return logger
 
 @contextlib.contextmanager
-def handle_output(log_file: Optional[str] = None, quiet: bool = False):
+def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, name_suffix: Optional[str] = None):
     """
-    Context manager to handle output redirection for logging and quiet mode. Also configures
-    the shared 'trnagraph' logger (see configure_logging()) for the duration of the command.
+    Context manager wrapping one CLI command's whole run. Always persists a timestamped log to
+    ./.log/ (untracked by git; see .gitignore's existing `.log` entry), independent of --quiet,
+    which only suppresses the console, never the file. On success, moves that log into
+    `destination` (the command's real output location) if given. On any exception, prints a
+    warning to stderr (visible even under --quiet, since a failed run should never be silent)
+    pointing at the log still sitting in .log/, and deliberately skips the move -- the
+    destination may not have been fully or correctly produced by a run that crashed.
+
+    `name_suffix` (e.g. an input anndata's basename) is appended to the filename for commands
+    where multiple objects could plausibly share one directory.
     """
-    logger = configure_logging(log_file, quiet)
+    os.makedirs('.log', exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'{timestamp}_{tool}' + (f'_{name_suffix}' if name_suffix else '') + '.log'
+    log_path = os.path.join('.log', filename)
+
+    real_stdout = sys.stdout
+    logger = configure_logging(log_path, quiet)
+    failed = False
     try:
-        if log_file:
-            # Redirect stdout to the log file
-            # We use 'w' mode to overwrite the log file, consistent with original behavior
-            with open(log_file, 'w') as f:
-                with contextlib.redirect_stdout(f):
-                    yield
-        elif quiet:
-            # Redirect stdout to devnull
-            with open(os.devnull, 'w') as f:
-                with contextlib.redirect_stdout(f):
-                    yield
-        else:
-            # Normal execution - output to stdout
-            yield
+        with open(log_path, 'a') as log_fileobj:
+            tee = _Tee(log_fileobj, None if quiet else real_stdout)
+            with contextlib.redirect_stdout(tee):
+                yield
+    except Exception:
+        failed = True
+        sys.stderr.write(f"WARNING: {tool} failed -- see {log_path} for details.\n")
+        raise
     finally:
         for handler in logger.handlers[:]:
             handler.close()
             logger.removeHandler(handler)
+        if not failed and destination:
+            os.makedirs(destination, exist_ok=True)
+            shutil.move(log_path, os.path.join(destination, filename))
 
 app = typer.Typer(
     help="tRNAgraph is a tool for for advanced analysis of tRNA-seq data.",
@@ -142,19 +185,21 @@ def makedb(
     forcecca: bool = typer.Option(False, "--forcecca", help="Force addition of CCA tail"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     output: str = typer.Option("db", "-o", "--output", help="Specify output directory/name for bowtie2 index files"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # -o is a name prefix (e.g. "references/vibrChol1/trnadb/vibrChol1_db"), not itself a
+    # directory -- the index files land in its dirname.
+    destination = os.path.dirname(output) or "."
+    with handle_output(quiet, tool="makedb", destination=destination):
         if not os.path.isfile(genome):
             raise Exception('Error: genome fasta file does not exist.')
-        
+
         args = SimpleNamespace(
             mode='makedb', genome=genome, trnaout=trnaout, trnafa=trnafa, namemap=namemap,
             addtrna=addtrna, addseqs=addseqs, orgmode=orgmode, forcecca=forcecca,
-            threads=threads, output=output, log=log, quiet=quiet
+            threads=threads, output=output, quiet=quiet
         )
-        
+
         print('Building tRNA database...')
         toolsTDatabase.tRNADatabaseBuilder(args).main()
         print('Done!\n')
@@ -169,12 +214,22 @@ def trim(
     umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
     colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the trim stats plot (top-level 'trimtype' key)"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
-    with handle_output(log, quiet):
-        import shutil
+    # Same directory _generate_summary() writes trim_stats.csv/trim_feature_types.pdf to: the
+    # first manifest entry's output-prefix directory, falling back to processed/trimmed exactly
+    # like toolsTrim.py's own FastpTrimmer._construct_command() does.
+    destination = "processed/trimmed"
+    if os.path.isfile(input):
+        with open(input, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    first_prefix = line.split()[0]
+                    destination = os.path.dirname(first_prefix) or "processed/trimmed"
+                    break
+    with handle_output(quiet, tool="trim", destination=destination):
         if shutil.which('fastp') is None:
             raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
         if not os.path.isfile(input):
@@ -183,9 +238,9 @@ def trim(
         args = SimpleNamespace(
             mode='trim', input=input, adapter1=adapter1, adapter2=adapter2,
             length=length, umilength=umilength, umi3=umi3, threads=threads, colormap=colormap,
-            log=log, quiet=quiet, verbose=verbose
+            quiet=quiet, verbose=verbose
         )
-        
+
         print('Starting fastp trimming pipeline...')
         toolsTrim.FastpTrimmer(args).process()
         print('Done!\n')
@@ -201,16 +256,18 @@ def map_cmd(
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
     skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # -o is an "experiment name", not itself a directory map writes to -- the actual mapped BAM
+    # output goes to --bamdir (or its default).
+    destination = bamdir or f"processed/{output}_bam"
+    with handle_output(quiet, tool="map", destination=destination):
         args = SimpleNamespace(
             mode='map', output=output, database=database, input=input,
             lazy=lazy, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
-            bamdir=bamdir, log=log, quiet=quiet
+            bamdir=bamdir, quiet=quiet
         )
-        
+
         print('Mapping samples...')
         toolsMap.MapSamples(args).main()
         print('Done!\n')
@@ -240,23 +297,21 @@ def build(
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object"),
     vst: str = typer.Option("log1p", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
-    
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # Output is a directory path - h5ad filename is based on the directory basename
+    output_dir = os.path.abspath(output)
+    with handle_output(quiet, tool="build", destination=output_dir):
         if not os.path.isfile(input):
             raise Exception('Error: metadata file does not exist.')
-            
+
         print('Building AnnData object...')
-        # Output is a directory path - h5ad filename is based on the directory basename
-        output_dir = os.path.abspath(output)
         h5ad_filename = os.path.basename(output_dir) + '.h5ad'
         print(toolsTG.builder(output_dir))
-        
+
         # Update output to be the full h5ad path inside the directory
         full_output_path = os.path.join(output_dir, h5ad_filename)
-        
+
         args = SimpleNamespace(
             mode='build', input=input, output=full_output_path,
             database=database, gtf=gtf, pairs=pairs,
@@ -264,10 +319,9 @@ def build(
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
-            vst=vst,
-            log=log, quiet=quiet
+            vst=vst, quiet=quiet
         )
-        
+
         # Create AnnData object
         adataBuild.AnnDataBuilder(output_dir, input, full_output_path, args).create()
         print('Done!\n')
@@ -288,10 +342,12 @@ def addsplit(
     output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite this cutoff's u<N>/o<N> data if already present in the object"),
     force: bool = typer.Option(False, "--force", help="Proceed even if explicitly-overridden parameters conflict with the object's original build provenance"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # add_split() itself resolves output_path = args.output or args.anndata (and writes there);
+    # replicate that resolution here to know the destination before any work starts.
+    destination = os.path.dirname(os.path.abspath(output or anndata_path))
+    with handle_output(quiet, tool="addsplit", destination=destination, name_suffix=_adata_basename(anndata_path)):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -299,7 +355,7 @@ def addsplit(
             mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
             bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst,
             overwritebams=overwritebams, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
-            log=log, quiet=quiet
+            quiet=quiet
         )
 
         print('Adding split variant to database object...\n')
@@ -330,25 +386,24 @@ def cluster(
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to cluster, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
     output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    output_path = os.path.abspath(output)
+    output_dir = os.path.dirname(output_path)
+    with handle_output(quiet, tool="cluster", destination=output_dir or ".", name_suffix=_adata_basename(anndata)):
         if not os.path.isfile(anndata):
             raise Exception('Error: h5ad file does not exist.')
-            
-        output_path = os.path.abspath(output)
-        output_dir = os.path.dirname(output_path)
+
         if output_dir:
             print(toolsTG.builder(output_dir))
-            
+
         args = SimpleNamespace(
             mode='cluster', anndata=anndata, randomstate=randomstate, readcutoff=readcutoff, coveragetype=coveragetype,
             ncomponentsmp=ncomponentsmp, ncomponentgrp=ncomponentgrp, neighborclusmp=neighborclusmp, neighborclusgrp=neighborclusgrp,
             neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
             hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
             umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
-            variant=variant, overwrite=overwrite, output=output_path, log=log, quiet=quiet
+            variant=variant, overwrite=overwrite, output=output_path, quiet=quiet
         )
         
         print('Clustering data from database object...\n')
@@ -365,7 +420,6 @@ def graph(
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60', 'allfeatures:o60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag (e.g. 'u60'). Default 'norm:full' is today's default behavior"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print verbose output to stdout"),
     clustergrp: str = typer.Option("amino", "--clustergrp", help="Specify AnnData column to group by"),
@@ -406,19 +460,19 @@ def graph(
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
     vollabels: Optional[int] = typer.Option(None, "--vollabels", help="Specify number of top significant markers to label on each volcano plot; omit to label all significant markers, or pass 0 to disable labels"),
 ):
-    with handle_output(log, quiet):
+    output_path = os.path.abspath(output)
+    with handle_output(quiet, tool="graph", destination=output_path, name_suffix=_adata_basename(anndata)):
         # Set matplotlib backend to Agg to avoid display issues
         matplotlib.use('Agg')
-        
+
         if not os.path.isfile(anndata):
             raise Exception('Error: h5ad file does not exist.')
-            
-        output_path = os.path.abspath(output)
+
         print(toolsTG.builder(output_path))
-        
+
         args = SimpleNamespace(
             mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, colormap=colormap,
-            regen_uns=regen_uns, variant=variant, threads=threads, log=log, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
+            regen_uns=regen_uns, variant=variant, threads=threads, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
             covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
@@ -441,10 +495,12 @@ def log2fc(
     cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
     config: Optional[str] = typer.Option(None, "-c", "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to compute log2fc for, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # log2fc always writes back into its own input file in place -- that file's directory is
+    # the destination.
+    destination = os.path.dirname(os.path.abspath(anndata_path))
+    with handle_output(quiet, tool="log2fc", destination=destination, name_suffix=_adata_basename(anndata_path)):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -490,15 +546,13 @@ def log2fc(
 def csv_cmd(
     anndata_path: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     output: str = typer.Option("csv", "-o", "--output", help="Specify output directory"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
-        output_path = os.path.abspath(output)
-        # Add the name of the h5ad file to the output directory minus the extension
-        output_path += '/' + '.'.join(os.path.basename(anndata_path).split('.')[:-1]) + '/'
+    # Add the name of the h5ad file to the output directory minus the extension
+    output_path = os.path.abspath(output) + '/' + '.'.join(os.path.basename(anndata_path).split('.')[:-1]) + '/'
+    with handle_output(quiet, tool="csv", destination=output_path, name_suffix=_adata_basename(anndata_path)):
         print(toolsTG.builder(output_path))
-        
+
         adata = anndata.read_h5ad(anndata_path)
         print('Writing csv files to: ' + output_path)
         adata.write_csvs(output_path, skip_data=False)
@@ -512,24 +566,24 @@ def merge(
     droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
     output: str = typer.Option("trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     force: bool = typer.Option(False, "--force", help="Proceed even if the two AnnData objects' build provenance (database/gtf) conflicts"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
+    # Output is a h5ad file path - its parent directory is the destination. Named after the
+    # newly-merged output file itself (not either input), since there's no single input identity.
+    output_path = os.path.abspath(output)
+    output_dir = os.path.dirname(output_path)
+    with handle_output(quiet, tool="merge", destination=output_dir or ".", name_suffix=_adata_basename(output_path)):
         if not os.path.isfile(anndata1):
             raise Exception('Error: first h5ad file does not exist.')
         if not os.path.isfile(anndata2):
             raise Exception('Error: second h5ad file does not exist.')
 
-        # Output is a h5ad file path - create parent directory if needed
-        output_path = os.path.abspath(output)
-        output_dir = os.path.dirname(output_path)
         if output_dir:
             print(toolsTG.builder(output_dir))
 
         args = SimpleNamespace(
             mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
-            output=output_path, force=force, log=log, quiet=quiet
+            output=output_path, force=force, quiet=quiet
         )
 
         print('Merging database objects...\n')
@@ -553,21 +607,25 @@ def test(
     merge: bool = typer.Option(False, "--merge", help="Run merge test"),
     graph: bool = typer.Option(False, "--graph", help="Run graph test (no split)"),
     split_graph: bool = typer.Option(False, "--split-graph", help="Run graph test with read length split"),
-    all: bool = typer.Option(False, "--all", help="Run all tests (default)"),
+    all: bool = typer.Option(False, "--all", help="Run all tests, forcing a clean workspace and full redownload"),
+    skip_download: bool = typer.Option(False, "--skip-download", help="Skip metadata/fastq/tRNA/genome download steps and run everything else (downloads are already skipped by default when the target files are present; this forces it regardless)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
     directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Specify directory to run tests in"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
-    with handle_output(log, quiet):
-        args = SimpleNamespace(
-            mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-            makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build,
-            split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
-            all=all, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
-        )
-        toolsTestSuite.demoPipeline(args).main()
-        print('Done!\n')
+    # Deliberately NOT wrapped in handle_output(): tools test keeps its own independent,
+    # always-overwritten toolsTestSuite.log (unchanged, out of scope for the .log/ redesign --
+    # see docs/roadmap.md). demoPipeline configures its own handlers entirely and has no bare
+    # print() calls left for handle_output's stdout-tee to catch, so nothing here needs it.
+    args = SimpleNamespace(
+        mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
+        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build,
+        split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
+        all=all, skip_download=skip_download, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
+    )
+    toolsTestSuite.demoPipeline(args).main()
+    print('Done!\n')
 
 if __name__ == '__main__':
     app()

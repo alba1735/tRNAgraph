@@ -9,6 +9,7 @@ import re
 import random
 import string
 import tempfile
+import logging
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
@@ -17,6 +18,7 @@ import pysam
 
 from . import toolsTG
 
+logger = logging.getLogger(__name__)
 
 
 def isprimarymapping(mapping):
@@ -221,6 +223,7 @@ class MapInfo:
 
 class MapReads:
     def __init__(self, bowtiedb, trnafile, minnontrnasize=20, local=False, maxmaps=100, program='bowtie2', threads=None):
+        self.logger = logging.getLogger(__name__)
         self.bowtiedb = bowtiedb
         self.trnafile = trnafile
         self.minnontrnasize = minnontrnasize
@@ -244,13 +247,13 @@ class MapReads:
         bowtie_args = [self.program] + localmode + ["-x", self.bowtiedb, "-k", str(self.maxmaps), "--very-sensitive", "--ignore-quals", "--np", "5", "--reorder", "-p", str(self.threads), "-U", fastqfile]
         
         temploc = os.path.basename(bamfile) + ''.join(random.choice(string.ascii_lowercase) for i in range(8))
-        print(temploc, file=sys.stderr)
+        self.logger.info(temploc)
         
         # Construct samtools command list
         samtools_args = ["samtools", "sort", "-T", f"{tempfile.gettempdir()}/{temploc}temp", "-", "-o", f"{bamfile}.bam"]
         
         bowtie_cmd_str = " ".join(bowtie_args)
-        print(bowtie_cmd_str, file=sys.stderr)
+        self.logger.info(bowtie_cmd_str)
         if logfile:
             print(bowtie_cmd_str, file=logfile)
             logfile.flush()
@@ -301,13 +304,13 @@ class MapReads:
                     multmaps = rereadmult.group(1)
                     return MapInfo(singlemaps, multmaps, unmappedreads, totalreads, errinfo, samplename, bowtiecommand=bowtie_cmd_str, trnamapinfo=trnamapinfo)
                 else:
-                    print(f"Could not map {fastqfile}, check mapstats file", file=sys.stderr)
-                    print("Exiting...", file=sys.stderr)
-                    print(errinfo, file=sys.stderr)
+                    self.logger.error(f"Could not map {fastqfile}, check mapstats file")
+                    self.logger.error("Exiting...")
+                    self.logger.error(errinfo)
                     return MapInfo(0, 0, 0, 0, errinfo, samplename, failedrun=True, bowtiecommand=bowtie_cmd_str)
 
             except Exception as e:
-                print(f"Error during mapping: {e}", file=sys.stderr)
+                self.logger.error(f"Error during mapping: {e}")
                 if logfile:
                     print(f"Error during mapping: {e}", file=logfile)
                 return MapInfo(0, 0, 0, 0, str(e), samplename, failedrun=True, bowtiecommand=bowtie_cmd_str)
@@ -319,8 +322,8 @@ class MapReads:
         except ValueError:
             return True
         except IOError as e:
-            print(f"Failed to read {bamname}", file=sys.stderr)
-            print(e, file=sys.stderr)
+            logger.error(f"Failed to read {bamname}")
+            logger.error(e)
             sys.exit(1)
         newheader = bamfile.header
         if 'PG' in newheader and len(newheader["PG"]) > 1 and newheader["PG"][1]["PN"] == "tRNAgraph":
@@ -441,6 +444,7 @@ class expdatabase:
 
 class MapSamples:
     def __init__(self, args):
+        self.logger = logging.getLogger(__name__)
         self.args = args
         self.dbname = args.database
         self.expname = args.output
@@ -478,7 +482,7 @@ class MapSamples:
         self.dbname = os.path.expanduser(self.dbname)
         
         # Mapping Reads
-        print("Mapping Reads", file=sys.stderr)
+        self.logger.info("Mapping Reads")
         self.mapsamples()
 
     def mapsamples(self):
@@ -490,7 +494,7 @@ class MapSamples:
         else:
              pool_size = 1
              bowtie_threads = 1
-        print(f"Mapping with {pool_size} concurrent jobs, {bowtie_threads} threads per job.", file=sys.stderr)
+        self.logger.info(f"Mapping with {pool_size} concurrent jobs, {bowtie_threads} threads per job.")
 
         # Initialize MapReads
         mapper = MapReads(bowtiedb=self.trnainfo.bowtiedb, trnafile=self.trnainfo.trnatable, 
@@ -509,10 +513,10 @@ class MapSamples:
             
             if self.lazyremap and os.path.isfile(bamfile + ".bam"):
                 if not MapReads.checkheaders(bamfile + ".bam", fastqfile):
-                    print(f"Bam file {bamfile}.bam does not match fq file {fastqfile}", file=sys.stderr)
+                    self.logger.warning(f"Bam file {bamfile}.bam does not match fq file {fastqfile}")
                     if not self.skipfqcheck:
                         sys.exit(1)
-                print(f"Skipping {samplename}", file=sys.stderr)
+                self.logger.warning(f"Skipping {samplename}")
             else:
                 map_args.append((mapper, samplename, fastqfile, bamfile, self.expname))
 
@@ -523,7 +527,7 @@ class MapSamples:
             try:
                 maplog_file = open(self.expinfo.maplog, 'w')
             except IOError as e:
-                print(f"Could not open mapstats file {self.expinfo.maplog}: {e}", file=sys.stderr)
+                self.logger.warning(f"Could not open mapstats file {self.expinfo.maplog}: {e}")
 
         # Run mapping
         mapresults = {}
@@ -531,7 +535,7 @@ class MapSamples:
             with Pool(processes=pool_size) as pool:
                 for result in pool.imap_unordered(map_sample_wrapper, map_args):
                     if result.failedrun:
-                        print("Failure to Bowtie2 map", file=sys.stderr)
+                        self.logger.error("Failure to Bowtie2 map")
                         result.printbowtie()
                         if maplog_file:
                             result.printbowtie(logfile=maplog_file)
@@ -556,7 +560,7 @@ class MapSamples:
                     # print("total\t" + "\t".join(str(mapresults[s].totalreads) if s in mapresults else "0" for s in samples), file=mapinfo)
                     # print("bowtiecommand\t" + "\t".join(str(mapresults[s].bowtiecommand) if s in mapresults else "" for s in samples), file=mapinfo)
             except IOError as e:
-                print(f"Could not write mapinfo file {self.expinfo.mapinfo}: {e}", file=sys.stderr)
+                self.logger.warning(f"Could not write mapinfo file {self.expinfo.mapinfo}: {e}")
         
         # Write trna mapinfo
         if self.expinfo.trnamapfile and self.expinfo.mapinfo:
@@ -571,4 +575,4 @@ class MapSamples:
                     print("multiplenon\t" + "\t".join(str(mapresults[s].trnamapinfo.multiplenon) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
                     print("total\t" + "\t".join(str(mapresults[s].trnamapinfo.uniquereads() + mapresults[s].trnamapinfo.nonuniquereads()) if s in mapresults and mapresults[s].trnamapinfo is not None else "0" for s in samples), file=trnamapinfo)
             except IOError as e:
-                print(f"Could not write trnamapinfo file {self.expinfo.trnamapfile}: {e}", file=sys.stderr)
+                self.logger.warning(f"Could not write trnamapinfo file {self.expinfo.trnamapfile}: {e}")

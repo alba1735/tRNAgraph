@@ -7,6 +7,7 @@ from scipy import stats
 import itertools
 import os
 import sys
+import logging
 import gzip
 import re
 import tempfile
@@ -15,10 +16,18 @@ import pysam
 from shutil import which
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
-from typing import Generator, Iterable, Tuple, Union, TextIO, Dict, Optional, List, Any
-from collections import defaultdict
+from typing import Generator, Iterable, Tuple, Union, TextIO, Dict, Optional, List, Any, Callable
+from collections import defaultdict, deque
 from pathlib import Path
 from dataclasses import dataclass, field
+
+from rich.live import Live
+from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
+from rich.spinner import Spinner
+from rich.console import Group
+from rich.text import Text
+
+logger = logging.getLogger(__name__)
 
 
 def builder(directory: Union[str, Path]) -> str:
@@ -46,11 +55,95 @@ def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: st
     '''
     if grp in adata.obs.columns:
         return grp
-    print(
-        f'WARNING: specified {param_name} "{grp}" not found in AnnData object; falling back to "{default}".',
-        file=sys.stderr
+    logger.warning(
+        f'specified {param_name} "{grp}" not found in AnnData object; falling back to "{default}".'
     )
     return default
+
+
+class _TailCaptureHandler(logging.Handler):
+    '''
+    Captures the last N formatted log messages into a bounded deque, for a live-updating
+    scrolling "tail" panel underneath a rich progress bar/spinner.
+    '''
+    def __init__(self, maxlen: int = 10):
+        super().__init__()
+        self.lines: deque = deque(maxlen=maxlen)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(self.format(record))
+
+
+def progress_iterator(
+    iterable: Iterable[Any], total: int, desc: str, logger: logging.Logger,
+    quiet: bool = False, isatty_fn: Optional[Callable[[], bool]] = None,
+) -> Generator[Any, None, None]:
+    '''
+    Shared progress-reporting helper for long-running per-item loops (trimming, mapping,
+    counting, graphing).
+
+    - `quiet=True`: never starts the interactive rich display (it writes straight to the real
+      terminal, bypassing the logging system entirely) -- but percentage-milestone logging still
+      runs below, since file persistence via the logging system is unconditional. Console
+      visibility is controlled separately, by whether cli.py's configure_logging() attached a
+      console handler under `--quiet`.
+    - A real interactive terminal and not quiet: a live rich spinner (switching to a determinate
+      bar once progress starts) plus a scrolling tail of the most recent log messages, driven by
+      temporarily swapping out the shared 'trnagraph' logger's console-tagged handler for a local
+      _TailCaptureHandler on `logger` itself. Any FileHandler on 'trnagraph' is left untouched, so
+      the persisted .log/ file keeps receiving every message regardless of the live display.
+    - Otherwise (non-tty, or quiet): percentage-milestone INFO log lines at ~10% increments
+      (falling back to every item for totals under 10), in the exact "N/total (P%) complete"
+      format that toolsTestSuite.py's own live-box display parses to drive its own progress bar.
+    '''
+    if isatty_fn is None:
+        isatty_fn = sys.stderr.isatty
+    is_tty = isatty_fn()
+
+    if is_tty and not quiet:
+        tail_handler = _TailCaptureHandler()
+        tail_handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(tail_handler)
+
+        trnagraph_logger = logging.getLogger('trnagraph')
+        removed_console_handlers = [h for h in trnagraph_logger.handlers if getattr(h, '_is_console_handler', False)]
+        for h in removed_console_handlers:
+            trnagraph_logger.removeHandler(h)
+
+        spinner = Spinner('dots', text=desc, style='green')
+        progress = Progress(
+            TextColumn('[green]{task.description}'),
+            BarColumn(complete_style='green', finished_style='bright_green'),
+            TaskProgressColumn(),
+        )
+        task_id = progress.add_task(desc, total=total)
+        started_bar = False
+
+        def render():
+            body = progress if started_bar else spinner
+            tail_text = '\n'.join(tail_handler.lines)
+            return Group(body, Text(tail_text)) if tail_text else body
+
+        try:
+            with Live(get_renderable=render, refresh_per_second=4, transient=True):
+                for i, item in enumerate(iterable):
+                    yield item
+                    started_bar = True
+                    progress.update(task_id, completed=i + 1)
+        finally:
+            logger.removeHandler(tail_handler)
+            for h in removed_console_handlers:
+                trnagraph_logger.addHandler(h)
+        return
+
+    milestone_step = max(1, total // 10)
+    for i, item in enumerate(iterable):
+        yield item
+        completed = i + 1
+        if completed % milestone_step == 0 or completed == total:
+            pct = int(completed / total * 100)
+            logger.info(f"{desc}: {completed}/{total} ({pct}%) complete")
+
 
 from .toolsSchemas import VariantTag
 
@@ -773,7 +866,7 @@ def getuniquetRNAs(trnalist: List[tRNAlocus]) -> Generator[tRNAtranscript, None,
             # Multiple scores found
             pass
         if len(anticodon) > 1:
-            print("tRNA file contains identical tRNAs with seperate anticodons, cannot continue", file=sys.stderr)
+            logger.error("tRNA file contains identical tRNAs with seperate anticodons, cannot continue")
             sys.exit(1)
             
         yield tRNAtranscript(currtrans, scores, list(amino)[0], list(anticodon)[0], loci_list, introns)
@@ -890,7 +983,7 @@ def readtRNAdb(scanfile: Union[str, TextIO], genomefile: str, trnamap: Dict[str,
             if currline.startswith("Sequence") or currline.startswith("Name") or currline.startswith("------"):
                 continue
             if len(currline) < 5:
-                print(f"cannot read line: {linenum} of {scanfile}", file=sys.stderr)
+                logger.warning(f"cannot read line: {linenum} of {scanfile}")
                 continue
                 
             fields = currline.split()
@@ -916,7 +1009,7 @@ def readtRNAdb(scanfile: Union[str, TextIO], genomefile: str, trnamap: Dict[str,
             elif shorttrnascanname in trnamap:
                 currtRNA = GenomeRange(orgname, currchrom, start, end, name=trnamap[shorttrnascanname], strand="+", orderstrand=True)
             else:
-                print(f"Skipping {trnascanname}, has no transcript name", file=sys.stderr)
+                logger.warning(f"Skipping {trnascanname}, has no transcript name")
                 continue
                 
             currtrans = currtRNA
@@ -1011,8 +1104,8 @@ def getseqs(fafile: str, rangedict: Dict[str, GenomeRange], faindex: Optional[st
         try:
             faifile_obj = fastaindex(fafile, faindex)
         except IOError:
-            print(f"Cannot read fasta file {fafile}", file=sys.stderr)
-            print(f"Ensure that file {fafile} exits and generate fastaindex {faindex} with samtools faidx", file=sys.stderr)
+            logger.error(f"Cannot read fasta file {fafile}")
+            logger.error(f"Ensure that file {fafile} exits and generate fastaindex {faindex} with samtools faidx")
             sys.exit(1)
         return faifile_obj.getseqs(rangedict)
     
@@ -1067,7 +1160,7 @@ def getseqs(fafile: str, rangedict: Dict[str, GenomeRange], faindex: Optional[st
             
     for currseq in rangedict.keys():
         if currseq not in finalseqs:
-            print(f"No sequence extracted for {rangedict[currseq].dbname}.{rangedict[currseq].chrom}:{rangedict[currseq].start}-{rangedict[currseq].end}", file=sys.stderr)
+            logger.warning(f"No sequence extracted for {rangedict[currseq].dbname}.{rangedict[currseq].chrom}:{rangedict[currseq].start}-{rangedict[currseq].end}")
             
     return finalseqs        
 
@@ -1490,6 +1583,7 @@ def getpairfile(pairfilename: str) -> Generator[Tuple[str, str], None, None]:
 
 class extraseqfile:
     def __init__(self, extraseqfilename: str):
+        self.logger = logging.getLogger(__name__)
         self.seqlist: List[str] = []
         self.seqfasta: Dict[str, str] = {}
         self.seqbed: Dict[str, str] = {}
@@ -1511,7 +1605,7 @@ class extraseqfile:
             self.seqlist = []
             self.seqfasta = {}
             self.seqbed = {}
-            print(f"extraseqfile I/O error({e.errno}): {e.strerror}", file=sys.stderr)
+            self.logger.error(f"extraseqfile I/O error({e.errno}): {e.strerror}")
 
     def getseqnames(self) -> Dict[str, set]:
         seqnamedict = defaultdict(set)
@@ -1526,8 +1620,8 @@ def getsizefactors(sizefactorfilename: str) -> Dict[str, float]:
         with open(sizefactorfilename, 'r') as sizefactorfile:
             lines = sizefactorfile.readlines()
     except IOError:
-        print(f"Cannot read size factor file {sizefactorfilename}", file=sys.stderr)
-        print("check Rlog.txt", file=sys.stderr)
+        logger.error(f"Cannot read size factor file {sizefactorfilename}")
+        logger.error("check Rlog.txt")
         sys.exit(1)
         
     sizefactors = {}
@@ -1552,6 +1646,7 @@ def ifelse(arg: bool, trueres: Any, falseres: Any) -> Any:
 
 class samplefile:
     def __init__(self, samplefilename, bamdir = "./"):
+        self.logger = logging.getLogger(__name__)
         try:
             samplefile = open(samplefilename)
             samplelist = list()
@@ -1591,8 +1686,8 @@ class samplefile:
             self.replicatelist = replicatelist
             #self.bamlist = list(curr+ "_sort.bam" for curr in samplelist)
         except IOError:
-            print("Cannot read sample file "+samplefilename, file=sys.stderr)
-            print("exiting...", file=sys.stderr)
+            self.logger.error("Cannot read sample file "+samplefilename)
+            self.logger.error("exiting...")
             sys.exit(1)
     def getsamples(self):
         return self.samplelist
@@ -1622,7 +1717,7 @@ def readfeatures(filename, orgdb="genome", seqfile= None, removepseudo = False):
         #print >>sys.stderr, removepseudo
         return (curr for curr in readgtf(filename, orgdb, seqfile, filterpsuedo = removepseudo, filtertypes =set(['retained_intron','antisense','lincRNA']) ))
     else:
-        print(filename+" not valid feature file", file=sys.stderr)
+        logger.error(filename+" not valid feature file")
         sys.exit()
 
 
@@ -1679,12 +1774,12 @@ def readgtf(filename, orgdb="genome", seqfile= None, filterpsuedo = False, repla
                 #print >>sys.stderr, biotype
                 genesource = biotype
             if not (fields[6] == "+" or fields[6] == "-"):
-                print("strand error in "+filename, file=sys.stderr)
+                logger.warning("strand error in "+filename)
                 skippedlines += 1
             elif not (fields[3].isdigit() and fields[4].isdigit()):
-                print("non-number coordinates in "+filename, file=sys.stderr)
-                print(currline, file=sys.stderr)
-                
+                logger.warning("non-number coordinates in "+filename)
+                logger.warning(currline)
+
                 skippedlines += 1
             else:
                 if replacename:
@@ -1713,11 +1808,11 @@ def readbed(filename, orgdb="genome", seqfile= None, includeintrons = False):
             else:
                 strand = fields[5]
             if not (strand == "+" or strand == "-"):
-                print("strand error in "+filename, file=sys.stderr)
+                logger.warning("strand error in "+filename)
                 skippedlines += 1
             elif not (fields[1].isdigit() and fields[2].isdigit()):
-                print("non-number coordinates in "+filename, file=sys.stderr)
-                print(currline, file=sys.stderr)
+                logger.warning("non-number coordinates in "+filename)
+                logger.warning(currline)
                 skippedlines += 1
             else:
                 if includeintrons and len(fields) > 7:
@@ -1727,5 +1822,5 @@ def readbed(filename, orgdb="genome", seqfile= None, includeintrons = False):
                 yield GenomeRange( orgdb, fields[0],fields[1],fields[2],strand, name = fields[3], fastafile = seqfile, data = data)
     
     if skippedlines > 0:
-        print("skipped "+str(skippedlines)+" in "+filename, file=sys.stderr)
+        logger.warning("skipped "+str(skippedlines)+" in "+filename)
 

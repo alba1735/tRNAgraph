@@ -3,12 +3,15 @@
 import sys
 import re
 import subprocess
+import logging
 from collections import defaultdict
 from contextlib import ExitStack
 from pathlib import Path
 from typing import List, Optional, Dict
 
 from . import toolsTG
+
+logger = logging.getLogger(__name__)
 
 def get_mature_trnas(
     trnascan: Optional[List[str]] = None,
@@ -77,7 +80,7 @@ def get_mature_trnas(
                         gtrnatrans[trnamatch.group(2)] = trnamatch.group(1)
             
             if not gtrnatrans:
-                print("Could not extract names from gtrnadb fasta file", file=sys.stderr)
+                logger.error("Could not extract names from gtrnadb fasta file")
                 sys.exit(1)
 
         alltrnas: List[toolsTG.tRNAtranscript] = []
@@ -95,7 +98,7 @@ def get_mature_trnas(
             for currname, currseq in toolsTG.read_multi_fasta(addtrna):
                 namefields = currname.split("-")
                 if len(namefields) != 4:
-                    print(f"additional tRNA {currname} from {addtrna} does not use a valid tRNA name", file=sys.stderr)
+                    logger.error(f"additional tRNA {currname} from {addtrna} does not use a valid tRNA name")
                     sys.exit(1)
                 
                 curramino = namefields[1]
@@ -118,7 +121,7 @@ def get_mature_trnas(
                 anticodoncount[currtrans.anticodon] += 1
                 
         if not alltrnas:
-            print("No trna sequences", file=sys.stderr)
+            logger.error("No trna sequences")
             sys.exit(1)
             
         if trnaalignment and cmmodel:
@@ -129,9 +132,9 @@ def get_mature_trnas(
                 try:
                     subprocess.run(cmcommand, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
                 except subprocess.CalledProcessError as e:
-                    print(f"Command failed: {' '.join(cmcommand)}", file=sys.stderr)
-                    print(f"Error: {e.stderr}", file=sys.stderr)
-                    print("Failure to align tRNAs", file=sys.stderr)
+                    logger.error(f"Command failed: {' '.join(cmcommand)}")
+                    logger.error(f"Error: {e.stderr}")
+                    logger.error("Failure to align tRNAs")
                     sys.exit(1)
 
         locibed_lines = []

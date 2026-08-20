@@ -3,11 +3,13 @@
 import sys
 import os
 import itertools
+import logging
 from time import localtime, strftime
 from typing import List, Dict, Optional, Tuple, Any
 from collections import defaultdict
 from . import toolsTG
 
+logger = logging.getLogger(__name__)
 
 # Constants
 RED_RGB = "rgb(255, 0, 0)"
@@ -357,11 +359,11 @@ def getreadmapping(samplename: str, sampleinfo: Any) -> MappingResults:
             if i == 0:
                 runsamples = list(fields)
                 if set(runsamples) != set(allsamples):
-                    print(runsamples, file=sys.stderr)
-                    print(allsamples, file=sys.stderr)
-                    print("QAError", file=sys.stderr)
+                    logger.warning(runsamples)
+                    logger.warning(allsamples)
+                    logger.warning("QAError")
                 continue
-                
+
             if len(fields) != len(allsamples) + 1:
                 continue
             for j in range(0, len(runsamples)):
@@ -421,15 +423,15 @@ def gettypecounts(samplename: str, sampleinfo: Any) -> TypeCount:
             if i == 0:
                 runsamples = list(fields)
                 if set(runsamples) != set(allsamples):
-                    print(runsamples, file=sys.stderr)
-                    print(allsamples, file=sys.stderr)
-                    print("QAError", file=sys.stderr)
+                    logger.warning(runsamples)
+                    logger.warning(allsamples)
+                    logger.warning("QAError")
                 continue
-            
+
             if len(fields) != len(allsamples) + 1:
-                print(runsamples, file=sys.stderr)
-                print(fields, file=sys.stderr)
-                print("QAError", file=sys.stderr)
+                logger.warning(runsamples)
+                logger.warning(fields)
+                logger.warning("QAError")
                 continue
             for j in range(0, len(runsamples)):
                 typecounts[runsamples[j]][fields[0]] = int(fields[j + 1])
@@ -558,18 +560,18 @@ def gettrnacounts(samplename: str, sampleinfo: Any, trnainfo: Any) -> TrnaCount:
             if i == 0:
                 runsamples = list(fields)
                 if set(runsamples) != set(allsamples):
-                    print(runsamples, file=sys.stderr)
-                    print(allsamples, file=sys.stderr)
-                    print("QAError", file=sys.stderr)
+                    logger.warning(runsamples)
+                    logger.warning(allsamples)
+                    logger.warning("QAError")
                 continue
-            
+
             if len(fields) != len(allsamples) + 1:
-                print(runsamples, file=sys.stderr)
-                print(fields, file=sys.stderr)
-                print("QAError", file=sys.stderr)
+                logger.warning(runsamples)
+                logger.warning(fields)
+                logger.warning("QAError")
                 continue
-            
-            if fields[0] in trnatranscripts:    
+
+            if fields[0] in trnatranscripts:
                 for j in range(0, len(runsamples)):
                     trnacounts[runsamples[j]][fields[0]] = int(fields[j + 1])
     return TrnaCount(trnacounts)
@@ -586,15 +588,15 @@ def getsizefactor(samplename: str, sampleinfo: Any) -> SizeFactor:
             if i == 0:
                 runsamples = list(fields)
                 if set(runsamples) != set(allsamples):
-                    print(list(runsamples), file=sys.stderr)
-                    print(list(allsamples), file=sys.stderr)
-                    print("QAError", file=sys.stderr)
+                    logger.warning(list(runsamples))
+                    logger.warning(list(allsamples))
+                    logger.warning("QAError")
                 continue
-            
+
             if len(fields) != len(allsamples):
-                print(len(runsamples), file=sys.stderr)
-                print(len(fields), file=sys.stderr)
-                print("QAError", file=sys.stderr)
+                logger.warning(len(runsamples))
+                logger.warning(len(fields))
+                logger.warning("QAError")
                 continue
             
             for j in range(0, len(runsamples)):

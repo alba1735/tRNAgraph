@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -13,6 +15,8 @@ plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
+logger = logging.getLogger(__name__)
+
 
 def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False):
     '''
@@ -25,7 +29,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
 
     individual_output = f'{output}individual/'
     if heatsubplots:
-        print(toolsTG.builder(individual_output))
+        logger.info(toolsTG.builder(individual_output))
 
     # Create an empty df to store the log2FC values for each group so a combined heatmap can be generated as well
     df_combine = pd.DataFrame()
@@ -40,7 +44,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
             if threaded:
                 threaded += f'No data for {readtype} heatmap.\n'
             else:
-                print(f'No data for {readtype} heatmap.')
+                logger.warning(f'No data for {readtype} heatmap.')
             continue
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
@@ -58,7 +62,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
                 if threaded:
                     threaded += f'Saving heatmap for {readtype} {col}...\n'
                 else:
-                    print(f'Saving heatmap for {readtype} {col}...')
+                    logger.info(f'Saving heatmap for {readtype} {col}...')
                 if heatsubplots:
                     plt.savefig(f'{individual_output}{grp}_{readtype}_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')
@@ -72,7 +76,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
                 if threaded:
                     threaded += f'Saving heatmap for combine {col}...\n'
                 else:
-                    print(f'Saving heatmap for combine {col}...')
+                    logger.info(f'Saving heatmap for combine {col}...')
                 if heatsubplots:
                     plt.savefig(f'{individual_output}{grp}_combine_{cutoff}_{heatbound}_{col}_heatmap.pdf', bbox_inches='tight')
                 pdf.savefig(bbox_inches='tight')

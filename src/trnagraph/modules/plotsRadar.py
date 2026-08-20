@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -12,6 +14,7 @@ import seaborn as sns
 
 class visualizer:
     def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False):
+        self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.radargrp = radargrp
         self.radarmethod = radarmethod
@@ -82,7 +85,7 @@ class visualizer:
                     if self.threaded:
                         self.threaded += f'Color {v} not found in colormap. Using default colors instead.\n'
                     else:
-                        print(f'Color {v} not found in colormap. Using default colors instead.')
+                        self.logger.warning(f'Color {v} not found in colormap. Using default colors instead.')
                     self.colormap = None
                     break
         # Plot data
@@ -122,7 +125,7 @@ class visualizer:
         if self.threaded:
             self.threaded += f'Plot saved to {outname}\n'
         else:   
-            print(f'Plot saved to {outname}')
+            self.logger.info(f'Plot saved to {outname}')
         plt.savefig(outname, bbox_inches='tight')
         plt.close()
         if self.threaded:

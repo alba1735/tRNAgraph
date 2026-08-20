@@ -2,10 +2,13 @@
 
 import sys
 import subprocess
+import logging
 from pathlib import Path
 from typing import Union
 
 from . import toolsTG
+
+logger = logging.getLogger(__name__)
 
 def align_trna_locus(
     stkfile: Union[str, Path],
@@ -53,9 +56,9 @@ def align_trna_locus(
                 text=True
             )
         except subprocess.CalledProcessError as e:
-            print(f"Command failed: {' '.join(cmcommand)}", file=sys.stderr)
-            print(f"Error: {e.stderr}", file=sys.stderr)
-            print("Failure to align tRNAs", file=sys.stderr)
+            logger.error(f"Command failed: {' '.join(cmcommand)}")
+            logger.error(f"Error: {e.stderr}")
+            logger.error("Failure to align tRNAs")
             sys.exit(1)
 
 if __name__ == "__main__":

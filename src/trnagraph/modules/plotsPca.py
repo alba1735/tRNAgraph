@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import seaborn as sns
 import pandas as pd
 
@@ -11,6 +13,8 @@ import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename, title_suffix, threaded):
@@ -34,9 +38,9 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
         threaded += f'Explained variance: {[f"{i:.4f}" for i in pca.explained_variance_]}\n'
         threaded += f'Explained variance ratio: {[f"{i*100:.2f}%" for i in evr]}\n'
     else:
-        print('Principal components: {}'.format([f'PC{x}' for x in range(1, len(evr)+1)]))
-        print('Explained variance: {}'.format([f'{i:.4f}' for i in pca.explained_variance_]))
-        print('Explained variance ratio: {}'.format([f'{i*100:.2f}%' for i in evr]))
+        logger.info('Principal components: {}'.format([f'PC{x}' for x in range(1, len(evr)+1)]))
+        logger.info('Explained variance: {}'.format([f'{i:.4f}' for i in pca.explained_variance_]))
+        logger.info('Explained variance ratio: {}'.format([f'{i*100:.2f}%' for i in evr]))
     # Transform the data and create a new dataframe
     pca_index = ['PC{}'.format(x) for x in range(1, len(evr)+1)]
     df_pca = pd.DataFrame(pca.components_, columns=df.columns, index=pca_index).T
@@ -55,7 +59,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if threaded:
         threaded += f'Explained variance ratio graph saved to {output}{basename}_evr.pdf\n'
     else:
-        print(f'Explained variance ratio graph saved to {output}{basename}_evr.pdf')
+        logger.info(f'Explained variance ratio graph saved to {output}{basename}_evr.pdf')
     plt.close()
 
     # Plot the data with seaborn
@@ -83,7 +87,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if threaded:
         threaded += f'PCA graph saved to {output}{basename}_pca.pdf\n'
     else:
-        print(f'PCA graph saved to {output}{basename}_pca.pdf')
+        logger.info(f'PCA graph saved to {output}{basename}_pca.pdf')
     plt.close()
 
     # Plot pairplot of the data with seaborn
@@ -107,7 +111,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if threaded:
         threaded += f'Pairplot graph saved to {output}{basename}_pairplot.pdf\n'
     else:
-        print(f'Pairplot graph saved to {output}{basename}_pairplot.pdf')
+        logger.info(f'Pairplot graph saved to {output}{basename}_pairplot.pdf')
     plt.close()
 
     return threaded
@@ -148,7 +152,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                 if threaded:
                     threaded += f'Color {v} not found in colormap. Using default colors instead.\n'
                 else:
-                    print(f'Color {v} not found in colormap. Using default colors instead.')
+                    logger.warning(f'Color {v} not found in colormap. Using default colors instead.')
                 colormap = None
                 break
 
@@ -176,7 +180,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
         if threaded:
             threaded += msg + '\n'
         else:
-            print(msg)
+            logger.warning(msg)
     else:
         # Non-tRNA-only PCA. adata.uns['nontRNA_counts'] is normalized against the
         # all-feature-controlled DESeq2 size factors (see adataBuild.py), which is the
@@ -196,7 +200,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
             if threaded:
                 threaded += msg + '\n'
             else:
-                print(msg)
+                logger.warning(msg)
         else:
             sf_map = {k: float(v) for k, v in dict(allfeature_sizefactors).items()}
             total_df = pd.DataFrame(adata.obs, columns=['trna', 'sample', 'nreads_total_raw'])
@@ -206,7 +210,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             total_df['nreads_total_norm_allfeatures'] = total_df['nreads_total_raw'] / total_df['sample'].astype(str).map(lambda s: sf_map.get(s, 1.0))
             total_df = total_df.pivot_table(index='trna', columns='sample', values='nreads_total_norm_allfeatures', observed=True)
 
@@ -222,14 +226,14 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
 
             if len(shared_cols) == 0:
                 msg = 'No overlapping sample columns between tRNA and non-tRNA counts. Skipping combined PCA plot.'
                 if threaded:
                     threaded += msg + '\n'
                 else:
-                    print(msg)
+                    logger.warning(msg)
             else:
                 combined_df = pd.concat([total_df[shared_cols], nontrna_df[shared_cols]], axis=0)
                 threaded = _generate_pca_plots(combined_df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'allRNA_{pcamarkers}_by_{pcacolors}', title_suffix='All tRNA + Non-tRNA RNAs', threaded=threaded)

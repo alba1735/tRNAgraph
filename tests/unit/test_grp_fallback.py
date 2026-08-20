@@ -32,14 +32,16 @@ def test_resolve_grp_column_passes_through_existing_column():
     assert toolsTG.resolve_grp_column(adata, "group", "comparegrp1") == "group"
 
 
-def test_resolve_grp_column_falls_back_to_sample_and_warns(capsys):
+def test_resolve_grp_column_falls_back_to_sample_and_warns(caplog):
+    import logging
     adata = _make_adata()
-    result = toolsTG.resolve_grp_column(adata, "nonexistent", "comparegrp1")
+    with caplog.at_level(logging.WARNING, logger="trnagraph.modules.toolsTG"):
+        result = toolsTG.resolve_grp_column(adata, "nonexistent", "comparegrp1")
     assert result == "sample"
-    captured = capsys.readouterr()
-    assert "nonexistent" in captured.err
-    assert "comparegrp1" in captured.err
-    assert "sample" in captured.err
+    warning_text = "\n".join(r.message for r in caplog.records)
+    assert "nonexistent" in warning_text
+    assert "comparegrp1" in warning_text
+    assert "sample" in warning_text
 
 
 def test_resolve_grp_column_respects_custom_default():

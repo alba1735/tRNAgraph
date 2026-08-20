@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,23 +17,24 @@ class visualizer:
         self.stats_file = stats_file
         self.output_file = output_file
         self.colormap = colormap
+        self.logger = logging.getLogger(__name__)
 
     def plot(self):
         if not os.path.exists(self.stats_file):
-            print(f"Stats file not found: {self.stats_file}")
+            self.logger.error(f"Stats file not found: {self.stats_file}")
             return
 
         try:
             df = pd.read_csv(self.stats_file)
         except Exception as e:
-            print(f"Error reading stats file: {e}")
+            self.logger.error(f"Error reading stats file: {e}")
             return
 
         # Calculate Discarded
         # Ensure columns exist
         required_cols = ['Sample', 'Raw_Reads', 'Clean_Reads', 'Merged_Reads', 'Unmerged_Reads', 'Trimmed_Reads']
         if not all(col in df.columns for col in required_cols):
-            print(f"Stats file missing required columns: {required_cols}")
+            self.logger.error(f"Stats file missing required columns: {required_cols}")
             return
 
         # 'Merged'/'Unmerged' only apply to paired-end samples (fastp's merge step never runs
@@ -57,7 +60,7 @@ class visualizer:
         df_melt = df_melt[df_melt['Count'] > sample_totals / 100]
 
         if df_melt.empty:
-            print("No data to plot after filtering.")
+            self.logger.warning("No data to plot after filtering.")
             return
 
         # Pivot back for pandas plotting (stacked bar)
@@ -103,7 +106,7 @@ class visualizer:
         # Adjust layout to prevent clipping
         plt.tight_layout()
 
-        print(f"Saving plot to {self.output_file}")
+        self.logger.info(f"Saving plot to {self.output_file}")
         plt.savefig(self.output_file, bbox_inches='tight')
         plt.close()
 

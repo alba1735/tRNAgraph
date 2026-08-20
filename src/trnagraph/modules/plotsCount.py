@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import seaborn as sns
 
 import matplotlib.pyplot as plt
@@ -8,6 +10,8 @@ import pandas as pd
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
+
+logger = logging.getLogger(__name__)
 
 def visualizer(adata, colormap, output, threaded=True):
     '''
@@ -107,7 +111,7 @@ def split_barplots(df, count_type, level, output, colormap=None, percent=False, 
         threaded += f'{ps}\n'
         return threaded
     else:
-        print(ps)
+        logger.info(ps)
         return None
 
 def stacked_barplots(df, count_type, level, output, colormap=None, percent=False, threaded=True):
@@ -160,7 +164,7 @@ def stacked_barplots(df, count_type, level, output, colormap=None, percent=False
         threaded += f'{ps}\n'
         return threaded
     else:
-        print(ps)
+        logger.info(ps)
         return None
 
 if __name__ == '__main__':

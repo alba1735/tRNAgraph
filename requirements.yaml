@@ -28,7 +28,7 @@ dependencies:
   - "seaborn=0.13.2"
   - "sra-tools=3.2.1"
   - "typer=0.20.0"
-  - "tqdm>=4.67.1"
+  - "rich>=13.0.0"
   - "ucsc-bedgraphtobigwig=482"
   - "umap-learn=0.5.9.post2"
   - "umi_tools=1.1.6"

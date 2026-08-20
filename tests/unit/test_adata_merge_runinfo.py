@@ -1,6 +1,7 @@
 """Regression tests for anndataMerger.merge()'s conflicting-run-info enforcement (roadmap.md
 Phase 2: "Merge Logic" -- mirrors `analyze addsplit`'s --force-gated database/gtf provenance
 check, previously only implemented for addsplit and missing entirely from `tools merge`)."""
+import logging
 from types import SimpleNamespace
 
 import anndata as ad
@@ -20,6 +21,7 @@ def _make_adata(database='db1', gtf='genes1.gtf', n_obs=2, index_prefix='obs'):
 
 def _make_merger(adata1, adata2, force=False, output='/tmp/out.h5ad'):
     merger = anndataMerger.__new__(anndataMerger)
+    merger.logger = logging.getLogger("trnagraph.modules.adataMerge")
     merger.adata1 = adata1
     merger.adata2 = adata2
     merger.args = SimpleNamespace(dropno=False, droprna=False, output=output, force=force)
@@ -44,17 +46,19 @@ def test_merge_raises_on_conflicting_gtf_without_force():
         merger.merge()
 
 
-def test_merge_proceeds_past_conflict_check_with_force(capsys):
+def test_merge_proceeds_past_conflict_check_with_force(caplog):
     adata1 = _make_adata(database='db1', index_prefix='obj1_')
     adata2 = _make_adata(database='db2', index_prefix='obj2_')
     merger = _make_merger(adata1, adata2, force=True)
 
-    # --force should bypass the conflict check (warning on stderr) and let execution reach the
+    # --force should bypass the conflict check (logged as a warning) and let execution reach the
     # next stage of merge() -- which then fails on missing uns['amino_counts'] in this minimal
     # fixture, proving the conflict check itself did not block it.
-    with pytest.raises(KeyError, match='amino_counts'):
+    with pytest.raises(KeyError, match='amino_counts'), \
+         caplog.at_level(logging.WARNING, logger="trnagraph.modules.adataMerge"):
         merger.merge()
-    assert 'database' in capsys.readouterr().err
+    warning_messages = "\n".join(r.message for r in caplog.records if r.levelno == logging.WARNING)
+    assert 'database' in warning_messages
 
 
 def test_merge_does_not_raise_when_provenance_matches():

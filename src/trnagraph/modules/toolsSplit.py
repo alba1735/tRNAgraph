@@ -7,6 +7,7 @@ import subprocess
 import multiprocessing
 import re
 import itertools
+import logging
 import pysam
 
 class BamSplitter:
@@ -19,24 +20,25 @@ class BamSplitter:
     '''
     def __init__(self, args):
         self.args = args
+        self.logger = logging.getLogger(__name__)
         self.manifest = os.path.abspath(args.input)
         self.cutoff = args.readlengthsplit
         # If bamdir is not provided, assume current directory
         self.bamdir = os.path.abspath(args.bamdir) if args.bamdir else os.getcwd()
         self.overwrite = getattr(args, 'overwritebams', False)
-        
+
         # Validate inputs
         if not os.path.isfile(self.manifest):
-            print(f"Error: Manifest file '{self.manifest}' not found.")
+            self.logger.error(f"Error: Manifest file '{self.manifest}' not found.")
             sys.exit(1)
-            
+
         if not os.path.isdir(self.bamdir):
-            print(f"Error: BAM directory '{self.bamdir}' not found.")
+            self.logger.error(f"Error: BAM directory '{self.bamdir}' not found.")
             sys.exit(1)
-            
+
         # Check for samtools
         if shutil.which('samtools') is None:
-            print("Error: samtools not found in PATH. Please install samtools.")
+            self.logger.error("Error: samtools not found in PATH. Please install samtools.")
             sys.exit(1)
 
         self.samples = self._parse_manifest()
@@ -59,7 +61,7 @@ class BamSplitter:
                         samples.append(parts[1])
                         
         except Exception as e:
-            print(f"Error parsing manifest: {e}")
+            self.logger.error(f"Error parsing manifest: {e}")
             sys.exit(1)
         return samples
 
@@ -71,7 +73,7 @@ class BamSplitter:
         bam_path = os.path.join(self.bamdir, bam_filename)
         
         if not os.path.isfile(bam_path):
-            print(f"Warning: File {bam_path} not found. Skipping.")
+            self.logger.warning(f"Warning: File {bam_path} not found. Skipping.")
             return
 
         # Define output directories
@@ -86,10 +88,10 @@ class BamSplitter:
         
         # Check if files exist and overwrite is False
         if not self.overwrite and os.path.isfile(out_under) and os.path.isfile(out_over):
-            print(f"Skipping {sample} (split files exist)")
+            self.logger.warning(f"Skipping {sample} (split files exist)")
             return
 
-        print(f"Splitting {bam_filename} (Cutoff: {self.cutoff})...")
+        self.logger.info(f"Splitting {bam_filename} (Cutoff: {self.cutoff})...")
         
         # Commands
         # Reads UNDER (<) the cutoff
@@ -115,15 +117,15 @@ class BamSplitter:
             p2.wait()
             
             if p1.returncode != 0:
-                print(f"Error splitting (under) for {sample}")
+                self.logger.error(f"Error splitting (under) for {sample}")
             if p2.returncode != 0:
-                print(f"Error splitting (over) for {sample}")
+                self.logger.error(f"Error splitting (over) for {sample}")
             else:
-                print(f"  -> Created {out_under}")
-                print(f"  -> Created {out_over}")
-                
+                self.logger.info(f"  -> Created {out_under}")
+                self.logger.info(f"  -> Created {out_over}")
+
         except Exception as e:
-            print(f"Error executing samtools for {sample}: {e}")
+            self.logger.error(f"Error executing samtools for {sample}: {e}")
 
     def _write_mapinfo_files(self, output_dir, basename):
         '''
@@ -146,8 +148,8 @@ class BamSplitter:
             f.write("unmap\t" + "\t".join(["0"] * len(self.samples)) + "\n")
             f.write("single\t" + "\t".join(["0"] * len(self.samples)) + "\n")
             f.write("multi\t" + "\t".join(["0"] * len(self.samples)) + "\n")
-        print(f"  -> Created {mapinfo_path}")
-        
+        self.logger.info(f"  -> Created {mapinfo_path}")
+
         # Write trnamapinfo.txt with zeros
         trnamapinfo_path = os.path.join(results_dir, f"{basename}-trnamapinfo.txt")
         with open(trnamapinfo_path, 'w') as f:
@@ -161,10 +163,10 @@ class BamSplitter:
             f.write("singlenon\t" + "\t".join(["0"] * len(self.samples)) + "\n")
             f.write("multiplenon\t" + "\t".join(["0"] * len(self.samples)) + "\n")
             f.write("total\t" + "\t".join(["0"] * len(self.samples)) + "\n")
-        print(f"  -> Created {trnamapinfo_path}")
+        self.logger.info(f"  -> Created {trnamapinfo_path}")
 
     def process(self):
-        print(f"Processing BAM files in {self.bamdir}...")
+        self.logger.info(f"Processing BAM files in {self.bamdir}...")
         
         # If user provided threads, we can use them.
         threads = self.args.threads if hasattr(self.args, 'threads') and self.args.threads > 0 else 1
@@ -190,20 +192,20 @@ class BamSplitter:
         under_graphs_name = f"graphs_u{self.cutoff}"
         over_graphs_name = f"graphs_o{self.cutoff}"
         
-        print(f"Creating output directories for u{self.cutoff}...")
+        self.logger.info(f"Creating output directories for u{self.cutoff}...")
         under_exp_dir = base_output_dir
         os.makedirs(os.path.join(under_exp_dir, under_results_name), exist_ok=True)
         os.makedirs(os.path.join(under_exp_dir, under_graphs_name), exist_ok=True)
         
         self._write_mapinfo_for_split(under_exp_dir, under_results_name, exp_basename, f"u{self.cutoff}")
         
-        print(f"Creating output directories for o{self.cutoff}...")
+        self.logger.info(f"Creating output directories for o{self.cutoff}...")
         os.makedirs(os.path.join(over_output_dir, over_results_name), exist_ok=True)
         os.makedirs(os.path.join(over_output_dir, over_graphs_name), exist_ok=True)
         
         self._write_mapinfo_for_split(over_output_dir, over_results_name, exp_basename, f"o{self.cutoff}")
                 
-        print("Done.")
+        self.logger.info("Done.")
 
     def _analyze_bam(self, bam_path):
         '''
@@ -229,13 +231,13 @@ class BamSplitter:
         }
         
         if not os.path.isfile(bam_path):
-            print(f"Warning: BAM file not found: {bam_path}")
+            self.logger.warning(f"Warning: BAM file not found: {bam_path}")
             return stats
-        
+
         try:
             bamfile = pysam.AlignmentFile(bam_path, "rb")
         except Exception as e:
-            print(f"Warning: Could not open BAM file {bam_path}: {e}")
+            self.logger.warning(f"Warning: Could not open BAM file {bam_path}: {e}")
             return stats
         
         # Group reads by query name to count unique reads (not alignments)
@@ -309,7 +311,7 @@ class BamSplitter:
         split_bamdir = os.path.join(self.bamdir, suffix)
         
         # Collect stats for all samples
-        print(f"  Analyzing BAM files in {split_bamdir}...")
+        self.logger.info(f"  Analyzing BAM files in {split_bamdir}...")
         all_stats = {}
         for sample in self.samples:
             bam_path = os.path.join(split_bamdir, f"{sample}.bam")
@@ -322,7 +324,7 @@ class BamSplitter:
             f.write("unmap\t" + "\t".join([str(all_stats[s]['unmap']) for s in self.samples]) + "\n")
             f.write("single\t" + "\t".join([str(all_stats[s]['single']) for s in self.samples]) + "\n")
             f.write("multi\t" + "\t".join([str(all_stats[s]['multi']) for s in self.samples]) + "\n")
-        print(f"  -> Created {mapinfo_path}")
+        self.logger.info(f"  -> Created {mapinfo_path}")
         
         # Write trnamapinfo.txt
         trnamapinfo_path = os.path.join(results_dir, f"{exp_basename}-trnamapinfo.txt")
@@ -335,4 +337,4 @@ class BamSplitter:
             f.write("singlenon\t" + "\t".join([str(all_stats[s]['singlenon']) for s in self.samples]) + "\n")
             f.write("multiplenon\t" + "\t".join([str(all_stats[s]['multiplenon']) for s in self.samples]) + "\n")
             f.write("total\t" + "\t".join([str(all_stats[s]['total']) for s in self.samples]) + "\n")
-        print(f"  -> Created {trnamapinfo_path}")
+        self.logger.info(f"  -> Created {trnamapinfo_path}")

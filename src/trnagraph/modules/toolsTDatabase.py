@@ -6,6 +6,7 @@ import shutil
 import time
 import subprocess
 import multiprocessing
+import logging
 from collections import defaultdict
 
 # Custom external modules (Assuming these exist in the PYTHONPATH)
@@ -19,6 +20,7 @@ class tRNADatabaseBuilder:
     '''
     def __init__(self, args):
         self.args = args
+        self.logger = logging.getLogger(__name__)
         self.db_name = os.path.basename(args.output)
         
         # Handle directory pathing
@@ -62,7 +64,7 @@ class tRNADatabaseBuilder:
         '''Ensure required external tools are available'''
         for prog in ["samtools", "bowtie2-build"]:
             if shutil.which(prog) is None:
-                print(f"Error: Could not find '{prog}' in path.", file=sys.stderr)
+                self.logger.error(f"Error: Could not find '{prog}' in path.")
                 sys.exit(1)
 
     def _run_shell(self, command, fail_quit=False):
@@ -77,13 +79,13 @@ class tRNADatabaseBuilder:
                 stderr=subprocess.STDOUT
             )
             if result.stdout:
-                print(result.stdout, end='')
+                self.logger.info(result.stdout)
         except subprocess.CalledProcessError as e:
-            print(f"Command failed: {command}", file=sys.stderr)
+            self.logger.error(f"Command failed: {command}")
             if e.stdout:
-                print(e.stdout, file=sys.stderr, end='')
+                self.logger.error(e.stdout)
             if fail_quit:
-                print("Aborting program...", file=sys.stderr)
+                self.logger.error("Aborting program...")
                 sys.exit(1)
             return e.returncode
         return 0
@@ -327,12 +329,12 @@ class tRNADatabaseBuilder:
         index_option = "--large-index"
         index_base = self.db_directory + self.db_name + "-tRNAgenome"
 
-        print(f"Building Bowtie2 index using {self.threads} threads...")
+        self.logger.info(f"Building Bowtie2 index using {self.threads} threads...")
         self._run_shell(
             f"bowtie2-build {final_fasta} {index_base} {index_option} -p {self.threads}",
             fail_quit=True
         )
-        print("Database creation complete.")
+        self.logger.info("Database creation complete.")
 
 
 if __name__ == '__main__':
