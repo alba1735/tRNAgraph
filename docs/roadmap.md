@@ -101,3 +101,14 @@ No mechanism currently lets a user specify explicit category order anywhere in t
 - Phase 4's new modules (multi-factor DE, Venn comparison, PERMANOVA, trajectory analysis) should get test coverage as each lands, rather than retrofitting tests after the whole feature is "done" — this is new statistical code and the highest-risk work on this roadmap.
 - The same as-it-lands bar applies to Phase 2's correctness-bearing items (merge conflicting-run-info enforcement, split-file variance reproducibility, metadata sample-name validation) — cosmetic/DX-only items (logging, tqdm, trim-plot styling) don't need new unit tests.
 - Phase 3's Sprinzl fixes (acceptor-stem labeling, e-series extension) get the same bar, validated against canonical Sprinzl numbering and the tRNAscan-SE/tDRnamer cross-tool audit rather than a `trna-test` diff against tRAX, since tRAX has no equivalent labeling to diff against.
+
+## Unvetted / future items (Ignore for now)
+
+- Improve entire test suite's CI/CD coverage (GitHub Actions) — currently only `tests/unit/` is run, not `toolsTestSuite.py` or any of the legacy `trna-test` scripts. This will need to be implemented after everything else and after careful consideration of how to handle the large, generated `test_vibrChol1/` output directory (which is currently ignored in `.gitignore` and not checked into the repo).
+  - Also incorporate Archea and Eukaryotic test data into the CI/CD pipeline, since the current `test_vibrChol1/` demo is bacterial-only.
+- Add a Google Collab notebook (or other tutorial) for new users to run through the pipeline without installing anything locally.
+- Go through the entire tRAXs issue backlog on github and see if any of those issues are still relevant to tRNAgraph, and if so, add them to this roadmap.
+- Better terminal outputs in general that are more readable and informative, especially for long-running processes (e.g. mapping, trimming, counting).
+- Better logs (markdown) for long-running processes (e.g. mapping, trimming, counting) that are more readable and informative.
+- Automatic gtRNAdb db creation or a curated list of pre-built dbs for common organisms (e.g. human, mouse, E. coli, S. cerevisiae, etc.) to avoid the need for users to build their own dbs.
+- Modification analysis of some kinda... This is dependent on sequencing type and species, so it will need to be a separate module that is only run when the user has the correct data type and organism. This is a long-term goal and will require more research and development.

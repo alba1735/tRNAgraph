@@ -37,6 +37,21 @@ def builder(directory: Union[str, Path]) -> str:
         output = f'Output directory already exists: {dir_path}'
     return output
 
+
+def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: str = 'sample') -> str:
+    '''
+    Validate that a user-specified grouping column exists in adata.obs; fall back to `default`
+    (warning on stderr) instead of raising, so a typo'd/absent grouping parameter degrades a
+    graph command to a sane default rather than aborting it outright.
+    '''
+    if grp in adata.obs.columns:
+        return grp
+    print(
+        f'WARNING: specified {param_name} "{grp}" not found in AnnData object; falling back to "{default}".',
+        file=sys.stderr
+    )
+    return default
+
 from .toolsSchemas import VariantTag
 
 _VARIANT_LAYER_MAP = {'norm': 'norm', 'raw': 'raw', 'allfeatures': 'norm_allfeatures', 'vst': 'vst'}
@@ -217,7 +232,14 @@ class adataLog2FC:
         # condition (self.compare is a per-sample covariate: samples sharing a value are
         # replicates of that group).
         wide_raw = obs.pivot_table(index='trna', columns='sample', values=raw_readtype, aggfunc='first').loc[keep_trnas]
-        sample_condition = obs.drop_duplicates('sample').set_index('sample')[self.compare]
+        sample_df = obs.drop_duplicates('sample').set_index('sample')
+        # self.compare == 'sample' (the Parameter Fallback default) is a degenerate but valid
+        # case: 'sample' becomes the index via set_index above, so it's no longer a column to
+        # select -- each sample is trivially its own condition, i.e. its own index value.
+        if self.compare == 'sample':
+            sample_condition = pd.Series(sample_df.index, index=sample_df.index)
+        else:
+            sample_condition = sample_df[self.compare]
 
         counts_df = wide_raw.T.fillna(0).clip(lower=0).round().astype(int)  # samples x trna, as PyDESeq2 expects
         meta_df = pd.DataFrame({'condition': sample_condition.reindex(counts_df.index)}).dropna()

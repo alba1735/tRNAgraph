@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 
+from . import toolsTG
+
 from functools import partial
 from multiprocessing import Pool
 
@@ -22,10 +24,8 @@ class visualizer():
     '''
     def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output):
         self.threads = threads
-        if coverage_grp not in adata.obs.columns:
-            raise ValueError(f'Specified coveragegrp: {coverage_grp} not found in AnnData object.')
         self.coverage_obs = coverage_obs
-        self.coverage_grp = coverage_grp
+        self.coverage_grp = toolsTG.resolve_grp_column(adata, coverage_grp, 'coveragegrp')
         self.coverage_type = coverage_type
         self.coverage_gap = coverage_gap
         self.coverage_method = coverage_method
@@ -58,6 +58,12 @@ class visualizer():
         '''
         Transform coverage data for plotting.
         '''
+        # A grouping column with exactly one sample per label per covobs (e.g. --covgrp sample,
+        # the Parameter Fallback default) makes pandas' single-label column selection collapse
+        # to a Series rather than a single-column DataFrame -- already exactly the "one value
+        # per row" result singlecol is trying to produce, so there's nothing left to aggregate.
+        if singlecol and isinstance(df, pd.Series):
+            return df
         # If the coverage method is mean, median, max, or min, transform the df by using groupby on column names
         if self.coverage_method == 'mean':
             if singlecol:

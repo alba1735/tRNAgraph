@@ -21,8 +21,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
     individual per-comparison heatmaps are also saved to an `individual/` subfolder, mirroring
     plotsCoverage.py's split-vs-combined output layout.
     '''
-    if grp not in adata.obs.columns:
-        raise ValueError('Specified group not found in AnnData object.')
+    grp = toolsTG.resolve_grp_column(adata, grp, 'group')
 
     individual_output = f'{output}individual/'
     if heatsubplots:

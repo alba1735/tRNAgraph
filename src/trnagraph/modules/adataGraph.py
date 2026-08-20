@@ -24,6 +24,10 @@ class anndataGrapher:
         self.variant_spec = toolsTG.parse_variant(self.adata_original, getattr(self.args, 'variant', 'norm:full'))
         self.adata = toolsTG.build_variant_view(self.adata_original, self.variant_spec)
         self.config_name = 'default'
+        # Resolve grouping-column args before anything below reads them -- the log2FC
+        # precompute a few lines down reads self.args.heatgrp/volgrp directly, ahead of the
+        # plots*.py modules that separately validate their own grp argument.
+        self._resolve_grp_args()
         # Load cmap dict for each graph type
         self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
@@ -115,6 +119,18 @@ class anndataGrapher:
             else:
                 self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['log2FC'] = self.adata.uns['log2FC']
             self.adata_original.write(self.args.anndata)
+
+    def _resolve_grp_args(self):
+        '''
+        Validate the CLI's grouping-column parameters against the resolved AnnData object
+        once, up front, before any downstream code reads them -- self.args.covgrp/comparegrp1/
+        comparegrp2/heatgrp/volgrp are each read directly (and more than once: the log2FC
+        precompute above, cmap_dict, and the per-plot-type calls in plot()), so resolving them
+        here keeps every call site consistent instead of only patching the plots*.py modules
+        that happen to validate their own grp argument.
+        '''
+        for param_name in ('covgrp', 'comparegrp1', 'comparegrp2', 'heatgrp', 'volgrp'):
+            setattr(self.args, param_name, toolsTG.resolve_grp_column(self.adata, getattr(self.args, param_name), param_name))
 
     def main(self):
         # Generate graphs

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import sys
+
 import numpy as np
 
 from . import toolsTG
@@ -12,11 +14,9 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True):
-    # Check if the specified columns exist in the AnnData object
-    if comparegrp1 not in adata.obs.columns:
-        raise ValueError('Specified comparegrp1 not found in AnnData object.')
-    if comparegrp2 not in adata.obs.columns:
-        raise ValueError('Specified comparegrp2 not found in AnnData object.')
+    # Fall back to 'sample' (with a warning) if the specified columns aren't in the AnnData object
+    comparegrp1 = toolsTG.resolve_grp_column(adata, comparegrp1, 'comparegrp1')
+    comparegrp2 = toolsTG.resolve_grp_column(adata, comparegrp2, 'comparegrp2')
     # Create a color palette for the p
     if colormap != None:
         pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
@@ -27,6 +27,17 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True)
     for countgrp in ['amino','iso']:
         # Get log2 fold change dataframe from analysis_tools
         df = toolsTG.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
+        # log2fc_compare_df can legitimately produce zero valid comparegrp1/comparegrp2 pairs
+        # (e.g. comparegrp1 has no comparegrp2 value shared across every one of its own values --
+        # notably always true when comparegrp1 is a per-observation-unique column like 'sample',
+        # the Parameter Fallback default) -- its 'log2'/'pval' column levels don't exist at all
+        # in that case, so skip this countgrp instead of a KeyError on the .loc[:, ('log2')] below.
+        if 'log2' not in df.columns.get_level_values('stats'):
+            print(
+                f'WARNING: no valid {comparegrp1}/{comparegrp2} pairs found for {countgrp}; skipping compare plot.',
+                file=sys.stderr
+            )
+            continue
         # Sort the df by the mean of the log2 fold change
         df = df.loc[df.loc[:, ('log2')].abs().mean(axis=1).sort_values(ascending=True).index, :]
         # create a stacked horizontal bar plot for each group 
