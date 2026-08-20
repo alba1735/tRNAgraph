@@ -3,8 +3,10 @@ import os
 import multiprocessing
 import json
 import warnings
+from pydantic import ValidationError
 warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
 from . import toolsTG
+from .toolsSchemas import GraphFilterConfig, ColormapFile
 from .lazy_imports import (
     plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
     plotsCoverage, plotsHeatmap, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
@@ -47,21 +49,22 @@ class anndataGrapher:
         if self.args.config:
             print('Loading config file: ' + self.args.config)
             with open(self.args.config, 'r') as f:
-                self.args.config = json.load(f)
-            if 'name' in self.args.config:
-                self.args.output += '/' + self.args.config['name']
-                self.config_name = self.args.config['name']
-                print(toolsTG.builder(self.args.output))
-            else:
-                raise ValueError('Config file must contain a "name" field')
-            if 'obs' in self.args.config or 'obs_r' in self.args.config:
+                raw_config = json.load(f)
+            try:
+                config = GraphFilterConfig.model_validate(raw_config)
+            except ValidationError as e:
+                raise ValueError(f'Invalid config file {self.args.config}:\n{e}') from e
+            self.args.output += '/' + config.name
+            self.config_name = config.name
+            print(toolsTG.builder(self.args.output))
+            if config.obs is not None or config.obs_r is not None:
                 # Dictionary of uns columns and values to filter by as groups and samples since the coulmns are different from the main adata obs
                 obs_dict = {i:True for i in self.adata.uns['amino_counts'].columns.values}
                 obs_dict.update({i:True for i in self.adata.uns['type_counts'].columns.values})
-                filter_dict = self.args.config.get('obs', dict())
-                if 'obs_r' in self.args.config:
+                filter_dict = dict(config.obs or {})
+                if config.obs_r is not None:
                     # Add the inverse of the obs_r filter to the filter_dict
-                    for k,v in self.args.config['obs_r'].items():
+                    for k,v in config.obs_r.items():
                         filter_dict[k] = [i for i in self.adata.obs[k].unique() if i not in v]
                 for k,v in filter_dict.items():
                     print('Filtering AnnData object by observation: ' + k + ' , ' + str(v))
@@ -77,11 +80,11 @@ class anndataGrapher:
                     uns_value = self.adata.uns[uns_key].loc[:, [i for i in self.adata.uns[uns_key].columns.values if obs_dict[i]]].copy()
                     uns_dict[uns_key] = uns_value
                 self.adata.uns = uns_dict
-            if 'var' in self.args.config or 'var_r' in self.args.config:
-                filter_dict = self.args.config['var']
-                if 'var_r' in self.args.config:
+            if config.var is not None or config.var_r is not None:
+                filter_dict = dict(config.var or {})
+                if config.var_r is not None:
                     # Add the inverse of the var_r filter to the filter_dict
-                    for k,v in self.args.config['var_r'].items():
+                    for k,v in config.var_r.items():
                         filter_dict[k] = [i for i in self.adata.var[k].unique() if i not in v]
                 for k,v in filter_dict.items():
                     print('Filtering AnnData object by variable: ' + k + ' , ' + str(v))
@@ -94,7 +97,11 @@ class anndataGrapher:
         if self.args.colormap:
             print('Loading colormap file: ' + self.args.colormap)
             with open(self.args.colormap, 'r') as f:
-                self.args.colormap = json.load(f)
+                raw_colormap = json.load(f)
+            try:
+                self.args.colormap = ColormapFile.model_validate(raw_colormap).root
+            except ValidationError as e:
+                raise ValueError(f'Invalid colormap file {self.args.colormap}:\n{e}') from e
             print('Colormap loaded.\n')
         # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
         # This is done now to prevent saving issues later if multiprocessing is used

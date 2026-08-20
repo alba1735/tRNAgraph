@@ -18,7 +18,6 @@ Landmines hit while doing Phase 1's work, relevant to any future code that touch
 
 ### Data Validation
 
-- **Parameter Fallback**: Add checks for graphing parameters; default to `sample` if the requested column does not exist in `adata` (currently `plotsCoverage.py`, `plotsCompare.py`, and `plotsHeatmap.py` raise `ValueError` instead of falling back).
 - **Pydantic validation across input files**: Extend the existing pydantic models in `toolsSchemas.py` (currently `VariantTag`/`VariantContribution`, used only internally by the size-split machinery) to cover all four user-facing input files at the point they're read: the metadata/samples file, the `--pairs` file, `--config` filter JSON, and `--colormap` JSON. All four currently use ad hoc parsing (bare `pd.read_csv`/`json.load` with manual, inconsistent checks) that fails late as a downstream `KeyError`, silent `None`, or misleading warning rather than failing fast with a clear validation error.
 
 ### Refactoring Targets
@@ -107,8 +106,14 @@ No mechanism currently lets a user specify explicit category order anywhere in t
 - Improve entire test suite's CI/CD coverage (GitHub Actions) — currently only `tests/unit/` is run, not `toolsTestSuite.py` or any of the legacy `trna-test` scripts. This will need to be implemented after everything else and after careful consideration of how to handle the large, generated `test_vibrChol1/` output directory (which is currently ignored in `.gitignore` and not checked into the repo).
   - Also incorporate Archea and Eukaryotic test data into the CI/CD pipeline, since the current `test_vibrChol1/` demo is bacterial-only.
 - Add a Google Collab notebook (or other tutorial) for new users to run through the pipeline without installing anything locally.
+  - We can use the one I created for tRAX as a guidline, but it will need to be updated for tRNAgraph's new CLI and new features etc.
 - Go through the entire tRAXs issue backlog on github and see if any of those issues are still relevant to tRNAgraph, and if so, add them to this roadmap.
 - Better terminal outputs in general that are more readable and informative, especially for long-running processes (e.g. mapping, trimming, counting).
 - Better logs (markdown) for long-running processes (e.g. mapping, trimming, counting) that are more readable and informative.
 - Automatic gtRNAdb db creation or a curated list of pre-built dbs for common organisms (e.g. human, mouse, E. coli, S. cerevisiae, etc.) to avoid the need for users to build their own dbs.
 - Modification analysis of some kinda... This is dependent on sequencing type and species, so it will need to be a separate module that is only run when the user has the correct data type and organism. This is a long-term goal and will require more research and development.
+- update command to cli so that users can update the software.
+- Better mitochondrial tRNA handling, since mito tRNAs are often very different from nuclear tRNAs and may require special handling in the pipeline.
+  - Probably an extra flag at build/map to perform additional mapping/analysis for mito tRNAs, and/or a separate mito tRNA database. This will require some consideration of how to handle mito tRNAs in the context of the rest of the pipeline, since they are often very different from nuclear tRNAs and may require special handling.
+- Mouse/Rat have tons of SINEs that are tRNA-derived which caused huge problems in tRAX, and will likely cause problems in tRNAgraph as well. The work around was using the High Confidence tRNA set from GtRNAdb, but this is not a perfect solution.
+  - Some SINE analysis might be interesting.

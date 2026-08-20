@@ -11,8 +11,9 @@ from multiprocessing import cpu_count
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 import sklearn.preprocessing
+from pydantic import ValidationError
 from . import toolsTG
-from .toolsSchemas import VariantContribution
+from .toolsSchemas import VariantContribution, MetadataFile, PairsFile
 from .lazy_imports import toolsMap, toolsCountReads, toolsGetCoverage, toolsTrackHub
 
 class AnalysisPipeline:
@@ -337,6 +338,7 @@ class AnalysisPipeline:
         try:
             # Use sep='\s+' to handle any whitespace
             pairs_df = pd.read_csv(self.pairfile, sep=r'\s+', engine='python', header=None, names=['Sample1', 'Sample2'])
+            PairsFile(path=self.pairfile, pairs=list(pairs_df.itertuples(index=False, name=None)))
         except Exception as e:
             print(f"Error reading pairs file: {e}", file=sys.stderr)
             return de_results
@@ -560,6 +562,69 @@ class AnnDataBuilder():
         '''
         self.analysis_args = analysis_args
         self.metadata_path = metadata
+
+        # Parse and validate the metadata/samples file FIRST, before any expensive/risky
+        # pipeline work below (AnalysisPipeline's counting/coverage generation) runs -- a
+        # malformed metadata file (e.g. a duplicate sample row) previously wasn't caught until
+        # deep inside that pipeline run, as an opaque pandas reshape/pivot error.
+        metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
+        try:
+            self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None, engine='python' if metadata_type is None else None)
+        except:
+            raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
+
+        # Validate and drop fastq column
+        if len(self.metadata.columns) < 3:
+             raise ValueError(f'Metadata file must have at least 3 columns (fastq, sample, group): {metadata}')
+        # Drop the first column (fastq)
+        self.metadata = self.metadata.iloc[:, 1:]
+        # turn first row into a list then remove it from the dataframe
+        first_row = self.metadata.iloc[0].dropna().values.tolist()
+        if len(first_row) >= 2 and first_row[0] == 'sample' and first_row[1] == 'group':
+            self.observations = first_row
+            self.metadata = self.metadata.iloc[1:]
+        else:
+            self.observations = ['sample', 'group'] + [f'metadata_{i}' for i in range(2, len(first_row))]
+
+        # Make sure that observations are not going to be generated automatically
+        auto_obs = ['trna', 'iso', 'amino', 'deseq2_sizefactor', 'refseq', 'dataset', 'pseudogene']
+        if any(x in self.observations for x in auto_obs):
+            raise ValueError(f'The following observation categories will automatically be generated please remove these if you included them: {auto_obs}')
+        # Make sure that observations are unique
+        if len(self.observations) != len(set(self.observations)):
+            raise ValueError(f'Observation categories must be unique, please remove duplicates from the observation catgories you wish to generate: {self.observations}')
+        # Make sure that sample and group are the first two observations
+        if self.observations[0] != 'sample' or self.observations[1] != 'group':
+            raise ValueError(f'The first two observation categories must be "sample" and "group" please reorder your observation categories to match the following: ["sample", "group", ...]: {self.observations}')
+        # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the coverage file
+        if len(self.observations) != len(self.metadata.columns):
+            diff_obs_count = len(self.metadata.columns)-len(self.observations)
+            print(f'Number of observations does not match number of parameters in coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
+            if diff_obs_count > 0:
+                print(f'Adding {diff_obs_count} observations to the end of the list')
+                self.observations += ['obs_' + str(x) for x in range(diff_obs_count)]
+            if diff_obs_count < 0:
+                print(f'Removing {abs(diff_obs_count)} observations from the end of the list')
+                self.observations = self.observations[:diff_obs_count]
+        # Validate the parsed rows (duplicate/empty sample names, no data rows) at read time,
+        # before they're indexed into self.metadata below -- a duplicate sample name previously
+        # went undetected here and silently produced duplicate adata.obs rows downstream.
+        try:
+            MetadataFile(
+                path=metadata,
+                header=self.observations,
+                rows=[[None if pd.isna(x) else str(x) for x in row] for row in self.metadata.itertuples(index=False)],
+            )
+        except ValidationError as e:
+            raise ValueError(f'Invalid metadata file {metadata}:\n{e}') from e
+        # Add align observation categories to metadata
+        self.metadata.columns = self.observations
+        self.metadata.set_index('sample', inplace=True)
+        # Sample names as given in the metadata file, kept before the to_dict() conversion below
+        # so create() can check them against the samples actually present in the coverage file.
+        self.metadata_samples = set(self.metadata.index)
+        self.metadata = self.metadata.to_dict()
+
         # Run analysis pipeline if args are provided
         if analysis_args:
             # Handle auto-mapping and splitting if needed
@@ -632,57 +697,9 @@ class AnnDataBuilder():
         # For adding amino acid counts to coverage file
         aminoacidcounts = self.expinfo.trnaaminofile
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
-        # For adding metadata to adata object
-        metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
-        try:
-            self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None, engine='python' if metadata_type is None else None)
-        except:
-            raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
-            
-        # Validate and drop fastq column
-        if len(self.metadata.columns) < 3:
-             raise ValueError(f'Metadata file must have at least 3 columns (fastq, sample, group): {metadata}')
-        # Drop the first column (fastq)
-        self.metadata = self.metadata.iloc[:, 1:]
-        # turn first row into a list then remove it from the dataframe
-        first_row = self.metadata.iloc[0].dropna().values.tolist()
-        if len(first_row) >= 2 and first_row[0] == 'sample' and first_row[1] == 'group':
-            self.observations = first_row
-            self.metadata = self.metadata.iloc[1:]
-        else:
-            self.observations = ['sample', 'group'] + [f'metadata_{i}' for i in range(2, len(first_row))]
-        
-        # self.metadata.columns = self.observations
         # Create list of reference sequences from actualbase column of coverage file - skips gap positions
         self.seqs = self._seq_build_()
         self.seqs_full = self._seq_build_(gap=True)
-        # Make sure that observations are not going to be generated automatically
-        auto_obs = ['trna', 'iso', 'amino', 'deseq2_sizefactor', 'refseq', 'dataset', 'pseudogene']
-        if any(x in self.observations for x in auto_obs):
-            raise ValueError(f'The following observation categories will automatically be generated please remove these if you included them: {auto_obs}')
-        # Make sure that observations are unique
-        if len(self.observations) != len(set(self.observations)):
-            raise ValueError(f'Observation categories must be unique, please remove duplicates from the observation catgories you wish to generate: {self.observations}')
-        # Make sure that sample and group are the first two observations
-        if self.observations[0] != 'sample' or self.observations[1] != 'group':
-            raise ValueError(f'The first two observation categories must be "sample" and "group" please reorder your observation categories to match the following: ["sample", "group", ...]: {self.observations}')
-        # Add manual observations to obs list if they are not provided or if the length of the observations list does not match the number of parameters in the coverage file
-        if len(self.observations) != len(self.metadata.columns):
-            diff_obs_count = len(self.metadata.columns)-len(self.observations)
-            print(f'Number of observations does not match number of parameters in coverage file by {diff_obs_count}. To create a more specific database object, please provide the correct number of observations.')
-            if diff_obs_count > 0:
-                print(f'Adding {diff_obs_count} observations to the end of the list')
-                self.observations += ['obs_' + str(x) for x in range(diff_obs_count)]
-            if diff_obs_count < 0:
-                print(f'Removing {abs(diff_obs_count)} observations from the end of the list')
-                self.observations = self.observations[:diff_obs_count]
-        # Add align observation categories to metadata
-        self.metadata.columns = self.observations
-        self.metadata.set_index('sample', inplace=True)
-        # Sample names as given in the metadata file, kept before the to_dict() conversion below
-        # so create() can check them against the samples actually present in the coverage file.
-        self.metadata_samples = set(self.metadata.index)
-        self.metadata = self.metadata.to_dict()
         # Add trnagraph version to run info based on github hash - Will be changed to git describe once the package is deployed
         git_version, git_hash = _get_git_version_()
 

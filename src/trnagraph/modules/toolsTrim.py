@@ -6,7 +6,9 @@ import json
 import subprocess
 import pandas as pd
 import multiprocessing
+from pydantic import ValidationError
 from . import plotsTrimmingStats
+from .toolsSchemas import ColormapFile
 
 class FastpTrimmer:
     '''
@@ -22,7 +24,11 @@ class FastpTrimmer:
         if getattr(args, 'colormap', None):
             print('Loading colormap file: ' + args.colormap)
             with open(args.colormap, 'r') as f:
-                self.colormap = json.load(f).get('trimtype', None)
+                raw_colormap = json.load(f)
+            try:
+                self.colormap = ColormapFile.model_validate(raw_colormap).root.get('trimtype', None)
+            except ValidationError as e:
+                raise ValueError(f'Invalid colormap file {args.colormap}:\n{e}') from e
 
         # Parse Manifest
         self.samples = self._parse_manifest()
