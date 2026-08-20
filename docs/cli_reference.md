@@ -330,6 +330,7 @@ trnagraph tools merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
 - **`-o`, `--output`**: Path for the merged output file. Default: `trnagraph.merge.h5ad`.
 - **`--dropno`**: Drop non-tRNA genes that are not present in both objects. Default: `False`.
 - **`--droprna`**: Drop RNA categories that are not present in both objects. Default: `False`.
+- **`--force`**: Proceed even if the two objects' build provenance (database/gtf) conflicts. Default: `False` (refuses the merge on a conflict).
 
 ### `test`
 

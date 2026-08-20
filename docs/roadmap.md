@@ -16,10 +16,6 @@ Landmines hit while doing Phase 1's work, relevant to any future code that touch
 
 ## Phase 2 — Known Issues & Refactoring
 
-### Data Validation
-
-- **Pydantic validation across input files**: Extend the existing pydantic models in `toolsSchemas.py` (currently `VariantTag`/`VariantContribution`, used only internally by the size-split machinery) to cover all four user-facing input files at the point they're read: the metadata/samples file, the `--pairs` file, `--config` filter JSON, and `--colormap` JSON. All four currently use ad hoc parsing (bare `pd.read_csv`/`json.load` with manual, inconsistent checks) that fails late as a downstream `KeyError`, silent `None`, or misleading warning rather than failing fast with a clear validation error.
-
 ### Refactoring Targets
 
 - **Merge Logic**: Prevent merging of AnnData objects if they have conflicting tRNAgraph run info. Partially addressed for `analyze addsplit` (refuses conflicting `--database`/`--gtf` provenance unless `--force`, checked against `adata.uns['trnagraphruninfo']`) and `tools merge` (warns, doesn't refuse, on differing `adata.uns['size_splits']` key sets). Still open: `tools merge` doesn't check `trnagraphruninfo` (database/GTF/build provenance) at all before merging — extend it to hard-refuse on mismatch there too, mirroring `addsplit`'s `--force` escape hatch.

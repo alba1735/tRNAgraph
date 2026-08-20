@@ -472,6 +472,7 @@ def merge(
     dropno: bool = typer.Option(False, "--dropno", help="Drop non tRNAs genes that are not present in both AnnData objects"),
     droprna: bool = typer.Option(False, "--droprna", help="Drop RNA categories that are not present in both AnnData objects"),
     output: str = typer.Option("trnagraph.merge.h5ad", "-o", "--output", help="Specify output h5ad file path"),
+    force: bool = typer.Option(False, "--force", help="Proceed even if the two AnnData objects' build provenance (database/gtf) conflicts"),
     log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
@@ -489,7 +490,7 @@ def merge(
 
         args = SimpleNamespace(
             mode='merge', anndata1=anndata1, anndata2=anndata2, dropno=dropno, droprna=droprna,
-            output=output_path, log=log, quiet=quiet
+            output=output_path, force=force, log=log, quiet=quiet
         )
 
         print('Merging database objects...\n')

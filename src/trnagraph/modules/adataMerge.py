@@ -1,3 +1,5 @@
+import sys
+
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -13,6 +15,24 @@ class anndataMerger():
         self.args = args
 
     def merge(self):
+        # Conflicting-run-info validation: refuse (unless --force) if the two objects' own
+        # recorded build provenance (database/gtf) disagrees -- mirrors `analyze addsplit`'s
+        # --force-gated check (adataBuild.py.add_split), previously only implemented there and
+        # missing entirely from `tools merge`.
+        flags1 = self.adata1.uns.get('trnagraphruninfo', {}).get('flags', {})
+        flags2 = self.adata2.uns.get('trnagraphruninfo', {}).get('flags', {})
+        conflicts = []
+        for flag_key, label in [('database', 'database'), ('gtf', 'gtf')]:
+            value1 = flags1.get(flag_key)
+            value2 = flags2.get(flag_key)
+            if value1 is not None and value2 is not None and value1 != value2:
+                conflicts.append(f"object 1 was built with {label}='{value1}', but object 2 was built with {label}='{value2}'")
+        if conflicts:
+            message = "Detected conflicting build provenance between the two AnnData objects:\n  " + "\n  ".join(conflicts)
+            if not getattr(self.args, 'force', False):
+                raise ValueError(message + "\nPass --force to proceed anyway.")
+            print(f"WARNING: {message}\nProceeding anyway due to --force.", file=sys.stderr)
+
         if len(np.intersect1d(self.adata1.obs.index, self.adata2.obs.index))>0:
             raise Exception('WARNING: The two AnnData objects have overlapping indices. This will cause issues with merging as duplicate groups/samples may occur. \
                   Regenerate your input annData objects with unique sample names across all merged objects.\n')
