@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import logging
 import subprocess
 import pandas as pd
 import multiprocessing
@@ -17,12 +18,21 @@ class FastpTrimmer:
     def __init__(self, args):
         self.args = args
         self.manifest = args.input
+        # A stable, module-level logger -- NOT configured with its own handlers here. Per
+        # Python's logging convention, only the application entry point (cli.py's
+        # configure_logging()/handle_output()) attaches FileHandler/StreamHandler; this module
+        # just logs and relies on propagation. Using getLogger(__name__) (module-scoped, not
+        # per-instance) also means repeated FastpTrimmer construction reuses the same cached
+        # logger object rather than registering a new one every time -- loggers are never
+        # garbage-collected by the logging module, so an instance-keyed name would otherwise
+        # leak a logger (and any handler it held) for the life of the process.
+        self.logger = logging.getLogger(__name__)
 
         # Load the colormap if specified (same JSON convention as `analyze graph`'s --colormap,
         # namespaced under a 'trimtype' top-level key since there's no adata/obs column here)
         self.colormap = None
         if getattr(args, 'colormap', None):
-            print('Loading colormap file: ' + args.colormap)
+            self.logger.info('Loading colormap file: ' + args.colormap)
             with open(args.colormap, 'r') as f:
                 raw_colormap = json.load(f)
             try:
@@ -73,7 +83,7 @@ class FastpTrimmer:
                         
                     samples[output_prefix] = {'r1': r1, 'r2': r2}
         except Exception as e:
-            print(f"Error parsing manifest file: {e}")
+            self.logger.error(f"Error parsing manifest file: {e}")
             sys.exit(1)
         return samples
 
@@ -167,14 +177,17 @@ class FastpTrimmer:
         cmd_str = ' '.join(cmd)
         
         if self.args.verbose:
-            print(f"[{output_prefix}] Starting: {cmd_str}")
+            self.logger.info(f"[{output_prefix}] Starting: {cmd_str}")
         
         try:
             # Check if fastp is installed
             process = subprocess.run(cmd, capture_output=True, text=True)
-            if process.returncode != 0:
-                return (output_prefix, False, process.stderr)
-            return (output_prefix, True, "Success")
+            # Return fastp's own stderr regardless of success/failure -- it's discarded here
+            # (rather than in process(), which runs sequentially in the parent after this
+            # worker returns) since capturing/logging it must not happen inside a
+            # multiprocessing.Pool worker, where concurrent writes to the same --log file
+            # could interleave.
+            return (output_prefix, process.returncode == 0, process.stderr)
         except FileNotFoundError:
             return (output_prefix, False, "fastp executable not found in PATH.")
 
@@ -182,26 +195,31 @@ class FastpTrimmer:
         '''
         Main execution block
         '''
-        print(f"Starting trimming on {len(self.samples)} samples.")
-        print(f"Configuration: {self.jobs} concurrent jobs, {self.fastp_threads} threads per job.")
-        
+        self.logger.info(f"Starting trimming on {len(self.samples)} samples.")
+        self.logger.info(f"Configuration: {self.jobs} concurrent jobs, {self.fastp_threads} threads per job.")
+
         tasks = [(name, files) for name, files in self.samples.items()]
-        
+
         with multiprocessing.Pool(self.jobs) as pool:
             results = pool.starmap(self._run_process, tasks)
 
-        # Check results
+        # Check results. fastp's own stderr (per-sample summary/diagnostic output) is logged
+        # here -- back in the parent process, sequentially, after the pool returns -- for every
+        # sample regardless of success/failure, so --log captures it even on success instead of
+        # discarding it entirely.
         failed = []
-        for name, success, msg in results:
+        for name, success, stderr in results:
             if not success:
-                print(f"ERROR: Sample {name} failed.\nMessage: {msg}")
+                self.logger.error(f"Sample {name} failed.\nMessage: {stderr}")
                 failed.append(name)
             else:
-                print(f"Finished: {name}")
-        
+                self.logger.info(f"Finished: {name}")
+                if stderr:
+                    self.logger.info(f"[{name}] fastp stderr:\n{stderr}")
+
         if failed:
-            print(f"\nWarning: {len(failed)} samples failed processing.")
-        
+            self.logger.warning(f"{len(failed)} samples failed processing.")
+
         self._generate_summary()
 
     def _generate_summary(self):
@@ -210,8 +228,8 @@ class FastpTrimmer:
         similar to the old logic but more robust.
         '''
         summary_data = []
-        
-        print("Generating summary report...")
+
+        self.logger.info("Generating summary report...")
         for output_prefix in self.samples:
             json_path = f"{output_prefix}.json"
             if not os.path.exists(json_path):
@@ -278,15 +296,15 @@ class FastpTrimmer:
             # Save Stats
             stats_out = os.path.join(output_dir, "trim_stats.csv")
             df.to_csv(stats_out, index=False)
-            print(f"Summary statistics written to {stats_out}")
-            print(f"Updated manifest written to {manifest_out}")
-            
+            self.logger.info(f"Summary statistics written to {stats_out}")
+            self.logger.info(f"Updated manifest written to {manifest_out}")
+
             # Generate Plot
             plot_out = os.path.join(output_dir, "trim_feature_types.pdf")
-            print("Generating feature types plot...")
+            self.logger.info("Generating feature types plot...")
             plotsTrimmingStats.visualizer(stats_out, plot_out, colormap=self.colormap).plot()
         else:
-            print("No JSON reports found to summarize.")
+            self.logger.warning("No JSON reports found to summarize.")
 
 if __name__ == "__main__":
     pass

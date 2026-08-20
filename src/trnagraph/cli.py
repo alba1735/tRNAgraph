@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import logging
 import contextlib
 import typer
 from typing import Optional, List
@@ -32,25 +33,63 @@ except ImportError:
     from tRNAgraph.modules import env_check
     from tRNAgraph import __version__
 
+def configure_logging(log_file: Optional[str] = None, quiet: bool = False) -> logging.Logger:
+    """
+    Configure the shared 'trnagraph' logger's handlers for one CLI invocation, from the
+    --log/--quiet flags common to most commands. This is the ONE place handlers get attached:
+    per Python's own logging documentation, library/module code should never configure its own
+    handlers, only call `logging.getLogger(__name__)` and log -- messages then propagate up
+    from e.g. 'trnagraph.modules.toolsTrim' to this 'trnagraph' logger for free. Centralizing
+    it here means every module converted under the roadmap's "Logging" item gets --log/--quiet
+    support automatically, without reimplementing handler setup per file.
+
+    --log and stdout are mutually exclusive (matching handle_output()'s own all-or-nothing
+    stdout redirect below) rather than both active, since handle_output() may *also* redirect
+    sys.stdout to this same --log path -- a StreamHandler(sys.stdout) attached here as well
+    would duplicate every line into the file.
+    """
+    logger = logging.getLogger('trnagraph')
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+    if log_file:
+        file_handler = logging.FileHandler(log_file, mode='w')
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(file_handler)
+    elif not quiet:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(stream_handler)
+    return logger
+
 @contextlib.contextmanager
 def handle_output(log_file: Optional[str] = None, quiet: bool = False):
     """
-    Context manager to handle output redirection for logging and quiet mode.
+    Context manager to handle output redirection for logging and quiet mode. Also configures
+    the shared 'trnagraph' logger (see configure_logging()) for the duration of the command.
     """
-    if log_file:
-        # Redirect stdout to the log file
-        # We use 'w' mode to overwrite the log file, consistent with original behavior
-        with open(log_file, 'w') as f:
-            with contextlib.redirect_stdout(f):
-                yield
-    elif quiet:
-        # Redirect stdout to devnull
-        with open(os.devnull, 'w') as f:
-            with contextlib.redirect_stdout(f):
-                yield
-    else:
-        # Normal execution - output to stdout
-        yield
+    logger = configure_logging(log_file, quiet)
+    try:
+        if log_file:
+            # Redirect stdout to the log file
+            # We use 'w' mode to overwrite the log file, consistent with original behavior
+            with open(log_file, 'w') as f:
+                with contextlib.redirect_stdout(f):
+                    yield
+        elif quiet:
+            # Redirect stdout to devnull
+            with open(os.devnull, 'w') as f:
+                with contextlib.redirect_stdout(f):
+                    yield
+        else:
+            # Normal execution - output to stdout
+            yield
+    finally:
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
 
 app = typer.Typer(
     help="tRNAgraph is a tool for for advanced analysis of tRNA-seq data.",
