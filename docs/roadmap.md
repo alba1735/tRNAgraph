@@ -20,7 +20,6 @@ Refined 2026-08-19 after a full investigation pass into each item below (current
 
 ### Visualization Enhancements
 
-- **Styling**: Bring `plotsTrimmingStats.py` in line with the rest of `plots*.py` — husl/colormap palette support, square figure aspect, consistent legend/theme. No combined+`individual/` output split (the convention `plotsCoverage.py` uses): a cross-sample summary bar chart has no natural per-item axis to split on.
 - **Correlation**: Extend `plotsCorrelation.py` to include non-tRNA features, reusing the three-way pattern (`adata.uns['nontRNA_counts']` / tRNA-only / combined) already implemented in `plotsPca.py`, rather than a new approach.
 
 ### Data Validation
