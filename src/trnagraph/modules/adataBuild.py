@@ -93,7 +93,7 @@ class AnalysisPipeline:
         self.pairfile = args.pairs
         self.hubonly = args.hubonly
         self.makehubs = args.hub
-        self.dumpother = args.dumpother
+        self.filterother = args.filterother
         self.dispfittype = getattr(args, 'dispfittype', 'mean')  # Default to 'mean' for robustness
         self.quiet = getattr(args, 'quiet', False)
         self.variant_label = variant_label
@@ -561,7 +561,7 @@ class AnalysisPipeline:
                                 trnaloci=[self.trnainfo.locifile], countfile=self.expinfo.genetypecounts,
                                 realcountfile=self.expinfo.genetyperealcounts, mismatchfile=self.expinfo.mismatchcountfile,
                                 bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
-                                countfrags=False, bamnofeature=self.dumpother,
+                                countfrags=False, bamnofeature=self.filterother,
                                 uniquename=self.expinfo.uniquename, fraguniq=not self.nofrag, cores=self.cores,
                                 quiet=self.quiet)
         else:

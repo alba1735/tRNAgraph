@@ -288,7 +288,7 @@ def build(
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
-    dumpother: bool = typer.Option(False, "--dumpother", help="Dump 'other' features when counting gene types"),
+    filterother: bool = typer.Option(False, "--filterother", help="Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
     uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
@@ -317,7 +317,7 @@ def build(
             database=database, gtf=gtf, pairs=pairs,
             bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
-            dumpother=dumpother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
+            filterother=filterother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
             vst=vst, quiet=quiet
         )

@@ -19,7 +19,7 @@ def _make_args(tmp_path, nosizefactors=False):
         input=str(tmp_path / "metadata.txt"), gtf=None, bed=[], nofrag=False,
         nosizefactors=nosizefactors, bamdir=str(tmp_path / "bam"), threads=1,
         minnontrnasize=20, maxmismatches=None, mincoverage=None, uniqueonly=False,
-        pairs=None, hubonly=False, hub=False, dumpother=False, quiet=True,
+        pairs=None, hubonly=False, hub=False, filterother=False, quiet=True,
     )
 
 
