@@ -123,34 +123,27 @@ class FastpTrimmer:
             cmd.extend(['--adapter_sequence_r2', self.args.adapter2])
 
         # UMI Processing
-        if self.args.umilength > 0:
+        # fastp's own --umi_loc only supports head-anchored extraction (index1/index2/read1/
+        # read2/per_index/per_read) -- there is no tail-anchored option in fastp itself, so a
+        # --umi3 request can't be expressed as a fastp flag at all. For that case, fastp runs
+        # with no UMI flags whatsoever (plain adapter trimming/merging), and a umi_tools
+        # extract --3prime post-processing step (mirroring tRAX's own approach) handles the
+        # actual 3' extraction afterward -- see _run_process().
+        if self.args.umilength > 0 and not self.args.umi3:
             cmd.append('--umi')
             cmd.extend(['--umi_len', str(self.args.umilength)])
-            
-            # UMI Location logic
-            if self.args.umi3:
-                # If UMI is at 3' end, fastp doesn't have a direct 'read1_tail' locator in same way
-                # but usually 3' adapters handle this. If strictly UMI:
-                # Assuming standard UMI-tools logic where it's part of the read sequence
-                # fastp default is 5' (--umi_loc=read1). 
-                # For 3' UMI, we might rely on adapter trimming or specific location flags if supported by version.
-                # Standard fastp handles 5' well. For 3', we warn or assume user configured adapter trimming to expose it.
-                # However, common protocols (McSeq) often put UMI at 5'. 
-                # If strictly 3', use --umi_loc read1/read2 combined with skip if needed.
-                pass 
-            else:
-                # Default is 5' end of read1
-                cmd.extend(['--umi_loc', 'read1'])
+            # Default is 5' end of read1
+            cmd.extend(['--umi_loc', 'read1'])
 
         # Paired-end specific settings
         if r2:
             cmd.extend(['--in2', r2])
-            
+
             # Merging
             # Output merged file
             merged_out = f"{output_prefix}_merged.fastq.gz"
             cmd.extend(['--merge', '--merged_out', merged_out])
-            
+
             # Unmerged outputs (optional, but good for debug)
             # If not specified, fastp discards them or puts them in out1/out2.
             # We usually want the merged ones for tRNA-seq.
@@ -158,38 +151,81 @@ class FastpTrimmer:
             out1 = f"{output_prefix}_unmerged_R1.fastq.gz"
             out2 = f"{output_prefix}_unmerged_R2.fastq.gz"
             cmd.extend(['--out1', out1, '--out2', out2])
-            
+
             # Adapter detection is usually better enabled for PE
             cmd.append('--detect_adapter_for_pe')
+            primary_output = merged_out
 
         else:
             # Single-end output
             out1 = f"{output_prefix}_trimmed.fastq.gz"
             cmd.extend(['--out1', out1])
+            primary_output = out1
 
-        return cmd
+        return cmd, primary_output
 
     def _run_process(self, output_prefix, files):
         '''
         Worker function for multiprocessing
         '''
-        cmd = self._construct_command(output_prefix, files)
+        cmd, primary_output = self._construct_command(output_prefix, files)
         cmd_str = ' '.join(cmd)
-        
+
         if self.args.verbose:
             self.logger.info(f"[{output_prefix}] Starting: {cmd_str}")
-        
+
         try:
             # Check if fastp is installed
             process = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError:
+            return (output_prefix, False, "fastp executable not found in PATH.")
+
+        if process.returncode != 0:
             # Return fastp's own stderr regardless of success/failure -- it's discarded here
             # (rather than in process(), which runs sequentially in the parent after this
             # worker returns) since capturing/logging it must not happen inside a
             # multiprocessing.Pool worker, where concurrent writes to the same --log file
             # could interleave.
-            return (output_prefix, process.returncode == 0, process.stderr)
+            return (output_prefix, False, process.stderr)
+
+        stderr = process.stderr
+        if self.args.umilength > 0 and self.args.umi3:
+            umi_ok, umi_stderr = self._extract_three_prime_umi(output_prefix, primary_output)
+            stderr += umi_stderr
+            if not umi_ok:
+                return (output_prefix, False, stderr)
+
+        return (output_prefix, True, stderr)
+
+    def _extract_three_prime_umi(self, output_prefix, fastq_path):
+        '''
+        Post-processing step for --umi3: fastp has no tail-anchored --umi_loc, so
+        _construct_command() runs fastp with no UMI flags at all, and this runs
+        `umi_tools extract --3prime` on fastp's own trimmed/merged output afterward,
+        replacing it in place -- mirroring tRAX's original trimadapters.py, which ran the
+        equivalent `umi_tools extract` (with `--3prime` for this same case) as a
+        post-processing step after SeqPrep/cutadapt, over the same output slot.
+        '''
+        umi_log = f"{output_prefix}_umilog.txt"
+        # umi_tools decides whether to gzip its output from the --stdout filename's own
+        # extension, not from the input's -- the temp name must still end in .gz or the
+        # written bytes are plain text despite os.replace() giving them a .fastq.gz name.
+        extracted = fastq_path.replace('.fastq.gz', '_umi_extracted.fastq.gz')
+        cmd = [
+            'umi_tools', 'extract', '--3prime',
+            '--bc-pattern', 'N' * self.args.umilength,
+            '--stdin', fastq_path,
+            '--stdout', extracted,
+            '-L', umi_log,
+        ]
+        try:
+            process = subprocess.run(cmd, capture_output=True, text=True)
         except FileNotFoundError:
-            return (output_prefix, False, "fastp executable not found in PATH.")
+            return False, "umi_tools executable not found in PATH."
+        if process.returncode != 0:
+            return False, process.stderr
+        os.replace(extracted, fastq_path)
+        return True, process.stderr
 
     def _run_process_unpacked(self, task):
         '''
