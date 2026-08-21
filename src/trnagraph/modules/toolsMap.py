@@ -473,11 +473,10 @@ class MapSamples:
         if not os.path.exists(self.bamdir):
             os.makedirs(self.bamdir)
             
-        # Create results and graphs directories
+        # Create results directory (graphsdir is never written to by this command -- nothing
+        # to create it for)
         if not os.path.exists(self.expinfo.resultsdir):
             os.makedirs(self.expinfo.resultsdir)
-        if not os.path.exists(self.expinfo.graphsdir):
-            os.makedirs(self.expinfo.graphsdir)
 
         # Expand dbname
         self.dbname = os.path.expanduser(self.dbname)

@@ -118,23 +118,17 @@ class AnalysisPipeline:
         if not os.path.exists(self.expname):
             os.makedirs(self.expname)
         
+        # graphsdir is never written to by this command -- nothing to create it for
         if not os.path.exists(self.expinfo.resultsdir):
             os.makedirs(self.expinfo.resultsdir)
-        if not os.path.exists(self.expinfo.graphsdir):
-            os.makedirs(self.expinfo.graphsdir)
-            
+
         # Subdirectories in results
         for subdir in ["mismatch", "pretRNAs", "unique", "trna", "allfeature"]:
             path = os.path.join(self.expinfo.resultsdir, subdir)
             if not os.path.exists(path):
                 os.makedirs(path)
-                
-        # Subdirectories in graphs - Not needed since these are legacy from tRAX
-        # for subdir in ["mismatch", "pretRNAs", "unique"]:
-        #     path = os.path.join(self.expinfo.graphsdir, subdir)
-        #     if not os.path.exists(path):
-        #         os.makedirs(path)
-        
+
+
         if self.hubonly:
             self.logger.info("Generating Track Hub...")
             self.createtrackhub()
