@@ -1,0 +1,47 @@
+name: Release
+
+# On-demand only -- deliberately NOT triggered on every push. Run manually from the Actions
+# tab (or `gh workflow run release.yml -f branch=dev`) whenever a new tagged version/pre-release
+# should be cut, per the branch selected. `dev` produces pre-releases (e.g. 1.9.0-alpha.1);
+# `main` (once brought in sync with dev and used as the stable branch) produces final releases.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to release from (dev = pre-release, main = stable)"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release tooling
+        run: pip install python-semantic-release
+
+      - name: Configure git identity for the release commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run semantic-release (version bump, changelog, tag, GitHub Release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: semantic-release version

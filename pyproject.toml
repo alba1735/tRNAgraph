@@ -39,7 +39,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest"
+  "pytest",
+  "python-semantic-release"
 ]
 
 [project.scripts]
@@ -56,3 +57,23 @@ trnagraph = ["assets/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
+
+[tool.semantic_release]
+tag_format = "v{version}"
+commit_parser = "conventional"
+version_variables = [
+    "src/trnagraph/__init__.py:__version__",
+]
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.branches.dev]
+match = "dev"
+prerelease = true
+prerelease_token = "alpha"
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
+output_format = "md"
