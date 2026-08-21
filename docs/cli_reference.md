@@ -53,7 +53,7 @@ trnagraph preprocess trim -i <manifest> [options]
 
 **Flags:**
 
-- **`-i`, `--manifest`** (Required): Tab-delimited file (`SampleName <tab> R1 <tab> R2`).
+- **`-i`, `--manifest`** (Required): Tab-delimited file (`OutputPrefix <tab> R1 <tab> R2`). `OutputPrefix` doubles as the sample name and where trimmed output is written — a bare name writes to `processed/trimmed/<name>_trimmed.fastq.gz` (or `_merged.fastq.gz` for paired-end); a name containing a directory writes there instead.
 - **`-a1`, `--adapter1`**: Adapter sequence for R1 (Auto-detect if omitted).
 - **`-a2`, `--adapter2`**: Adapter sequence for R2 (for paired-end data, Auto-detect if omitted).
 - **`-l`, `--length`**: Minimum sequence length allowed after trimming. Reads shorter than this will be discarded. Default: `15`.
@@ -80,7 +80,7 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 - **`-i`, `--input`** (Required): Path to the metadata file.
 - **`-d`, `--database`** (Required): Path/Name of the Bowtie2 index (tRNA database) created by `makedb`.
 - **`-o`, `--output`** (Required): Experiment name. This is used to name the output directory and report files.
-- **`--bamdir`**: Directory where BAM files will be stored. Default: `bam/<name>`
+- **`--bamdir`**: Directory where BAM files will be stored. Default: `processed/bam`
 - **`--force-remap`**: Force remapping even if a matching bam file already exists. Default (when omitted): skip mapping if a bam already exists (after a fastq/header consistency check).
 - **`--local`**: Use Bowtie2 local alignment mode instead of end-to-end. Default: `False`.
 - **`--minnontrnasize`**: Minimum read length required for a read to be assigned to a non-tRNA feature. Default: `20`
@@ -113,12 +113,12 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--pairs`**: File listing sample pairs for direct comparison.
 - **`--bed`**: List of additional BED files to define custom features.
 - **`--maxmismatches`**: Maximum mismatches allowed per read. This is one consistent read-level filter applied identically everywhere reads get counted from BAM files -- affects the X matrix, uns aggregate counts (type/amino/anticodon), and coverage data the same way, not a different mismatch-filtered subset for different outputs. Default: `None` (No limit)
-- **`--minfeaturereads`**: Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit. This affects **only** `layers['vst']` -- every feature always gets a full raw coverage row, a full normalized coverage row, and its own VST value regardless of this threshold; features below it are simply excluded from influencing the fit itself (avoiding noisy low-count features distorting the trend curve for every other feature), then transformed using the resulting fit like everything else, matching standard DESeq2 trend-shrinkage methodology. Which features were excluded from the fit is recorded on `adata.obs['vst_fit_excluded']`. Default: `30`
+- **`--minfeaturereads`**: Minimum total raw read count a tRNA gene needs to count toward the VST fit (see [Data Structure: Layers](data_structure.md#layers) for exactly what this does and doesn't affect). Default: `30`
 - **`--minnontrnasize`**: Minimum read length for non-tRNA features. Default: `20`
 - **`--hub`**: Generates a UCSC Genome Browser track hub for the data. Default: `False`
 - **`--hubonly`**: Only generates the track hub and skips AnnData generation. Default: `False`
 - **`--filterother`**: Dumps reads counted in the `other` type category (the `other` row in `typecounts.txt`/`adata.uns['type_counts']`) to a separate BAM file for manual inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature (being classified `other` and matching no other feature are the same condition; there's no separate/narrower `other` tag). Default: `False`
-- **`--bamdir`**: Custom directory to look for BAM files if they are not in the default location. Default: `None`
+- **`--bamdir`**: Custom directory to look for BAM files if they are not in the default location. Default: `processed/bam`
 - **`--filtermultimapped`**: Drops genomically multi-mapped reads (a read aligning to more than one location in the genome) from the entire coverage build before any column is computed. Unrelated to the separate, always-computed tRNA-identity uniqueness in `results/unique/`/`graphs/unique/`, which this flag does not affect. Default: `False`
 - **`--dispfittype`**: Dispersion fit type for DESeq2. parametric`(default, standard for DESeq2),`mean`(robust for small sample sizes). Default:`parametric`
 - **`-c`, `--readlengthsplit`**: Read length cutoff for splitting. When specified, adds `u<N>`/`o<N>` split variants to the _same_ output `.h5ad` as additional layers/obsm/uns entries (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit)) — no separate `_uN.h5ad`/`_oN.h5ad` files are written. Further cutoffs can be added later to an existing object via `analyze addsplit`. Default: `None` (disabled)
@@ -147,19 +147,22 @@ trnagraph analyze addsplit -i <input.h5ad> -c <cutoff> [options]
 
 - **`-i`, `--anndata`** (Required): Path to the existing AnnData file to add a split variant to.
 - **`-c`, `--readlengthsplit`** (Required): New read length cutoff to add (generates `u<N>`/`o<N>` variants).
-- **`--metadata`**: Metadata file. Default: recovered from the object's own build provenance (`adata.uns["trnagraphruninfo"]["flags"]`).
+- **`--metadata`**: Metadata file. Default: recovered from provenance (see below).
 - **`--bamdir`**: Original (unsplit) BAM directory. Default: recovered from provenance.
 - **`-d`, `--database`**: Override tRNA database. Default: recovered from provenance.
 - **`--gtf`**: Override GTF path. Default: recovered from provenance.
 - **`--dispfittype`**: Override DESeq2 dispersion fit type. Default: recovered from provenance.
 - **`--vst`**: VST strategy for this split's `vst` layer. Default: recovered from provenance.
-- **`--minfeaturereads`**: Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit. Default: recovered from provenance, or `30`.
+- **`--minfeaturereads`**: Override the minimum total raw read count a tRNA gene needs for this split's VST fit. Default: recovered from provenance, or `30`.
 - **`--overwritebams`**: Force overwrite of existing split BAM files. Default: `False`.
 - **`--savesplitbams`**: Keep the `u<N>`/`o<N>` split BAM files (under `--bamdir`) instead of deleting them once merged into the AnnData object. Default: `False`.
 - **`-o`, `--output`**: Output `.h5ad` path. Default: overwrite the input file in place.
 - **`-w`, `--overwrite`**: Overwrite this cutoff's `u<N>`/`o<N>` data if already present in the object. Default: `False`.
 - **`--force`**: Proceed even if an explicitly-overridden `--database`/`--gtf` conflicts with the object's original build provenance. Default: `False`.
 - **`-n`, `--threads`**: Number of threads to use. Default: `8`.
+
+> [!NOTE]
+> "Recovered from provenance" means read back from `trnagraphruninfo`, the build history tRNAgraph stores inside the h5ad itself (`adata.uns["trnagraphruninfo"]["flags"]`) — see [Data Structure: Run Information](data_structure.md#run-information). Any flag above falls back to that recorded value unless you pass it explicitly here.
 
 > [!NOTE]
 > Each split variant gets its own independently-fit DESeq2 size factors, computed from that variant's own BAMs — never a shared/global normalization.
@@ -185,7 +188,7 @@ trnagraph analyze cluster -i <input.h5ad> [options]
 - **`-r`, `--randomstate`**: Seed for random number generation to ensure reproducible UMAP results. Default: `None` (Random)
 - **`-t`, `--readcutoff`**: Minimum read count for a tRNA to be included in clustering. Default: `20`
 - **`--coveragetype`**: List of coverage features to use for clustering. Default: `['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions']`
-- **`--variant`**: Select which `<norm>:<tag>` to cluster, e.g. `norm:u60`. `<norm>` is one of `norm`/`raw`/`allfeatures`/`vst`; `<tag>` is `full` or an added split tag. Default: `norm:full` (today's behavior). Cluster results for a split variant are stored namespaced under that variant (`adata.uns['size_splits'][tag]`/`adata.obsm['size_split_<tag>']`) so they never overwrite another variant's results.
+- **`--variant`**: Select which `<norm>:<tag>` variant to cluster, e.g. `norm:u60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Cluster results for a split variant are stored namespaced under that variant (`adata.uns['size_splits'][tag]`/`adata.obsm['size_split_<tag>']`) so they never overwrite another variant's results.
 - **UMAP Parameters:**
   - **`-c1`, `--ncomponentsmp`**: Components for sample clustering (Default: 2).
   - **`-c2`, `--ncomponentgrp`**: Components for group clustering (Default: 2).
@@ -222,7 +225,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--config`**: JSON configuration file for filtering.
 - **`--colormap`**: JSON file for custom colors.
 - **`--regen_uns`**: Force regeneration of calculated stats.
-- **`--variant`**: Select which `<norm>:<tag>` to plot, e.g. `raw:full`, `norm:u60`, `allfeatures:o60`. `<norm>` is one of `norm`/`raw`/`allfeatures`/`vst`; `<tag>` is `full` or an added split tag (see `analyze addsplit`). Default: `norm:full` (today's behavior). Plots for a non-default variant are written to a `<norm>_<tag>/` subfolder under each graph type's output directory, so different `--variant` runs into the same `-o` don't overwrite each other.
+- **`--variant`**: Select which `<norm>:<tag>` variant to plot, e.g. `raw:full`, `norm:u60`, `allfeatures:o60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Plots for a non-default variant are written to a `<norm>_<tag>/` subfolder under each graph type's output directory, so different `--variant` runs into the same `-o` don't overwrite each other.
 
 **Cluster Plot Options:**
 
@@ -298,7 +301,7 @@ trnagraph tools log2fc -i <input.h5ad> [options]
 - **`-r`, `--readtypes`**: List of read types to analyze.
 - **`-x`, `--cutoff`**: Read count cutoff(s). Default: `80`.
 - **`-c`, `--config`**: Config file for filtering.
-- **`--variant`**: Select which `<norm>:<tag>` to compute log2fc for, e.g. `norm:u60`. `<norm>` is one of `norm`/`raw`/`allfeatures`/`vst`; `<tag>` is `full` or an added split tag. Default: `norm:full` (today's behavior). Results for a split variant are written to `adata.uns['size_splits'][tag]['log2FC']` instead of the top-level `adata.uns['log2FC']`.
+- **`--variant`**: Select which `<norm>:<tag>` variant to compute log2fc for, e.g. `norm:u60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Results for a split variant are written to `adata.uns['size_splits'][tag]['log2FC']` instead of the top-level `adata.uns['log2FC']`.
 
 ### `csv`
 
