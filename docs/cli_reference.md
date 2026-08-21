@@ -367,4 +367,3 @@ trnagraph tools test [options]
 | `--graph`       | Generate visualization plots (main h5ad only)                  |
 | `--split-graph` | Generate plots for split h5ad files                            |
 | `--hubonly`     | Generate UCSC track hubs only                                  |
-| `--maponly`     | Stop after mapping step                                        |

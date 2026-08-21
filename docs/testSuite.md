@@ -27,7 +27,6 @@ python trnagraph.py tools test [options]
 - `--skip-download`: Skip the metadata/FASTQ/tRNA/genome download steps and run everything else. Downloads are already skipped by default when their target files are present (the slowest step to redundantly repeat); this forces the skip regardless.
 - `--cleanrun`: Clean up all generated files after the run completes.
 - `--directory`: Specify a custom working directory (Default: `test_vibrChol1/`).
-- `--maponly`: Stop after the mapping step.
 
 **Step-specific flags:**
 

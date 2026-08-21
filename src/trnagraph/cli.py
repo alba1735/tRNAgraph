@@ -600,7 +600,6 @@ def test(
     makedb: bool = typer.Option(False, "--makedb", help="Run makedb test"),
     map: bool = typer.Option(False, "--map", help="Run map test"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Run map test with hubonly flag"),
-    maponly: bool = typer.Option(False, "--maponly", help="Run map test with maponly flag"),
     build: bool = typer.Option(False, "--build", help="Run build test (no split)"),
     split_build: bool = typer.Option(False, "--split-build", help="Run build test with read length split"),
     cluster: bool = typer.Option(False, "--cluster", help="Run cluster test"),
@@ -620,7 +619,7 @@ def test(
     # print() calls left for handle_output's stdout-tee to catch, so nothing here needs it.
     args = SimpleNamespace(
         mode='test', metadata=metadata, fastq=fastq, trna=trna, genome=genome, trim=trim,
-        makedb=makedb, map=map, hubonly=hubonly, maponly=maponly, build=build,
+        makedb=makedb, map=map, hubonly=hubonly, build=build,
         split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
         all=all, skip_download=skip_download, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
     )

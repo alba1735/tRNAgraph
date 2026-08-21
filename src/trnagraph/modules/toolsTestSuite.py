@@ -587,7 +587,7 @@ class demoPipeline:
                 self.args.genome, self.args.trim, self.args.makedb, self.args.map,
                 self.args.build, getattr(self.args, 'split_build', False),
                 self.args.cluster, self.args.merge, self.args.graph, getattr(self.args, 'split_graph', False),
-                self.args.hubonly, self.args.maponly
+                self.args.hubonly
             ]
             run_all = self.args.all or not any(specific_flags)
             # --skip-download skips metadata/fastq/trna/genome regardless of run_all, for a
@@ -609,20 +609,20 @@ class demoPipeline:
                 self.trim_fastq()
             if run_all or self.args.makedb:
                 self.create_index()
-            if run_all or self.args.map or self.args.maponly:
+            if run_all or self.args.map:
                 self.map_reads()
-            if (run_all and not self.args.maponly) or self.args.build or self.args.hubonly:
+            if run_all or self.args.build or self.args.hubonly:
                 self.build_db()
             # split_build runs build with readlengthsplit
-            if getattr(self.args, 'split_build', False) or (run_all and not self.args.maponly):
+            if getattr(self.args, 'split_build', False) or run_all:
                 self.args.split_build = True  # Ensure flag is set
                 self.build_db()
-            if (run_all and not self.args.maponly) or self.args.cluster:
+            if run_all or self.args.cluster:
                 self.cluster_db()
-            if (run_all and not self.args.maponly) or self.args.graph:
+            if run_all or self.args.graph:
                 self.graph_db()
             # split_graph runs graphs for split h5ad files
-            if getattr(self.args, 'split_graph', False) or (run_all and not self.args.maponly):
+            if getattr(self.args, 'split_graph', False) or run_all:
                 self.graph_split_db()
                 
             if self.args.cleanrun:

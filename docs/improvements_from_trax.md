@@ -50,6 +50,14 @@ tRAX writes each pipeline stage's output to a flat text file. tRNAgraph assemble
 
 Per-position mismatch/base-composition data (mismatch count, deletions, per-nucleotide coverage) that tRAX only exposes via `mismatches.txt` and R-generated `positionmismatches.txt` is stored at full per-position granularity in the AnnData object's coverage-type layers (`mismatchedbases`, `deletedbases`, `adenines`, `thymines`, `cytosines`, `guanines`, `deletions`); tRNAgraph's flat-file `mismatches.txt` output is kept for tRAX parity but is not the only place this data lives.
 
+## CLI Flag Clarity Fixes
+
+Renames/documentation fixes for a flag whose name or help text was ambiguous, carried over unchanged from tRAX, with no behavior change (default stays the same as tRAX's).
+
+### `--uniqueonly` → `--filtermultimapped` (`analyze build`)
+
+tRAX's `processsamples.py` has an identically-ambiguous `--uniqueonlycov` flag (default `False`, help text just "Show only unique coverage"), and tRNAgraph inherited both the name and the ambiguity unchanged. The problem: tRNAgraph already has a completely different, unrelated "uniqueness" concept that's always computed regardless of this flag — whether a read maps unambiguously to one specific tRNA transcript (as opposed to sharing an anticodon/amino acid with other tRNAs), tracked via `isuniqueaminomapping()`/`isuniqueacmapping()`/`isuniquetrnamapping()` and surfaced in the always-generated `results/unique/`/`graphs/unique/` output. The flag being renamed controls a second, orthogonal axis instead: whether a read maps to exactly one location in the *genome* at all (`issinglemapped()`) — when set, genomically-multi-mapped reads are dropped from every coverage column before any computation happens (main `coverage`, `readstarts`/`readends`, mismatch tracking, all of it), not filtered into a separate file. Renamed to `--filtermultimapped` to describe the actual mechanism (drop genomically-multi-mapped reads) without colliding with the unrelated tRNA-identity "unique" terminology already in use elsewhere in the output. Default unchanged (`False`, matching tRAX's own default/recommended behavior of including multi-mapped reads).
+
 ## Implementation Notes
 
 Fixes made during tRNAgraph development, not differences from tRAX, but recorded here since they affect statistical output and are the kind of thing that could silently regress:
