@@ -4,9 +4,7 @@ import os
 import multiprocessing
 import json
 import logging
-import warnings
 from pydantic import ValidationError
-warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
 from . import toolsTG
 from .toolsSchemas import GraphFilterConfig, ColormapFile
 from .lazy_imports import (

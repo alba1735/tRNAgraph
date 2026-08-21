@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -261,7 +262,13 @@ class visualizer():
             ax.set_yticklabels(['0%','25%','50%','75%','100%'])
         else:
             ylim = ax.get_ylim()
-        ax.set_ylim(0, ylim[1])
+        # A tRNA with flat/all-zero coverage at this position range can leave ylim[1] at 0,
+        # making the floor-and-ceiling re-clamp below a no-op that matplotlib otherwise warns
+        # about ("Attempting to set identical low and high ylims") -- benign here, so scope the
+        # suppression to just this call rather than silencing it for the whole plotting module.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
+            ax.set_ylim(0, ylim[1])
         # Add dashed lines to plot for common tRNA modifications
         if coverage_fill == 'endstarts':
             # Create a df with the same columns as the rse df but empty
