@@ -89,6 +89,76 @@ def test_exception_inside_a_phase_does_not_log_a_false_completion(caplog):
     assert caplog.records == []
 
 
+def test_advance_ticks_the_outer_percentage_in_lockstep_with_inner_items():
+    """Regression coverage for the graphing tqdm objective's design: a phase whose weight equals
+    its own inner item count (e.g. a graph-type weighted by its expected plot count) should tick
+    the outer percentage per completed item via advance(), rather than only completing atomically
+    when the `with tracker.phase():` block exits."""
+    logger = logging.getLogger("test_phase_tracker.advance")
+    tracker = toolsTG.PhaseTracker(phases=["coverage", "pca"], logger=logger, desc="Graphing", weights=[4, 1])
+
+    with tracker.phase():
+        tracker.advance(1)
+        assert tracker._done_weight == 1
+        tracker.advance(1)
+        tracker.advance(1)
+        tracker.advance(1)
+        assert tracker._done_weight == 4
+
+    with tracker.phase():
+        pass
+
+    assert tracker._done_weight == 5
+
+
+def test_advance_partial_progress_is_topped_up_atomically_when_phase_exits(caplog):
+    """A phase that only partially ticks via advance() (e.g. it errors out after 2 of 4 expected
+    plots, but still completes the `with` block normally) should still have its full weight
+    counted once the block exits -- advance() is an optional finer-grained signal, not a
+    replacement for the phase's own weight accounting."""
+    logger = logging.getLogger("test_phase_tracker.advance_partial")
+    tracker = toolsTG.PhaseTracker(phases=["coverage", "pca"], logger=logger, desc="Graphing", weights=[4, 1])
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        with tracker.phase():
+            tracker.advance(1)
+            tracker.advance(1)
+        with tracker.phase():
+            pass
+
+    completion_messages = [r.message for r in caplog.records if "complete" in r.message]
+    assert completion_messages == [
+        "Graphing phase 1/2 (80%) complete: coverage",
+        "Graphing phase 2/2 (100%) complete: pca",
+    ]
+
+
+def test_advance_logs_a_throttled_milestone_at_ten_percent_steps_within_a_large_phase(caplog):
+    """A phase weighted by a large plot count (e.g. coverage's hundreds/thousands) must not log
+    on every single advance() call -- mirrors progress_iterator's own ~10%-of-total throttling so
+    a long-running phase still gets periodic outer-percentage feedback without flooding the log."""
+    logger = logging.getLogger("test_phase_tracker.advance_throttled")
+    tracker = toolsTG.PhaseTracker(phases=["coverage"], logger=logger, desc="Graphing", weights=[20])
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        with tracker.phase():
+            for _ in range(20):
+                tracker.advance(1)
+
+    progress_messages = [r.message for r in caplog.records if "complete" not in r.message]
+    assert len(progress_messages) == 10
+    assert progress_messages[0] == "Graphing phase 1/1 (10%): coverage"
+    assert progress_messages[-1] == "Graphing phase 1/1 (100%): coverage"
+
+
+def test_advance_outside_a_phase_raises():
+    logger = logging.getLogger("test_phase_tracker.advance_outside")
+    tracker = toolsTG.PhaseTracker(phases=["coverage"], logger=logger, desc="Graphing")
+
+    with pytest.raises(RuntimeError):
+        tracker.advance(1)
+
+
 def test_message_format_is_distinguishable_from_progress_iterator_bare_milestone():
     """toolsTestSuite.py's _LiveBoxHandler needs to tell PhaseTracker's outer messages apart from
     progress_iterator's inner per-item ones -- the literal word "phase" immediately before the

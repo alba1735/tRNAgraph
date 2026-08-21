@@ -21,9 +21,13 @@ class _LiveBoxHandler(logging.Handler):
 
     Two distinct formats exist, and this handler must tell them apart:
 
-    - toolsTG.PhaseTracker's OUTER, phase-level format ("<desc> phase N/Total (P%) complete:
-      <label>", e.g. "Build phase 2/6 (33%) complete: Analyzing counts") -- the literal word
-      "phase" immediately before the fraction is the distinguishing marker.
+    - toolsTG.PhaseTracker's OUTER, phase-level format -- the literal word "phase" immediately
+      before the fraction is the distinguishing marker, present in both of its two variants:
+      the final "<desc> phase N/Total (P%) complete: <label>" (e.g. "Build phase 2/6 (33%)
+      complete: Analyzing counts") logged once a phase's `with phase():` block exits, and the
+      intermediate "<desc> phase N/Total (P%): <label>" (no "complete") that `advance()` logs
+      periodically for a phase with a large weight (e.g. one per coverage plot, throttled to
+      ~10%-of-that-phase's-weight steps).
     - toolsTG.progress_iterator's bare, per-item format ("N/Total (P%) complete", e.g.
       "Counting reads: 7/10 (70%) complete"), used both standalone (trim/map, which have no
       phase concept) and for the INNER per-sample loop within a phase-tracked command's
@@ -48,7 +52,7 @@ class _LiveBoxHandler(logging.Handler):
     writing the h5ad), since the old bare-only regex matched both formats identically and simply
     took whichever line came last.
     '''
-    _PHASE_MILESTONE_RE = re.compile(r'\bphase (\d+)/(\d+) \(\d+%\) complete\b')
+    _PHASE_MILESTONE_RE = re.compile(r'\bphase (\d+)/(\d+) \(\d+%\)(?: complete)?:\s*(.*)$')
     _ITEM_MILESTONE_RE = re.compile(r'(\d+)/(\d+) \(\d+%\) complete')
 
     def __init__(self, tail, on_milestone, phase_only: bool = False):
@@ -63,7 +67,7 @@ class _LiveBoxHandler(logging.Handler):
 
         phase_match = self._PHASE_MILESTONE_RE.search(message)
         if phase_match:
-            self.on_milestone(int(phase_match.group(1)), int(phase_match.group(2)))
+            self.on_milestone(int(phase_match.group(1)), int(phase_match.group(2)), phase_match.group(3))
             return
 
         if self.phase_only:
@@ -72,6 +76,25 @@ class _LiveBoxHandler(logging.Handler):
         item_match = self._ITEM_MILESTONE_RE.search(message)
         if item_match:
             self.on_milestone(int(item_match.group(1)), int(item_match.group(2)))
+
+
+_VARIANT_LABEL_RE = re.compile(r'^\[(Under|Over) (\d+)\]')
+
+
+def _friendly_variant_title(label: str):
+    '''
+    Maps a PhaseTracker phase label's split-variant bracket prefix (e.g. "[Under 60] Counting
+    Reads", from AnalysisPipeline's variant_label="Under 60") to a friendlier box title -- "Under"
+    means the fragment (u<N>) variant, "Over" the full-length (o<N>) one, matching roadmap.md's
+    Phase 4 terminology. Returns None for a non-variant label (the main/full build), so the box's
+    title is left as whatever _live_box() was originally given (e.g. "Building AnnData object...").
+    '''
+    match = _VARIANT_LABEL_RE.match(label)
+    if not match:
+        return None
+    direction, cutoff = match.group(1), match.group(2)
+    kind = 'Fragments' if direction == 'Under' else 'Full-length'
+    return f'Building {direction.lower()} {cutoff}bp split ({kind})...'
 
 
 class demoPipeline:
@@ -182,8 +205,16 @@ class demoPipeline:
         task_id = progress.add_task(description, total=None)
         state = {'has_milestone': False}
 
-        def on_milestone(completed, total):
-            progress.update(task_id, completed=completed, total=total)
+        def on_milestone(completed, total, label=None):
+            # Only a split-variant phase label overrides the box's title (e.g. "Building under
+            # 60bp split (Fragments)...") -- the main/full build's phases keep the original
+            # `description` the box was opened with, since _friendly_variant_title() returns
+            # None for those.
+            update_kwargs = {'completed': completed, 'total': total}
+            friendly_title = _friendly_variant_title(label) if label else None
+            if friendly_title:
+                update_kwargs['description'] = friendly_title
+            progress.update(task_id, **update_kwargs)
             state['has_milestone'] = True
 
         def render():

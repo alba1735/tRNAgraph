@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import logging
+
 import numpy as np
 import pandas as pd
 import anndata as ad
@@ -18,17 +20,25 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
+logger = logging.getLogger(__name__)
+
 class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
     '''
-    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output):
+    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output, phase_tracker=None, quiet=False):
+        self.logger = logging.getLogger(__name__)
         self.threads = threads
         self.coverage_obs = coverage_obs
         self.coverage_grp = toolsTG.resolve_grp_column(adata, coverage_grp, 'coveragegrp')
         self.coverage_type = coverage_type
         self.coverage_gap = coverage_gap
         self.coverage_method = coverage_method
+        # Shared outer progress tracker (toolsTG.PhaseTracker), passed in from adataGraph.py so
+        # generate_split()'s per-plot completions can advance it directly in lockstep -- optional
+        # (None) so this class stays usable standalone, e.g. outside adataGraph.py's orchestration.
+        self.phase_tracker = phase_tracker
+        self.quiet = quiet
         # Clean AnnData object for plotting
         self.adata, self.readstarts, self.readends = self.clean_adata(adata)
         if colormap != None: #and self.coverage_combine_all == False:
@@ -141,9 +151,19 @@ class visualizer():
 
     def generate_split(self):
         ulist = self.adata.obs[self.coverage_obs].unique()
-        # Use multiprocessing to generate plots
+        # imap_unordered (rather than map) so progress_iterator gets a real per-plot completion
+        # signal -- order doesn't matter here, each call only has the side effect of writing its
+        # own PDF file(s). If a shared PhaseTracker was passed in (the outer graphing bar), tick
+        # it once per completed plot so it moves in lockstep with this, the one graph type that
+        # can produce hundreds/thousands of plots, rather than only ticking atomically once the
+        # whole "coverage" phase finishes.
         with Pool(self.threads) as p:
-            p.map(self.generate_split_single, ulist)
+            for _ in toolsTG.progress_iterator(
+                p.imap_unordered(self.generate_split_single, ulist),
+                total=len(ulist), desc="Coverage plots", logger=self.logger, quiet=self.quiet,
+            ):
+                if self.phase_tracker is not None:
+                    self.phase_tracker.advance(1)
 
     def generate_split_single(self, covobs):
         # Create df for single tRNA

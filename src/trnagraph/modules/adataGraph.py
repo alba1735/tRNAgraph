@@ -1,4 +1,5 @@
 import anndata as ad
+import itertools
 import os
 import multiprocessing
 import json
@@ -20,6 +21,7 @@ class anndataGrapher:
     def __init__(self, args):
         self.logger = logging.getLogger(__name__)
         self.args = args
+        self.quiet = getattr(args, 'quiet', False)
         self.adata_original = ad.read_h5ad(self.args.anndata)
         # Resolve the requested normalization:split-tag ONCE, into a working copy, so every
         # downstream plot module reads .X/.obs[...]/.uns[...] exactly as it does for the
@@ -141,6 +143,57 @@ class anndataGrapher:
         for param_name in ('covgrp', 'comparegrp1', 'comparegrp2', 'heatgrp', 'volgrp'):
             setattr(self.args, param_name, toolsTG.resolve_grp_column(self.adata, getattr(self.args, param_name), param_name))
 
+    def _compute_graph_weight(self, gt):
+        '''
+        Best-effort upfront estimate of how many plots/pages graph type `gt` will produce, used
+        as its toolsTG.PhaseTracker weight so the outer graphing bar reflects real proportions --
+        coverage can produce hundreds/thousands of plots (one per --covobs value), most other
+        types only a handful -- rather than equal-weighting every type the same. A rough
+        estimator, not a source of truth: wrapped in try/except so a weight-computation quirk (an
+        unexpected column, an edge-case config) never blocks the actual graphing run, falling
+        back to a modest constant instead.
+        '''
+        try:
+            if gt == 'coverage':
+                return max(1, int(self.adata.obs[self.args.covobs].nunique()))
+            if gt == 'pca':
+                # One call per --pcareadtypes entry, plus the non-tRNA and combined-RNA overview
+                # plots (each producing its own evr/scatter/pairplot trio).
+                return max(1, len(self.args.pcareadtypes) + 2)
+            if gt == 'radar':
+                methods = self.args.radarmethod if isinstance(self.args.radarmethod, list) else [self.args.radarmethod]
+                aminos = int(self.adata.obs['amino'].nunique()) if 'amino' in self.adata.obs.columns else 20
+                return max(1, len(methods) * 2 * aminos)
+            if gt == 'volcano':
+                pairs = max(1, len(list(itertools.combinations(self.adata.obs[self.args.volgrp].dropna().unique(), 2))))
+                return max(1, len(self.args.diffrts) * pairs)
+            if gt == 'heatmap':
+                pairs = max(1, len(list(itertools.combinations(self.adata.obs[self.args.heatgrp].dropna().unique(), 2))))
+                return max(1, len(self.args.diffrts) * pairs)
+            if gt == 'cluster':
+                if self.args.clustergrp in self.adata.obs.columns:
+                    return max(1, int(self.adata.obs[self.args.clustergrp].nunique()))
+                return 3
+            if gt == 'compare':
+                if self.args.comparegrp2 in self.adata.obs.columns:
+                    return max(1, 2 * int(self.adata.obs[self.args.comparegrp2].nunique()))
+                return 2
+            if gt == 'correlation':
+                return max(1, len([c for c in self.adata.obs.columns if '_norm' in c]))
+            if gt == 'count':
+                return 2
+            if gt == 'logo':
+                if self.args.logogrp in self.adata.obs.columns:
+                    return max(1, int(self.adata.obs[self.args.logogrp].nunique()))
+                return 4
+        except Exception:
+            pass
+        return 1
+
+    def _plot_wrapper(self, args):
+        gt, threaded = args
+        return self.plot(gt, threaded)
+
     def main(self):
         # Generate graphs
         if self.args.verbose:
@@ -156,18 +209,33 @@ class anndataGrapher:
         if 'coverage' in self.args.graphtypes:
             self.args.graphtypes.remove('coverage')
             non_pooled_graphs.append('coverage')
+        # One shared outer tracker spans every graph type -- weighted by _compute_graph_weight()
+        # so coverage's hundreds/thousands of plots are proportionally represented next to the
+        # other types' handful each.
+        all_graphtypes = self.args.graphtypes + non_pooled_graphs
+        self.phase_tracker = toolsTG.PhaseTracker(
+            phases=all_graphtypes, logger=self.logger, desc="Graphing",
+            weights=[self._compute_graph_weight(gt) for gt in all_graphtypes],
+        )
         # Pool if applicable
         if self.args.threads > 1 and len(self.args.graphtypes) > 1:
             self.logger.info(f'Multithreading enabled with {self.args.threads} threads to generate plots\n')
             # Create a multiprocessing pool
             pool = multiprocessing.Pool(self.args.threads)
-            # Generate graphs
-            pool_output = pool.starmap(self.plot, [(gt, True) for gt in self.args.graphtypes])
+            # imap() (ORDERED, not imap_unordered) -- each completed type's `with phase(): pass`
+            # must register against the SAME position in `all_graphtypes` that the tracker was
+            # built from, so the phase-level message names the right graph type.
+            pool_output = []
+            for po in pool.imap(self._plot_wrapper, [(gt, True) for gt in self.args.graphtypes]):
+                with self.phase_tracker.phase():
+                    pass
+                pool_output.append(po)
             # Close the pool and wait for the work to finish
             pool.close()
             pool.join()
             for gt in non_pooled_graphs:
-                self.plot(gt)
+                with self.phase_tracker.phase():
+                    self.plot(gt)
             for po in pool_output:
                 if po:
                     self.logger.info(po + '\n')
@@ -175,7 +243,8 @@ class anndataGrapher:
             # Combine non_pooled_graphs with self.args.graphtypes
             self.args.graphtypes += non_pooled_graphs
             for gt in self.args.graphtypes:
-                self.plot(gt)
+                with self.phase_tracker.phase():
+                    self.plot(gt)
 
     def plot(self, gt, threaded=None):
         if threaded:
@@ -218,7 +287,7 @@ class anndataGrapher:
         if gt == 'count':
             threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded)
         if gt == 'coverage':
-            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output)
+            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output, phase_tracker=self.phase_tracker, quiet=self.quiet)
             # Generate folders/subfolders if coveragecombine is specified
             self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/'))
             self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/low_coverage/'))

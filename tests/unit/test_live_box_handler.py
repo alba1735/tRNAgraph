@@ -17,7 +17,7 @@ Reads"), whose own milestones would otherwise drive the bar up to 100% before th
 original behavior fully intact."""
 import logging
 
-from trnagraph.modules.toolsTestSuite import _LiveBoxHandler
+from trnagraph.modules.toolsTestSuite import _LiveBoxHandler, _friendly_variant_title
 
 
 def _emit(handler, message):
@@ -27,7 +27,7 @@ def _emit(handler, message):
 
 def test_bare_item_milestone_drives_the_bar_by_default():
     milestones = []
-    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t: milestones.append((c, t)))
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: milestones.append((c, t)))
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     _emit(handler, "Counting reads: 7/10 (70%) complete")
@@ -37,12 +37,25 @@ def test_bare_item_milestone_drives_the_bar_by_default():
 
 def test_phase_milestone_drives_the_bar():
     milestones = []
-    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t: milestones.append((c, t)))
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: milestones.append((c, t)))
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     _emit(handler, "Build phase 2/6 (33%) complete: Analyzing counts")
 
     assert milestones == [(2, 6)]
+
+
+def test_phase_advance_milestone_without_the_word_complete_also_drives_the_bar():
+    """toolsTG.PhaseTracker.advance()'s intermediate milestones (e.g. one per coverage plot
+    within a large weighted phase) omit the word "complete" -- only the phase's own final
+    completion line includes it -- so the box must recognize both forms."""
+    milestones = []
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: milestones.append((c, t)))
+    handler.setFormatter(logging.Formatter('%(message)s'))
+
+    _emit(handler, "Graphing phase 3/10 (42%): coverage")
+
+    assert milestones == [(3, 10)]
 
 
 def test_phase_only_ignores_bare_item_milestones_even_before_any_phase_signal():
@@ -52,7 +65,7 @@ def test_phase_only_ignores_bare_item_milestones_even_before_any_phase_signal():
     through the inner loop's progress and then jump back down once the real, lower outer
     percentage for that phase arrives)."""
     milestones = []
-    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t: milestones.append((c, t)), phase_only=True)
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: milestones.append((c, t)), phase_only=True)
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     _emit(handler, "Counting reads: 10/10 (100%) complete")  # inner milestone, phase 1 in progress
@@ -67,7 +80,7 @@ def test_phase_only_false_matches_the_original_unconditional_bare_milestone_beha
     """Every step other than a phase-tracked one (trim/map/etc) passes phase_only=False (the
     default) and must behave exactly as before this change."""
     milestones = []
-    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t: milestones.append((c, t)))
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: milestones.append((c, t)))
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     _emit(handler, "Trimming samples: 3/10 (30%) complete")
@@ -78,7 +91,7 @@ def test_phase_only_false_matches_the_original_unconditional_bare_milestone_beha
 
 def test_every_message_still_reaches_the_tail_regardless_of_milestone_type_or_phase_only():
     tail = []
-    handler = _LiveBoxHandler(tail=tail, on_milestone=lambda c, t: None, phase_only=True)
+    handler = _LiveBoxHandler(tail=tail, on_milestone=lambda c, t, label=None: None, phase_only=True)
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     _emit(handler, "Build phase 1/6 (17%) complete: Counting Reads")
@@ -90,3 +103,41 @@ def test_every_message_still_reaches_the_tail_regardless_of_milestone_type_or_ph
         "Counting reads: 10/10 (100%) complete",
         "some other plain log line",
     ]
+
+
+def test_phase_milestone_passes_the_label_through_to_on_milestone():
+    """The box's title needs the phase's label (e.g. to notice a split-variant bracket prefix and
+    switch the displayed title) -- _LiveBoxHandler must extract it from the trailing ": <label>"
+    portion of a phase-tracker message and pass it through, not just the completed/total counts."""
+    seen = []
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: seen.append(label))
+    handler.setFormatter(logging.Formatter('%(message)s'))
+
+    _emit(handler, "Build phase 8/18 (44%) complete: [Under 60] Counting Reads")
+
+    assert seen == ["[Under 60] Counting Reads"]
+
+
+def test_bare_item_milestone_passes_no_label():
+    seen = []
+    handler = _LiveBoxHandler(tail=[], on_milestone=lambda c, t, label=None: seen.append(label))
+    handler.setFormatter(logging.Formatter('%(message)s'))
+
+    _emit(handler, "Counting reads: 7/10 (70%) complete")
+
+    assert seen == [None]
+
+
+def test_friendly_variant_title_maps_under_to_fragments():
+    assert _friendly_variant_title("[Under 60] Counting Reads") == "Building under 60bp split (Fragments)..."
+
+
+def test_friendly_variant_title_maps_over_to_full_length():
+    assert _friendly_variant_title("[Over 60] Generating Read Coverage plots") == "Building over 60bp split (Full-length)..."
+
+
+def test_friendly_variant_title_returns_none_for_a_non_variant_label():
+    """Non-variant phase labels (the main/full build) must not override the box's title -- it
+    should stay whatever _live_box() was originally given (e.g. "Building AnnData object...")."""
+    assert _friendly_variant_title("Counting Reads") is None
+    assert _friendly_variant_title("Building AnnData object") is None

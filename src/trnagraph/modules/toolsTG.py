@@ -170,6 +170,14 @@ class PhaseTracker:
     actual bug this was built to fix: Stage 3's per-sample counting milestones reached "10/10
     (100%) complete" almost immediately during a build, pinning the box at 100% for everything
     that ran afterward (DESeq2 fitting, coverage generation, VST, writing the h5ad).
+
+    Some phases wrap their own inner per-item loop whose item count happens to equal that phase's
+    own weight (e.g. a graphing command's "coverage" phase, weighted by its expected plot count,
+    generating one plot at a time) -- call `advance()` once per completed inner item from within
+    that phase's `with phase():` block to tick the outer percentage in lockstep, rather than
+    waiting for the phase to complete atomically. `advance()` throttles its own milestone logging
+    to ~10%-of-that-phase's-weight steps (mirroring progress_iterator's own convention), so a
+    phase with a large weight doesn't flood the log with one line per item.
     '''
     def __init__(
         self, phases: List[str], logger: logging.Logger, desc: str = "Build",
@@ -186,6 +194,7 @@ class PhaseTracker:
         self.desc = desc
         self._done_weight: float = 0
         self._index = 0
+        self._active: Optional[Dict[str, Any]] = None
 
     @contextlib.contextmanager
     def phase(self, variant: Optional[str] = None) -> Generator[None, None, None]:
@@ -202,10 +211,33 @@ class PhaseTracker:
         name = self.phases[index]
         weight = self.weights[index]
         full_name = f"[{variant}] {name}" if variant else name
-        yield
-        self._done_weight += weight
+        self._active = {'index': index, 'weight': weight, 'full_name': full_name, 'progress': 0}
+        try:
+            yield
+        finally:
+            progress = self._active['progress']
+            self._active = None
+            remaining = weight - progress
+            if remaining:
+                self._done_weight += remaining
         pct = int(round(100 * self._done_weight / self.total_weight))
         self.logger.info(f"{self.desc} phase {index + 1}/{len(self.phases)} ({pct}%) complete: {full_name}")
+
+    def advance(self, amount: float = 1) -> None:
+        '''
+        Partial progress within the CURRENT phase -- must be called from inside a `with
+        phase():` block. See the class docstring for the lockstep use case.
+        '''
+        if self._active is None:
+            raise RuntimeError(f"{self.desc}: advance() called outside of an active phase")
+        self._active['progress'] += amount
+        self._done_weight += amount
+        weight = self._active['weight']
+        progress = self._active['progress']
+        milestone_step = max(1, weight // 10)
+        if progress % milestone_step == 0 or progress >= weight:
+            pct = int(round(100 * self._done_weight / self.total_weight))
+            self.logger.info(f"{self.desc} phase {self._active['index'] + 1}/{len(self.phases)} ({pct}%): {self._active['full_name']}")
 
 
 from .toolsSchemas import VariantTag
