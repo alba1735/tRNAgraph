@@ -283,7 +283,7 @@ def build(
     bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
     nofrag: bool = typer.Option(False, "--nofrag", help="Omit fragment determination (Used for TGIRT mapping)"),
     nosizefactors: bool = typer.Option(False, "--nosizefactors", help="Don't use Deseq size factors in plotting"),
-    maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum allowed mismatches"),
+    maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum mismatches allowed per read. Applied consistently everywhere reads are counted from BAM files -- affects the X matrix, uns aggregate counts, and coverage data identically, not different subsets for different outputs"),
     mincoverage: Optional[str] = typer.Option(None, "--mincoverage", help="Minimum read count for coverage plots"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
