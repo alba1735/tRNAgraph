@@ -13,11 +13,11 @@ from trnagraph.modules import toolsTG
 from trnagraph.modules.adataBuild import AnalysisPipeline, _analysis_pipeline_phase_names
 
 
-def _make_args(tmp_path, nosizefactors=False):
+def _make_args(tmp_path):
     return SimpleNamespace(
         database=str(tmp_path / "db"), output=str(tmp_path / "exp" / "exp.h5ad"),
         input=str(tmp_path / "metadata.txt"), gtf=None, bed=[], nofrag=False,
-        nosizefactors=nosizefactors, bamdir=str(tmp_path / "bam"), threads=1,
+        bamdir=str(tmp_path / "bam"), threads=1,
         minnontrnasize=20, maxmismatches=None, mincoverage=None, filtermultimapped=False,
         pairs=None, hubonly=False, hub=False, filterother=False, quiet=True,
     )
@@ -54,30 +54,13 @@ def test_run_advances_the_default_tracker_once_per_phase_in_order(tmp_path, capl
     ]
 
 
-def test_run_skips_deseq2_phases_when_nosizefactors(tmp_path, caplog):
-    args = _make_args(tmp_path, nosizefactors=True)
-    pipeline = AnalysisPipeline(args)
-
-    patches = _patched_pipeline_methods()
-    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
-         caplog.at_level(logging.INFO, logger="trnagraph.modules.adataBuild"):
-        pipeline.run()
-
-    phase_messages = [r.message for r in caplog.records if r.message.startswith("Build phase")]
-    assert phase_messages == [
-        "Build phase 1/3 (33%) complete: Counting Reads",
-        "Build phase 2/3 (67%) complete: Counting Read Types",
-        "Build phase 3/3 (100%) complete: Generating Read Coverage plots",
-    ]
-
-
 def test_run_folds_a_variant_label_into_a_shared_tracker(tmp_path, caplog):
     """Regression test for the split-build case: a shared tracker (spanning more than just this
     instance's own phases) plus a variant_label should fold the label into each phase message,
     and this instance must NOT construct its own separate default tracker."""
     logger = logging.getLogger("trnagraph.modules.adataBuild")
     shared_tracker = toolsTG.PhaseTracker(
-        phases=_analysis_pipeline_phase_names(nosizefactors=False) * 2, logger=logger, desc="Build",
+        phases=_analysis_pipeline_phase_names() * 2, logger=logger, desc="Build",
     )
     args = _make_args(tmp_path)
     pipeline = AnalysisPipeline(args, phase_tracker=shared_tracker, variant_label="Under 60")

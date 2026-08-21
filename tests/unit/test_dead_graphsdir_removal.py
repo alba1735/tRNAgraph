@@ -46,7 +46,7 @@ def _make_build_args(tmp_path):
     return SimpleNamespace(
         database=str(tmp_path / "db"), output=str(tmp_path / "exp" / "exp.h5ad"),
         input=str(tmp_path / "metadata.txt"), gtf=None, bed=[], nofrag=False,
-        nosizefactors=False, bamdir=str(tmp_path / "bam"), threads=1,
+        bamdir=str(tmp_path / "bam"), threads=1,
         minnontrnasize=20, maxmismatches=None, mincoverage=None, filtermultimapped=False,
         pairs=None, hubonly=False, hub=False, filterother=False, quiet=True,
     )

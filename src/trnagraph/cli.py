@@ -282,7 +282,6 @@ def build(
     pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
     bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
     nofrag: bool = typer.Option(False, "--nofrag", help="Omit fragment determination (Used for TGIRT mapping)"),
-    nosizefactors: bool = typer.Option(False, "--nosizefactors", help="Don't use Deseq size factors in plotting"),
     maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum mismatches allowed per read. Applied consistently everywhere reads are counted from BAM files -- affects the X matrix, uns aggregate counts, and coverage data identically, not different subsets for different outputs"),
     mincoverage: Optional[str] = typer.Option(None, "--mincoverage", help="Minimum read count for coverage plots"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
@@ -315,7 +314,7 @@ def build(
         args = SimpleNamespace(
             mode='build', input=input, output=full_output_path,
             database=database, gtf=gtf, pairs=pairs,
-            bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
+            bed=bed, nofrag=nofrag, maxmismatches=maxmismatches,
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             filterother=filterother, bamdir=bamdir, filtermultimapped=filtermultimapped, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,

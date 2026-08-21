@@ -11,11 +11,11 @@ from unittest.mock import patch
 from trnagraph.modules.adataBuild import AnalysisPipeline
 
 
-def _make_args(tmp_path, filtermultimapped, nosizefactors=False):
+def _make_args(tmp_path, filtermultimapped):
     return SimpleNamespace(
         database=str(tmp_path / "db"), output=str(tmp_path / "exp" / "exp.h5ad"),
         input=str(tmp_path / "metadata.txt"), gtf=None, bed=[], nofrag=False,
-        nosizefactors=nosizefactors, bamdir=str(tmp_path / "bam"), threads=1,
+        bamdir=str(tmp_path / "bam"), threads=1,
         minnontrnasize=20, maxmismatches=None, mincoverage=None,
         filtermultimapped=filtermultimapped, pairs=None, hubonly=False, hub=False,
         filterother=False, quiet=True,
@@ -28,22 +28,8 @@ def test_analysispipeline_reads_filtermultimapped_attribute(tmp_path):
     assert not hasattr(pipeline, "uniqueonlycov")
 
 
-def test_gettrnacoverage_threads_filtermultimapped_into_uniqueonly_kwarg_with_sizefactors(tmp_path):
-    pipeline = AnalysisPipeline(_make_args(tmp_path, filtermultimapped=True, nosizefactors=False))
-
-    captured = {}
-
-    def _fake_main(**kwargs):
-        captured.update(kwargs)
-
-    with patch("trnagraph.modules.adataBuild.toolsGetCoverage.main", _fake_main):
-        pipeline.gettrnacoverage("euk")
-
-    assert captured["uniqueonly"] is True
-
-
-def test_gettrnacoverage_threads_filtermultimapped_into_uniqueonly_kwarg_without_sizefactors(tmp_path):
-    pipeline = AnalysisPipeline(_make_args(tmp_path, filtermultimapped=True, nosizefactors=True))
+def test_gettrnacoverage_threads_filtermultimapped_into_uniqueonly_kwarg(tmp_path):
+    pipeline = AnalysisPipeline(_make_args(tmp_path, filtermultimapped=True))
 
     captured = {}
 
