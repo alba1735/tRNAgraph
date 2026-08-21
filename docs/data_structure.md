@@ -275,7 +275,7 @@ Pre-summed tables useful for bar charts and high-level overviews.
 
 Provenance metadata for reproducibility.
 
-- `trnagraphruninfo`: Provenance for the `trnagraph analyze build` run — `expname`, `time`, `trnagraph_directory`, `git version`, `git version hash`, and a `flags` sub-dict containing every CLI flag the `build` command was invoked with (e.g. `database`, `dispfittype`, `vst`, `nofrag`, `pairs`, ...). `None`-valued flags are stored as the string `'None'`.
+- `trnagraphruninfo`: Provenance for the `trnagraph analyze build` run — `expname`, `time`, `trnagraph_directory`, `git version`, `git version hash`, and a `flags` sub-dict containing every CLI flag the `build` command was invoked with (e.g. `database`, `dispfittype`, `vst`, `pairs`, ...). `None`-valued flags are stored as the string `'None'`.
 - `deseq2_sizefactors_trna`: Per-sample DESeq2 size factors computed with tRNA/tRX features as the normalization reference (the default; identical to `adata.obs['deseq2_sizefactor']`).
 - `deseq2_sizefactors_allfeatures`: Per-sample DESeq2 size factors computed with all features (tRNAs + non-tRNA GTF features) as the normalization reference — the secondary set backing `adata.layers['norm_allfeatures']`, kept for comparison against the default.
 

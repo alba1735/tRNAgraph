@@ -84,7 +84,11 @@ def test_countreads_main_assigns_results_to_correct_sample_under_pool_mode(tmp_p
     correct sample's counts afterwards. Each fake sample gets a distinct trnacount (10, 20, 30,
     40) so a column swap/misalignment would be caught by the assertion below; results cross the
     Pool's process boundary via their (pickled) return value, so this checks that value -- not a
-    side channel, which wouldn't be visible back in the parent process."""
+    side channel, which wouldn't be visible back in the parent process. Checks the
+    "tRNA1_wholecounts" row (the fragment-split output format, the only one printcountfile
+    produces now that the --nofrag flag/its collapsed-row alternative has been removed) --
+    trnacounts (a separate dict from trnawholecounts) only gates the minreads filter here, so
+    both are set to keep the row from being filtered out and to carry the distinguishing values."""
     samplenames = [f"sample{i}" for i in range(4)]
     fixtures = _make_fixtures(tmp_path, samplenames)
     countfile = tmp_path / "counts.txt"
@@ -93,17 +97,18 @@ def test_countreads_main_assigns_results_to_correct_sample_under_pool_mode(tmp_p
         result = featurecount(samplename, bamfile)
         index = samplenames.index(samplename)
         result.trnacounts["tRNA1"] = (index + 1) * 10
+        result.trnawholecounts["tRNA1"] = (index + 1) * 10
         return result
 
     with patch("trnagraph.modules.toolsCountReads.getbamcounts", side_effect=_distinct_getbamcounts):
         toolsCountReads.countreads_main(
-            bamdir=str(tmp_path), cores=2, countfile=str(countfile), nofrag=True,
+            bamdir=str(tmp_path), cores=2, countfile=str(countfile),
             genetypefile=None, bedfile=[], quiet=True, **fixtures,
         )
 
     lines = countfile.read_text().strip().split("\n")
     header = lines[0].split("\t")
-    row = next(l for l in lines[1:] if l.startswith("tRNA1\t"))
+    row = next(l for l in lines[1:] if l.startswith("tRNA1_wholecounts\t"))
     values = dict(zip(header, row.split("\t")[1:]))
 
     for index, name in enumerate(samplenames):

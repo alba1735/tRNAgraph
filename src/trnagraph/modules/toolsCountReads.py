@@ -662,35 +662,25 @@ def counttypereadsqueue(countqueue,currsample, *args, **kwargs):
 def counttypereadspool(args):
     return counttypereads(*args[0], **args[1])
 
-def printcountfile(countfile, samples,  samplecounts, trnalist, trnaloci, featurelist, embllist, otherseqdict = dict(),minreads = 5, includebase = False):
+def printcountfile(countfile, samples,  samplecounts, trnalist, trnaloci, featurelist, embllist, otherseqdict = dict(),minreads = 5):
     print("\t".join(samples), file=countfile)
     trnanames = set()
     for currfeat in trnalist:
         #print >>sys.stderr, samplecounts
         if max(itertools.chain((samplecounts[currsample].gettrnacount(currfeat.name) for currsample in samples), [0])) < minreads:
             continue
-        if includebase:
-            print(currfeat.name+"\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name)) for currsample in samples), file=countfile)
-            print(currfeat.name+"_antisense\t"+"\t".join(str(samplecounts[currsample].getantitrnacount(currfeat.name)) for currsample in samples), file=countfile)
-
-        else:
-            print(currfeat.name+"_wholecounts\t"+"\t".join(str(samplecounts[currsample].getwholecount(currfeat.name)) for currsample in samples), file=countfile)
-            print(currfeat.name+"_fiveprime\t"+"\t".join(str(samplecounts[currsample].getfivecount(currfeat.name) ) for currsample in samples), file=countfile)
-            print(currfeat.name+"_threeprime\t"+"\t".join(str(samplecounts[currsample].getthreecount(currfeat.name)) for currsample in samples), file=countfile)
-            print(currfeat.name+"_other\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name) - (samplecounts[currsample].getwholecount(currfeat.name) + samplecounts[currsample].getfivecount(currfeat.name) + samplecounts[currsample].getthreecount(currfeat.name))) for currsample in samples), file=countfile)
-            
-
-            print(currfeat.name+"_antisense\t"+"\t".join(str(samplecounts[currsample].getantitrnacount(currfeat.name)) for currsample in samples), file=countfile)
+        print(currfeat.name+"_wholecounts\t"+"\t".join(str(samplecounts[currsample].getwholecount(currfeat.name)) for currsample in samples), file=countfile)
+        print(currfeat.name+"_fiveprime\t"+"\t".join(str(samplecounts[currsample].getfivecount(currfeat.name) ) for currsample in samples), file=countfile)
+        print(currfeat.name+"_threeprime\t"+"\t".join(str(samplecounts[currsample].getthreecount(currfeat.name)) for currsample in samples), file=countfile)
+        print(currfeat.name+"_other\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name) - (samplecounts[currsample].getwholecount(currfeat.name) + samplecounts[currsample].getfivecount(currfeat.name) + samplecounts[currsample].getthreecount(currfeat.name))) for currsample in samples), file=countfile)
+        print(currfeat.name+"_antisense\t"+"\t".join(str(samplecounts[currsample].getantitrnacount(currfeat.name)) for currsample in samples), file=countfile)
 
     for currfeat in trnaloci:
         if max(itertools.chain((samplecounts[currsample].getlocuscount(currfeat.name) for currsample in samples),[0])) < minreads:
             continue
-        if includebase:
-            print(currfeat.name+"\t"+"\t".join(str(samplecounts[currsample].getlocuscount(currfeat.name)) for currsample in samples), file=countfile)
-        else:
-            print(currfeat.name+"_wholeprecounts\t"+"\t".join(str(samplecounts[currsample].getfulllocuscount(currfeat.name) ) for currsample in samples), file=countfile)
-            print(currfeat.name+"_partialprecounts\t"+"\t".join(str(samplecounts[currsample].getpartiallocuscount(currfeat.name) ) for currsample in samples), file=countfile)
-            print(currfeat.name+"_trailercounts\t"+"\t".join(str(samplecounts[currsample].getlocustrailercount(currfeat.name)) for currsample in samples), file=countfile)        
+        print(currfeat.name+"_wholeprecounts\t"+"\t".join(str(samplecounts[currsample].getfulllocuscount(currfeat.name) ) for currsample in samples), file=countfile)
+        print(currfeat.name+"_partialprecounts\t"+"\t".join(str(samplecounts[currsample].getpartiallocuscount(currfeat.name) ) for currsample in samples), file=countfile)
+        print(currfeat.name+"_trailercounts\t"+"\t".join(str(samplecounts[currsample].getlocustrailercount(currfeat.name)) for currsample in samples), file=countfile)
     for currbed in featurelist.keys():
         for currfeat in featurelist[currbed]:
             if currfeat.name in trnanames:
@@ -718,22 +708,17 @@ def printcountfile(countfile, samples,  samplecounts, trnalist, trnaloci, featur
         if max(samplecounts[currsample].getgenecount(genename) for currsample in samples) > minreads:
             print(genename+"\t"+"\t".join(str(samplecounts[currsample].getgenecount(genename)) for currsample in samples), file=countfile)
 
-def printtrnacountfile(trnacountfilename,samples,  samplecounts, trnalist , includebase = False, minreads = 5):
+def printtrnacountfile(trnacountfilename,samples,  samplecounts, trnalist , minreads = 5):
     trnacountfile = open(trnacountfilename, "w")
     print("\t".join(samples), file=trnacountfile)
     for currfeat in trnalist:
         #print >>sys.stderr, samplecounts
         if max(itertools.chain((samplecounts[currsample].gettrnacount(currfeat.name) for currsample in samples), [0])) < minreads:
             continue
-        if includebase:
-            print(currfeat.name+"\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name)) for currsample in samples), file=trnacountfile)
-
-        else:
-            print(currfeat.name+"_wholecounts\t"+"\t".join(str(samplecounts[currsample].getwholecount(currfeat.name)) for currsample in samples), file=trnacountfile)
-            print(currfeat.name+"_fiveprime\t"+"\t".join(str(samplecounts[currsample].getfivecount(currfeat.name) ) for currsample in samples), file=trnacountfile)
-            print(currfeat.name+"_threeprime\t"+"\t".join(str(samplecounts[currsample].getthreecount(currfeat.name)) for currsample in samples), file=trnacountfile)
-            print(currfeat.name+"_other\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name) - (samplecounts[currsample].getwholecount(currfeat.name) + samplecounts[currsample].getfivecount(currfeat.name) + samplecounts[currsample].getthreecount(currfeat.name))) for currsample in samples), file=trnacountfile)
-            
+        print(currfeat.name+"_wholecounts\t"+"\t".join(str(samplecounts[currsample].getwholecount(currfeat.name)) for currsample in samples), file=trnacountfile)
+        print(currfeat.name+"_fiveprime\t"+"\t".join(str(samplecounts[currsample].getfivecount(currfeat.name) ) for currsample in samples), file=trnacountfile)
+        print(currfeat.name+"_threeprime\t"+"\t".join(str(samplecounts[currsample].getthreecount(currfeat.name)) for currsample in samples), file=trnacountfile)
+        print(currfeat.name+"_other\t"+"\t".join(str(samplecounts[currsample].gettrnacount(currfeat.name) - (samplecounts[currsample].getwholecount(currfeat.name) + samplecounts[currsample].getfivecount(currfeat.name) + samplecounts[currsample].getthreecount(currfeat.name))) for currsample in samples), file=trnacountfile)
 
 
 def averagesamples(allcounts, genename,samples):
@@ -811,7 +796,6 @@ def compressargs( *args, **kwargs):
 def countreads_main(**argdict):
     trnauniquefilename = None
     argdict = defaultdict(lambda: None, argdict)
-    includebase = argdict["nofrag"]
     trnatable = argdict["trnatable"]
     removepseudo = argdict["removepseudo"]
     ensemblgtf = argdict["ensemblgtf"]
@@ -933,7 +917,7 @@ def countreads_main(**argdict):
         countfile = sys.stdout
     else:
         countfile = open(argdict["countfile"], "w")
-    printcountfile(countfile, samples, allcounts,trnalist, trnaloci, featurelist, embllist, otherseqdict = otherseqdict,includebase = includebase)
+    printcountfile(countfile, samples, allcounts,trnalist, trnaloci, featurelist, embllist, otherseqdict = otherseqdict)
             
 
     if genetypefile is not None:
@@ -951,14 +935,17 @@ def countreads_main(**argdict):
             
     if trnacountfilename is not None:
         #trnauniquefile = open(trnauniquefilename, "w")
-        printtrnacountfile(trnacountfilename, samples, allcounts,trnalist,includebase = includebase)
+        printtrnacountfile(trnacountfilename, samples, allcounts,trnalist)
         printtrnaendfile(trnaendfilename,samples,  allcounts, trnalist, trnaloci)
        
         
     if trnauniquefilename is not None:
         
         #trnauniquefile = open(trnauniquefilename, "w")
-        printtrnauniquecountcountfile(trnauniquefilename,samples,  allcounts, trnalist, trnaloci,fragsep = includebase )
+        # fragsep=False matches this file's real, exercised default (the removed --nofrag flag
+        # defaulted to False, i.e. includebase=False here) -- not this function's own default
+        # (fragsep=True), which was never actually reached via the CLI's --nofrag default.
+        printtrnauniquecountcountfile(trnauniquefilename,samples,  allcounts, trnalist, trnaloci,fragsep = False)
         #print >>trnauniquefile, "\t".join(currsample for currsample in samples)
         #for currfeat in trnalist:
         #    if max(trnacounts[currsample][currfeat.name] for currsample in samples) < minreads:
@@ -1190,7 +1177,6 @@ def main(**argdict):
     bamnofeature = argdict["bamnofeature"]
     trnatable = argdict["trnatable"]
     uniquename = argdict["uniquename"]
-    fraguniq = argdict["fraguniq"]
     otherseqs = toolsTG.extraseqfile(argdict["otherseqs"])
     
     if "bamdir" not in argdict:
@@ -1318,6 +1304,9 @@ def main(**argdict):
     if mismatchfilename is not None:
         printmismatchcounts(mismatchfilename, sampledata,trnainfo, allcounts, sizefactor)
     if uniquename is not None:
-        printaminocounts(uniquename+"-aminos.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True, fragmode =fraguniq)
-        printanticodoncounts(uniquename+"-anticodons.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True, fragmode =fraguniq)
-        printtrnacounts(uniquename+"-trnas.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True, fragmode = fraguniq)
+        # fragmode defaults to True on all three of these -- matches this file's real, exercised
+        # default (the removed --fraguniq/--nofrag axis defaulted to fragmode=True here), so no
+        # explicit value needs passing.
+        printaminocounts(uniquename+"-aminos.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True)
+        printanticodoncounts(uniquename+"-anticodons.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True)
+        printtrnacounts(uniquename+"-trnas.txt", sampledata,trnainfo, allcounts, sizefactor, uniquemode = True)

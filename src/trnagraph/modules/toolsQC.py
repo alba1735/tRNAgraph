@@ -379,7 +379,7 @@ def getreadmapping(samplename: str, sampleinfo: Any) -> MappingResults:
 MIN_MAP_READS = 200000
 MIN_MAP_PERCENT = 0.65
 
-def checkreadsmapping(samplename: str, sampleinfo: Any, tgirtmode: bool = False) -> List[ErrorSet]:
+def checkreadsmapping(samplename: str, sampleinfo: Any) -> List[ErrorSet]:
     mapresults = getreadmapping(samplename, sampleinfo)
     samples = list(sampleinfo.getsamples())
     totalreads = {currsample: mapresults.totalreadscount(currsample) for currsample in samples}
@@ -467,28 +467,17 @@ def getreadlengths(samplename: str, sampleinfo: Any) -> LengthCount:
 def filelink(filename: str) -> str: 
     return '<a href="' + filename + '">' + filename + '</a>'
 
-def checkreadtypes(samplename: str, sampleinfo: Any, tgirtmode: bool = False) -> List[Optional[ErrorSet]]:
+def checkreadtypes(samplename: str, sampleinfo: Any) -> List[Optional[ErrorSet]]:
     trnapercentcutoff = 0.05
     ribopercentcutoff = 0.35
     unmappercentcutoff = 0.35
-    
+
     highmeanlength = 40
     minsizethreshold = 15
     maxsizethreshold = 50
     percentsizethreshold = 0.70
     lowmeanlength = None
-    
-    if tgirtmode:
-        trnapercentcutoff = 0.5
-        ribopercentcutoff = 0.35
-        unmappercentcutoff = 0.35
-        
-        highmeanlength = 75
-        lowmeanlength = 40
-        minsizethreshold = 40
-        maxsizethreshold = 75
-        percentsizethreshold = 0.70
-        
+
     typecounts = gettypecounts(samplename, sampleinfo)
     # getfragtypes(samplename, sampleinfo) # Was pass in original
     
@@ -607,7 +596,7 @@ SIZE_FACTOR_DIFF = 3.0
 MIN_ACTIVE_PERCENT = 0.5
 MIN_READ_COUNT = 20
 
-def checkgenecounts(samplename: str, sampleinfo: Any, trnainfo: Any, tgirtmode: bool = False) -> List[ErrorSet]:
+def checkgenecounts(samplename: str, sampleinfo: Any, trnainfo: Any) -> List[ErrorSet]:
     readcounts = gettrnacounts(samplename, sampleinfo, trnainfo)
     sizefactors = getsizefactor(samplename, sampleinfo)
     samples = list(sampleinfo.getsamples())
@@ -638,8 +627,8 @@ def readtrimindex(trimindex: str) -> List[str]:
                 filelocs[fields[0]] = fields[1]
     return list(filelocs.keys())
 
-def main(experimentname: str, samplefile: str, databasename: str, 
-         tgirt: bool = False, runname: Optional[str] = None, 
+def main(experimentname: str, samplefile: str, databasename: str,
+         runname: Optional[str] = None,
          output: Optional[str] = None):
     
     samplename = experimentname
@@ -657,7 +646,7 @@ def main(experimentname: str, samplefile: str, databasename: str,
         print("<html>", file=outputfile)
         print("<head>" + STYLE + "</head>", file=outputfile)
         
-        modestring = "Full-length tRNAs" if tgirt else "tRNA fragments"
+        modestring = "tRNA fragments"
         date = strftime("%A %B %d, %Y", localtime())
         print(MODE_TEMPLATE.format(date=date, mode=modestring), file=outputfile)
         
@@ -673,10 +662,10 @@ def main(experimentname: str, samplefile: str, databasename: str,
             
         mappingresults = []
         if os.path.exists(getmapfile(samplename)):
-            mappingresults = checkreadsmapping(samplename, sampleinfo, tgirt)
-            
-        typeresults = checkreadtypes(samplename, sampleinfo, tgirt)
-        countresults = checkgenecounts(samplename, sampleinfo, trnainfo, tgirt)
+            mappingresults = checkreadsmapping(samplename, sampleinfo)
+
+        typeresults = checkreadtypes(samplename, sampleinfo)
+        countresults = checkgenecounts(samplename, sampleinfo, trnainfo)
         
         allresults = prepresults + mappingresults + typeresults + countresults
         # Filter out None values if any

@@ -112,7 +112,6 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--gtf`**: Path to an Ensembl GTF file. Used to annotate non-tRNA features.
 - **`--pairs`**: File listing sample pairs for direct comparison.
 - **`--bed`**: List of additional BED files to define custom features.
-- **`--nofrag`**: Omits fragment determination logic. Useful for specific protocols like TGIRT-seq where fragmentation patterns differ.
 - **`--maxmismatches`**: Maximum mismatches allowed per read. This is one consistent read-level filter applied identically everywhere reads get counted from BAM files -- affects the X matrix, uns aggregate counts (type/amino/anticodon), and coverage data the same way, not a different mismatch-filtered subset for different outputs. Default: `None` (No limit)
 - **`--mincoverage`**: Minimum read count required for a transcript to be included in coverage plots. Default: `None`
 - **`--minnontrnasize`**: Minimum read length for non-tRNA features. Default: `20`

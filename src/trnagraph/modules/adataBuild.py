@@ -72,7 +72,6 @@ class AnalysisPipeline:
         self.samplefilename = args.input
         self.ensgtf = args.gtf
         self.bedfiles = args.bed
-        self.nofrag = args.nofrag
         self.bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
         if args.threads:
             self.cores = args.threads
@@ -215,7 +214,7 @@ class AnalysisPipeline:
                             trnatable=self.trnainfo.trnatable, countfile=self.expinfo.genecounts,
                             bedfile=self.bedfiles if self.bedfiles else [], trnacounts=self.expinfo.trnacounts,
                             trnaends=self.expinfo.trnaendfile, trnauniquecounts=self.expinfo.trnauniquefile,
-                            nofrag=self.nofrag, cores=self.cores, maxmismatches=self.maxmismatches, quiet=self.quiet)
+                            cores=self.cores, maxmismatches=self.maxmismatches, quiet=self.quiet)
 
     def run_deseq2(self):
         # 1. Main Counts - tRNA/tRX-controlled size factors (default; drives adata.X/obs/raw)
@@ -554,7 +553,7 @@ class AnalysisPipeline:
                             realcountfile=self.expinfo.genetyperealcounts, mismatchfile=self.expinfo.mismatchcountfile,
                             bedfile=self.bedfiles, readlengthfile=self.expinfo.trnalengthfile,
                             countfrags=False, bamnofeature=self.filterother,
-                            uniquename=self.expinfo.uniquename, fraguniq=not self.nofrag, cores=self.cores,
+                            uniquename=self.expinfo.uniquename, cores=self.cores,
                             quiet=self.quiet)
 
     def gettrnacoverage(self, orgtype):
