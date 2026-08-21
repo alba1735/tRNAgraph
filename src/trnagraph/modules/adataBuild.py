@@ -594,6 +594,11 @@ class AnnDataBuilder():
         self.logger = logging.getLogger(__name__)
         self.analysis_args = analysis_args
         self.metadata_path = metadata
+        # Populated by _handle_preprocessing() when splitting runs -- tracks which u{N}/o{N}
+        # split-BAM directories already had every sample's file present *before* this run's own
+        # splitting step, so _apply_readlength_split_()'s cleanup only deletes what this run
+        # actually created.
+        self._split_dirs_preexisted = {}
 
         # Parse and validate the metadata/samples file FIRST, before any expensive/risky
         # pipeline work below (AnalysisPipeline's counting/coverage generation) runs -- a
@@ -1031,6 +1036,11 @@ class AnnDataBuilder():
         finally:
             if not savesplitbams:
                 for tag in (f'u{cutoff}', f'o{cutoff}'):
+                    if self._split_dirs_preexisted.get(tag, False):
+                        # This tag's directory already had every sample's split BAM before this
+                        # run started, and this run didn't force a fresh split -- it's not this
+                        # run's scratch to clean up, regardless of --savesplitbams here.
+                        continue
                     split_dir = os.path.join(default_bamdir, tag)
                     if os.path.isdir(split_dir):
                         shutil.rmtree(split_dir, ignore_errors=True)
@@ -1299,20 +1309,15 @@ class AnnDataBuilder():
         # Splitting Logic
         if hasattr(args, 'readlengthsplit') and args.readlengthsplit:
             cutoff = args.readlengthsplit
-            # Check if split BAMs exist
-            missing_split = False
-            u_dir = os.path.join(bamdir, f"u{cutoff}")
-            o_dir = os.path.join(bamdir, f"o{cutoff}")
-            
-            if not os.path.exists(u_dir) or not os.path.exists(o_dir):
-                missing_split = True
-            else:
-                for s in samples:
-                    if not os.path.isfile(os.path.join(u_dir, f"{s}.bam")) or \
-                       not os.path.isfile(os.path.join(o_dir, f"{s}.bam")):
-                        missing_split = True
-                        break
-            
+            # Check if split BAMs exist -- recorded *before* this run's own splitting step runs,
+            # so _apply_readlength_split_()'s later cleanup can tell "already there, untouched by
+            # this run" apart from "this run just created (or --overwritebams-regenerated) it"
+            # (see roadmap.md's "BAM deletion safety" item). --overwritebams forces a fresh split
+            # even for an already-complete tag, so that tag is this run's own output regardless.
+            preexisting = _split_bam_dirs_preexisting(bamdir, cutoff, samples)
+            self._split_dirs_preexisted = {tag: complete and not overwrite for tag, complete in preexisting.items()}
+            missing_split = not all(preexisting.values())
+
             if missing_split or overwrite:
                 self.logger.info(f"Running split step (cutoff {cutoff})...")
                 from . import toolsSplit
@@ -1346,6 +1351,23 @@ def _get_git_version_():
         git_version = 'unknown (not a git repository)'
         git_hash = 'unknown'
     return git_version, git_hash
+
+
+def _split_bam_dirs_preexisting(bamdir, cutoff, samples):
+    '''
+    For each of u{cutoff}/o{cutoff}, checks whether every sample's split BAM was already present
+    under `bamdir` *before* this run's own splitting step runs. Used to scope split-BAM cleanup
+    (`--savesplitbams` off) to directories this run actually created -- a directory that already
+    had every sample's split BAM present (e.g. kept on disk by a prior `--savesplitbams` run) is
+    never deleted, regardless of whether this run's own splitting step ran or was skipped.
+    '''
+    preexisting = {}
+    for tag in (f'u{cutoff}', f'o{cutoff}'):
+        tag_dir = os.path.join(bamdir, tag)
+        preexisting[tag] = os.path.isdir(tag_dir) and all(
+            os.path.isfile(os.path.join(tag_dir, f"{s}.bam")) for s in samples
+        )
+    return preexisting
 
 
 def merge_variant_into_adata(target_adata, contribution: VariantContribution, tag, direction, cutoff, build_flags, overwrite=False):
@@ -1478,6 +1500,16 @@ def add_split(args):
     base_output_dir = os.path.dirname(os.path.abspath(args.anndata))
     savesplitbams = getattr(args, 'savesplitbams', False)
 
+    # Recorded *before* this run's own splitting step runs, so the cleanup below can tell
+    # "already there, untouched by this run" apart from "this run just created (or
+    # --overwritebams-regenerated) it" (see roadmap.md's "BAM deletion safety" item).
+    try:
+        samples = toolsTG.samplefile(effective_input).samples
+    except Exception:
+        samples = []
+    preexisting = _split_bam_dirs_preexisting(effective_bamdir, cutoff, samples)
+    split_dirs_preexisted = {tag: complete and not args.overwritebams for tag, complete in preexisting.items()}
+
     from . import toolsSplit
     split_args = SimpleNamespace(input=effective_input, readlengthsplit=cutoff, bamdir=effective_bamdir,
                                   overwritebams=args.overwritebams, threads=args.threads)
@@ -1515,6 +1547,11 @@ def add_split(args):
     finally:
         if not savesplitbams:
             for tag in (f'u{cutoff}', f'o{cutoff}'):
+                if split_dirs_preexisted.get(tag, False):
+                    # This tag's directory already had every sample's split BAM before this run
+                    # started, and this run didn't force a fresh split -- it's not this run's
+                    # scratch to clean up, regardless of --savesplitbams here.
+                    continue
                 split_dir = os.path.join(effective_bamdir, tag)
                 if os.path.isdir(split_dir):
                     shutil.rmtree(split_dir, ignore_errors=True)
