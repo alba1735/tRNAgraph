@@ -97,6 +97,9 @@ To ensure reproducibility and allow for on-the-fly re-normalization, data is sto
 | **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default. |
 | **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.      |
 | **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                               |
+| **VST**                          | `adata.layers["vst"]`              | Float32 (if built, see `--vst`). Variance-stabilized coverage, every feature always gets a value; see `--minfeaturereads` below. |
+
+`--minfeaturereads` (default `30`) affects **only** `adata.layers["vst"]`: a tRNA gene whose total raw read count (summed across all its samples) falls below this threshold is excluded from influencing the VST dispersion-trend fit itself (so a handful of noisy, low-coverage features can't distort the trend curve used for every other feature), but the resulting fit is still applied to that gene's own counts like any other, so it still gets a full VST value — nothing is ever dropped from `adata.X`/`adata.layers["raw"]`/`adata.obs`, or from any counting/DE/volcano/heatmap path. Which genes were excluded from the fit is recorded per-obs-row on `adata.obs['vst_fit_excluded']` (`True`/`False`).
 
 ### Split Variants (`--readlengthsplit`)
 

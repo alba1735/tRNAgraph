@@ -82,7 +82,6 @@ class AnalysisPipeline:
                 self.cores = 8
         self.minnontrnasize = args.minnontrnasize
         self.maxmismatches = args.maxmismatches
-        self.mincoverage = args.mincoverage
         self.filtermultimapped = args.filtermultimapped
         self.pairfile = args.pairs
         self.hubonly = args.hubonly
@@ -564,7 +563,7 @@ class AnalysisPipeline:
                              stkfile=self.trnainfo.trnaalign, numfile=self.trnainfo.trnanums,
                              locinums=self.trnainfo.locinums, allcoverage=self.expinfo.trnacoveragefile,
                              trnafasta=self.trnainfo.trnafasta, cores=self.cores,
-                             uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
+                             uniqcoverage=self.expinfo.trnauniqcoveragefile,
                              uniqueonly=self.filtermultimapped, sigmismatch=self.expinfo.sigmismatchfile)
 
     def createtrackhub(self):
@@ -798,10 +797,15 @@ class AnnDataBuilder():
             vst_strategy = str(self.analysis_args.vst).lower()
 
         if vst_strategy != 'none':
+            minfeaturereads = getattr(self.analysis_args, 'minfeaturereads', None)
+            minfeaturereads = int(minfeaturereads) if minfeaturereads is not None else 30
+            fit_mask = self._vst_fit_mask_(obs_df, minfeaturereads)
+            adata.obs['vst_fit_excluded'] = obs_df['vst_fit_excluded'].values
             with self.phase_tracker.phase():
                 adata.layers['vst'] = self._compute_vst_(
                     adata.X, adata.layers['raw'], adata.obs['deseq2_sizefactor'].values, adata.obs.get('group', 'all'),
-                    vst_strategy, getattr(self.analysis_args, 'dispfittype', 'parametric'), adata.obs_names, adata.var_names
+                    vst_strategy, getattr(self.analysis_args, 'dispfittype', 'parametric'), adata.obs_names, adata.var_names,
+                    fit_mask=fit_mask,
                 )
 
         # Quality check adata by dropping NaN values and printing summary
@@ -881,16 +885,44 @@ class AnnDataBuilder():
         x_df.columns = clist
         return x_df, size_factors_list
 
-    def _compute_vst_(self, x_norm, x_raw, sizefactor_values, group_values, vst_strategy, dispfittype, obs_index, var_index):
+    def _vst_fit_mask_(self, obs_df, minfeaturereads):
+        '''
+        Marks which rows qualify for the VST dispersion-trend FIT: a tRNA gene's total raw read
+        count, summed across all of its samples, must meet `minfeaturereads` (roadmap.md's
+        `--mincoverage` -> `--minfeaturereads` item). Sets `obs_df['vst_fit_excluded']` (the
+        inverse) so it's visible on the resulting AnnData object, and returns the qualifying mask
+        for `_compute_vst_`'s `fit_mask`. This flag affects ONLY `layers['vst']` -- raw counts,
+        normalized counts, the obs gene universe, and every counting/DE/volcano/heatmap path are
+        governed separately and are unaffected by it.
+        '''
+        gene_totals = obs_df.groupby('trna')['nreads_total_raw'].transform('sum')
+        qualifies = gene_totals >= minfeaturereads
+        obs_df['vst_fit_excluded'] = ~qualifies
+        return qualifies.values
+
+    def _compute_vst_(self, x_norm, x_raw, sizefactor_values, group_values, vst_strategy, dispfittype, obs_index, var_index, fit_mask=None):
         '''
         Compute a Variance Stabilizing Transformation of `x_norm`/`x_raw`. Extracted from
         create()'s VST block so it's reusable by compute_variant_contribution() for
         split-variant contributions.
+
+        `fit_mask`, if given, is a boolean array (aligned with `obs_index`) restricting which
+        rows contribute to the dispersion-trend FIT (roadmap.md's `--minfeaturereads` item) --
+        rows outside the mask are excluded from the fit but still get a VST value computed by
+        applying the resulting fitted trend to their own (raw, sizefactor-normalized) counts, the
+        same as every other row. `None` (or all-True) means "fit on everything", the prior
+        behavior.
         '''
+        sizefactor_values = np.asarray(sizefactor_values) if sizefactor_values is not None else np.ones(x_raw.shape[0])
+        use_fit_mask = fit_mask is not None and not np.all(fit_mask)
+
         if vst_strategy == 'log1p':
             self.logger.info('Applying Variance Stabilizing Transformation (log1p + StandardScaler)...')
             log_counts = np.log1p(x_norm)
             scaler = sklearn.preprocessing.StandardScaler()
+            if use_fit_mask:
+                scaler.fit(log_counts[fit_mask])
+                return scaler.transform(log_counts)
             return scaler.fit_transform(log_counts)
 
         self.logger.info('Applying Variance Stabilizing Transformation (PyDESeq2 VST)...')
@@ -898,10 +930,22 @@ class AnnDataBuilder():
             # Prepare raw counts matrix (PyDESeq2 requires integers)
             # Round and cap negatives to 0 (shouldn't be negatives in raw, but safety first)
             raw_integer_counts = np.clip(np.round(x_raw), 0, None).astype(int)
-            raw_df = pd.DataFrame(raw_integer_counts, index=obs_index, columns=var_index)
+
+            # Restrict what PyDESeq2 sees to the fit-qualifying rows only -- the dispersion trend
+            # curve is fit exclusively from these, so a handful of noisy/low-coverage features
+            # can't distort it for every other feature too. The fitted trend is applied to every
+            # row (this mask's rows and all others) further below.
+            if use_fit_mask:
+                fit_counts, fit_obs_index = raw_integer_counts[fit_mask], obs_index[fit_mask]
+                fit_sf = sizefactor_values[fit_mask]
+                fit_group = np.asarray(group_values)[fit_mask] if not isinstance(group_values, str) else group_values
+            else:
+                fit_counts, fit_obs_index, fit_sf, fit_group = raw_integer_counts, obs_index, sizefactor_values, group_values
+
+            raw_df = pd.DataFrame(fit_counts, index=fit_obs_index, columns=var_index)
 
             # Create a minimalist metadata DataFrame
-            meta_df = pd.DataFrame({'condition': pd.Series(np.asarray(group_values), index=obs_index)}, index=obs_index)
+            meta_df = pd.DataFrame({'condition': pd.Series(np.asarray(fit_group), index=fit_obs_index)}, index=fit_obs_index)
 
             # Initialize PyDESeq2 DeseqDataSet
             # NOTE: Since PyDESeq2's dispersion estimations often use parametric/mean fit
@@ -932,7 +976,7 @@ class AnnDataBuilder():
             # vectorized way PyDESeq2's own "poscounts" fit_type does (no optimization loop),
             # and deriving normed_counts from our own pre-computed size factors so
             # fit_size_factors() is skipped entirely.
-            sf = np.asarray(sizefactor_values) if sizefactor_values is not None else np.ones(vst_dds.n_obs)
+            sf = np.asarray(fit_sf) if fit_sf is not None else np.ones(vst_dds.n_obs)
             nz_log_counts = np.zeros_like(vst_dds.X, dtype=float)
             np.log(vst_dds.X, out=nz_log_counts, where=vst_dds.X != 0)
             logmeans = nz_log_counts.mean(axis=0)
@@ -943,17 +987,48 @@ class AnnDataBuilder():
             vst_dds.layers['normed_counts'] = vst_dds.X / sf[:, None]
             vst_dds.var['_normed_means'] = vst_dds.layers['normed_counts'].mean(axis=0)
 
-            # Calculate vst
-            vst_dds.vst(use_design=False)
+            if not use_fit_mask:
+                # Calculate vst
+                vst_dds.vst(use_design=False)
+                return vst_dds.layers['vst_counts']
 
-            return vst_dds.layers['vst_counts']
+            # Fit only (no transform yet) -- vst_dds only has the fit-qualifying rows, so its own
+            # vst_transform() can't be reused directly for the full row set below: applying it to
+            # unseen counts recomputes normalization via PyDESeq2's own median-of-ratios estimate
+            # instead of reusing our externally-supplied per-row size factors, which would give
+            # excluded rows a different, inconsistent normalization from included ones. Instead,
+            # the fitted trend curve/dispersion is read back below and applied by hand to every
+            # row's own size-factor-normalized counts, the same formula vst_transform() itself
+            # uses internally (pydeseq2/dds.py's vst_transform).
+            vst_dds.vst_fit(use_design=False)
+            full_normed_counts = raw_integer_counts / sizefactor_values[:, None]
+            vst_fit_type = vst_dds.vst_fit_type
+            if vst_fit_type == 'parametric':
+                a0, a1 = vst_dds.uns['vst_trend_coeffs']
+                return np.log2(
+                    (1 + a1 + 2 * a0 * full_normed_counts
+                     + 2 * np.sqrt(a0 * full_normed_counts * (1 + a1 + a0 * full_normed_counts)))
+                    / (4 * a0)
+                )
+            elif vst_fit_type == 'mean':
+                from scipy.stats import trim_mean
+                gene_dispersions = vst_dds.var['vst_genewise_dispersions']
+                use_for_mean = gene_dispersions > 10 * vst_dds.min_disp
+                mean_disp = trim_mean(gene_dispersions[use_for_mean], proportiontocut=0.001)
+                return (2 * np.arcsinh(np.sqrt(mean_disp * full_normed_counts))
+                        - np.log(mean_disp) - np.log(4)) / np.log(2)
+            else:
+                raise NotImplementedError(f"Found fit_type '{vst_fit_type}'. Expected 'parametric' or 'mean'.")
         except Exception as e:
             self.logger.warning(f"PyDESeq2 native VST failed ({e}). Falling back to log1p + StandardScaler...")
             log_counts = np.log1p(x_norm)
             scaler = sklearn.preprocessing.StandardScaler()
+            if use_fit_mask:
+                scaler.fit(log_counts[fit_mask])
+                return scaler.transform(log_counts)
             return scaler.fit_transform(log_counts)
 
-    def compute_variant_contribution(self, vst_strategy='vst', dispfittype='parametric'):
+    def compute_variant_contribution(self, vst_strategy='vst', dispfittype='parametric', minfeaturereads=30):
         '''
         Compute this loader's data as a "variant contribution" -- coverage matrices, numeric
         per-obs columns, and count/sizefactor summaries -- for merging into an existing target
@@ -976,9 +1051,10 @@ class AnnDataBuilder():
 
         x_vst = None
         if vst_strategy != 'none':
+            fit_mask = self._vst_fit_mask_(obs_df, minfeaturereads)
             x_vst = self._compute_vst_(
                 x_norm.values, x_raw.values, obsm_counts['deseq2_sizefactor'].values, obs_df.get('group', 'all'),
-                vst_strategy, dispfittype, x_df.index, x_df.columns
+                vst_strategy, dispfittype, x_df.index, x_df.columns, fit_mask=fit_mask,
             )
 
         return VariantContribution(
@@ -1005,6 +1081,8 @@ class AnnDataBuilder():
         default_bamdir = self.analysis_args.bamdir if self.analysis_args.bamdir else os.path.join("processed", "bam")
         vst_strategy = str(getattr(self.analysis_args, 'vst', 'vst')).lower()
         dispfittype = getattr(self.analysis_args, 'dispfittype', 'parametric')
+        minfeaturereads = getattr(self.analysis_args, 'minfeaturereads', None)
+        minfeaturereads = int(minfeaturereads) if minfeaturereads is not None else 30
         savesplitbams = getattr(self.analysis_args, 'savesplitbams', False)
 
         try:
@@ -1029,7 +1107,7 @@ class AnnDataBuilder():
                 self.logger.info(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
                 loader = AnnDataBuilder(base_output_dir, self.metadata_path, None, analysis_args=None,
                                          results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
-                contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype)
+                contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype, minfeaturereads=minfeaturereads)
 
                 build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
                 merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=True)
@@ -1471,6 +1549,7 @@ def add_split(args):
     effective_gtf = _effective(args.gtf, 'gtf')
     effective_dispfittype = _effective(args.dispfittype, 'dispfittype', 'parametric')
     effective_vst = _effective(args.vst, 'vst', 'vst')
+    effective_minfeaturereads = int(_effective(getattr(args, 'minfeaturereads', None), 'minfeaturereads', 30))
 
     if not effective_input or not os.path.isfile(effective_input):
         raise ValueError(f"Could not recover a valid metadata file from this object's build provenance. Pass --metadata explicitly (got: {effective_input!r}).")
@@ -1540,7 +1619,7 @@ def add_split(args):
             logger.info(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")
             loader = AnnDataBuilder(base_output_dir, effective_input, None, analysis_args=None,
                                      results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
-            contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype)
+            contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype, minfeaturereads=effective_minfeaturereads)
 
             build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
             merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=args.overwrite)

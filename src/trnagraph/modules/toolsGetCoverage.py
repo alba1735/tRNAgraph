@@ -442,22 +442,17 @@ def getsamplecoverage(currsample: str, sampledata: toolsTG.samplefile, trnalist:
                         multigenomecoverages, readmismatches, adeninemismatches, thyminemismatches, 
                         cytosinemismatches, guanosinemismatches, readskips, trimreadcoverage, trimreadmismatches)
 
-def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport: Any, 
-                       trnalist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float], 
-                       mincoverage: int, trnastk: toolsTG.RnaAlignment, positionnums: List[str], 
+def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport: Any,
+                       trnalist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float],
+                       trnastk: toolsTG.RnaAlignment, positionnums: List[str],
                        skipgaps: bool = True, sigmismatch: Any = None):
-    
+
     samples = sampledata.getsamples()
     mismatchthreshold = 0.05
 
     for currfeat in trnalist:
         name = currfeat.name
-        totalreads = sum(samplecoverages[s].allcoverages[name].totalreads for s in samples)
-        ambigreads = sum(samplecoverages[s].multaminocoverages[name].totalreads for s in samples)
-        
-        if totalreads - ambigreads < mincoverage:
-            continue
-            
+
         if sigmismatch:
             mismatchpos = {}
             coveragepos = {}
@@ -529,19 +524,15 @@ def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport:
                 ]
                 print("\t".join(row), file=mismatchreport)
 
-def locuscoverage(locicoverages: Dict[str, LociCoverageInfo], locicoveragetable: Any, 
-                  locilist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float], 
-                  mincoverage: int, locistk: toolsTG.RnaAlignment, locipositionnums: List[str], 
+def locuscoverage(locicoverages: Dict[str, LociCoverageInfo], locicoveragetable: Any,
+                  locilist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float],
+                  locistk: toolsTG.RnaAlignment, locipositionnums: List[str],
                   skipgaps: bool = True):
-    
+
     samples = sampledata.getsamples()
     for currfeat in locilist:
         name = currfeat.name
-        totalreads = sum(locicoverages[s].allcoverages[name].totalreads for s in samples)
-        
-        if totalreads < mincoverage:
-            continue
-            
+
         for currsample in samples:
             sf = sizefactor[currsample]
             lc = locicoverages[currsample]
@@ -566,22 +557,18 @@ def makelocicoveragepool(args):
 def compressargs(*args, **kwargs):
     return (args, kwargs)
 
-def main(samplefile: str, bedfile: List[str], stkfile: str, 
-         bamdir: str = "./", edgemargin: int = 0, mincoverage: Optional[int] = 30, 
-         sizefactors: Optional[str] = None, orgtype: str = "euk", 
-         locicoverage: str = "locicoverage.txt", numfile: Optional[str] = None, 
-         locinums: Optional[str] = None, allcoverage: str = "stdout", 
-         trnafasta: Optional[str] = None, cores: int = 1, 
-         uniqcoverage: Optional[str] = None, uniqueonly: bool = False, 
-         maxmismatches: Optional[int] = None, minextend: Optional[int] = None, 
-         combinereps: bool = False, uniquename: Optional[str] = None, 
+def main(samplefile: str, bedfile: List[str], stkfile: str,
+         bamdir: str = "./", edgemargin: int = 0,
+         sizefactors: Optional[str] = None, orgtype: str = "euk",
+         locicoverage: str = "locicoverage.txt", numfile: Optional[str] = None,
+         locinums: Optional[str] = None, allcoverage: str = "stdout",
+         trnafasta: Optional[str] = None, cores: int = 1,
+         uniqcoverage: Optional[str] = None, uniqueonly: bool = False,
+         maxmismatches: Optional[int] = None, minextend: Optional[int] = None,
+         combinereps: bool = False, uniquename: Optional[str] = None,
          uniquegenome: Optional[str] = None, lociedgemargin: int = 30,
          locibed: Optional[List[str]] = None, locistk: Optional[str] = None,
          sigmismatch: Optional[str] = None):
-    
-
-    if mincoverage is None:
-        mincoverage = 30
 
     sampledata = toolsTG.samplefile(samplefile, bamdir=bamdir)
     
@@ -700,12 +687,12 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
                 for i, currsample in enumerate(samples):
                     locicoverages[currsample] = lociresults[i]
 
-        transcriptcoverage(samplecoverages, coveragetable, trnasubset, sampledata, sizefactor_dict, 
-                           mincoverage, trnastk, positionnums, sigmismatch=sigmismatch_file)
-        
+        transcriptcoverage(samplecoverages, coveragetable, trnasubset, sampledata, sizefactor_dict,
+                           trnastk, positionnums, sigmismatch=sigmismatch_file)
+
         if locistk_obj and locisubset:
-            locuscoverage(locicoverages, locicoveragetable_file, locisubset, sampledata, sizefactor_dict, 
-                      mincoverage, locistk_obj, locipositionnums)
+            locuscoverage(locicoverages, locicoveragetable_file, locisubset, sampledata, sizefactor_dict,
+                      locistk_obj, locipositionnums)
 
     if cores > 1:
         pool.close()
@@ -727,7 +714,6 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--bedfile', required=True, nargs='+', help='Bed file(s)')
     parser.add_argument('-s', '--stkfile', required=True, help='Stockholm alignment file')
     parser.add_argument('--bamdir', default='./', help='Directory containing BAM files')
-    parser.add_argument('--mincoverage', type=int, default=30, help='Minimum coverage')
     parser.add_argument('--sizefactors', help='Size factors file')
     parser.add_argument('--orgtype', default='euk', help='Organism type')
     parser.add_argument('--locicoverage', default='locicoverage.txt', help='Loci coverage output file')
@@ -740,8 +726,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    main(samplefile=args.samplefile, bedfile=args.bedfile, stkfile=args.stkfile, 
-         bamdir=args.bamdir, mincoverage=args.mincoverage, sizefactors=args.sizefactors, 
-         orgtype=args.orgtype, locicoverage=args.locicoverage, allcoverage=args.allcoverage, 
+    main(samplefile=args.samplefile, bedfile=args.bedfile, stkfile=args.stkfile,
+         bamdir=args.bamdir, sizefactors=args.sizefactors,
+         orgtype=args.orgtype, locicoverage=args.locicoverage, allcoverage=args.allcoverage,
          trnafasta=args.trnafasta, locibed=args.locibed, locistk=args.locistk, cores=args.cores,
          uniqueonly=args.uniqueonly)

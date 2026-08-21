@@ -1,4 +1,5 @@
-"""Regression tests for AnnDataBuilder._compute_vst_ (roadmap.md Phase 1: "VST hanging/failing on large datasets")."""
+"""Regression tests for AnnDataBuilder._compute_vst_ (roadmap.md Phase 1: "VST hanging/failing on
+large datasets"; also Phase 2's "--mincoverage -> --minfeaturereads" item, covered further down)."""
 import logging
 import signal
 import time
@@ -102,3 +103,112 @@ def test_compute_vst_uses_provided_size_factors():
         "VST output did not change when very different size factors were supplied -- "
         "the pre-computed size factors are being silently discarded and recomputed internally."
     )
+
+
+def _make_builder():
+    builder = AnnDataBuilder.__new__(AnnDataBuilder)
+    builder.logger = logging.getLogger("test_vst")
+    return builder
+
+
+def test_vst_fit_mask_marks_low_read_genes_excluded(tmp_path):
+    """_vst_fit_mask_ (roadmap.md's --mincoverage -> --minfeaturereads item) must qualify a gene
+    based on its TOTAL raw reads summed across all its samples, not any single sample's count."""
+    builder = _make_builder()
+    obs_df = pd.DataFrame({
+        "trna": ["geneA", "geneA", "geneB", "geneB", "geneC", "geneC"],
+        "sample": ["s1", "s2", "s1", "s2", "s1", "s2"],
+        "nreads_total_raw": [20, 20, 5, 4, 0, 0],  # geneA: 40 total, geneB: 9, geneC: 0
+    })
+
+    mask = builder._vst_fit_mask_(obs_df, minfeaturereads=30)
+
+    assert list(mask) == [True, True, False, False, False, False]
+    assert list(obs_df["vst_fit_excluded"]) == [False, False, True, True, True, True]
+
+
+def test_compute_vst_parametric_returns_finite_values_for_excluded_rows():
+    """Rows excluded from the fit (fit_mask=False) must still get a real, finite VST value --
+    the exclusion only affects the dispersion-trend FIT input, not which rows get transformed."""
+    n_obs = 60
+    x_norm, x_raw, sizefactors, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
+    fit_mask = np.array([i < 50 for i in range(n_obs)])  # last 10 rows excluded from the fit
+    builder = _make_builder()
+
+    result = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "vst", "parametric", obs_index, var_index, fit_mask=fit_mask
+    ))
+
+    assert result.shape == (n_obs, N_VAR)
+    assert np.isfinite(result).all()
+
+
+def test_compute_vst_parametric_fit_mask_noop_when_all_true_matches_no_mask():
+    """Passing an all-True fit_mask (or omitting it) must produce identical output -- the new
+    fit_mask parameter must not change behavior for the pre-existing "fit on everything" case."""
+    n_obs = 40
+    x_norm, x_raw, sizefactors, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
+    builder = _make_builder()
+
+    result_no_mask = np.asarray(
+        builder._compute_vst_(x_norm, x_raw, sizefactors, group, "vst", "parametric", obs_index, var_index)
+    )
+    result_all_true = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "vst", "parametric", obs_index, var_index,
+        fit_mask=np.ones(n_obs, dtype=bool),
+    ))
+
+    assert np.allclose(result_no_mask, result_all_true)
+
+
+def test_compute_vst_parametric_fit_mask_actually_changes_the_fit():
+    """Excluding extreme-count outlier rows from the dispersion-trend fit must change the
+    resulting VST values for the OTHER (still-included, unchanged) rows -- proving fit_mask
+    genuinely restricts what the trend curve is fit from, rather than being silently ignored."""
+    n_obs = 60
+    x_norm, x_raw, sizefactors, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
+    # Inject extreme, high-variance counts into the last 10 rows -- an outlier subset that would
+    # skew the dispersion trend curve if allowed to influence the fit.
+    x_raw = x_raw.copy()
+    x_raw[50:] *= 200
+    x_norm = x_raw / sizefactors[:, None]
+    fit_mask = np.array([i < 50 for i in range(n_obs)])
+    builder = _make_builder()
+
+    result_including_outliers = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "vst", "parametric", obs_index, var_index,
+        fit_mask=np.ones(n_obs, dtype=bool),
+    ))
+    result_excluding_outliers = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "vst", "parametric", obs_index, var_index, fit_mask=fit_mask
+    ))
+
+    # Row 0 is a normal (non-outlier) row untouched by the injection -- its VST value should still
+    # shift between the two runs, because the TREND CURVE it's transformed through is different.
+    assert not np.allclose(result_including_outliers[0], result_excluding_outliers[0]), (
+        "VST output for a non-outlier row did not change when outlier rows were excluded from "
+        "the dispersion-trend fit -- fit_mask does not appear to be affecting the fit."
+    )
+
+
+def test_compute_vst_log1p_fit_mask_actually_changes_the_fit():
+    """The log1p + StandardScaler path must also respect fit_mask -- the scaler's fitted
+    mean/variance should come only from the qualifying rows, not the excluded ones."""
+    n_obs = 60
+    x_norm, x_raw, sizefactors, group, obs_index, var_index = _make_counts(n_obs, N_VAR)
+    x_norm = x_norm.copy()
+    x_norm[50:] *= 200
+    fit_mask = np.array([i < 50 for i in range(n_obs)])
+    builder = _make_builder()
+
+    result_including_outliers = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "log1p", "parametric", obs_index, var_index,
+        fit_mask=np.ones(n_obs, dtype=bool),
+    ))
+    result_excluding_outliers = np.asarray(builder._compute_vst_(
+        x_norm, x_raw, sizefactors, group, "log1p", "parametric", obs_index, var_index, fit_mask=fit_mask
+    ))
+
+    assert not np.allclose(result_including_outliers[0], result_excluding_outliers[0])
+    assert result_excluding_outliers.shape == (n_obs, N_VAR)
+    assert np.isfinite(result_excluding_outliers).all()

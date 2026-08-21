@@ -282,7 +282,7 @@ def build(
     pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
     bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
     maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum mismatches allowed per read. Applied consistently everywhere reads are counted from BAM files -- affects the X matrix, uns aggregate counts, and coverage data identically, not different subsets for different outputs"),
-    mincoverage: Optional[str] = typer.Option(None, "--mincoverage", help="Minimum read count for coverage plots"),
+    minfeaturereads: Optional[str] = typer.Option(None, "--minfeaturereads", help="Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit (layers['vst'] only, default: 30) -- every feature always gets a full raw/normalized coverage row and a VST value regardless; features below this are just excluded from influencing the fit itself, then transformed using the resulting fit like everything else. See adata.obs['vst_fit_excluded']"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
@@ -314,7 +314,7 @@ def build(
             mode='build', input=input, output=full_output_path,
             database=database, gtf=gtf, pairs=pairs,
             bed=bed, maxmismatches=maxmismatches,
-            mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
+            minfeaturereads=minfeaturereads, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             filterother=filterother, bamdir=bamdir, filtermultimapped=filtermultimapped, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
             vst=vst, quiet=quiet
@@ -334,6 +334,7 @@ def addsplit(
     gtf: Optional[str] = typer.Option(None, "--gtf", help="Override GTF path (default: recovered from provenance)"),
     dispfittype: Optional[str] = typer.Option(None, "--dispfittype", help="Override DESeq2 dispersion fit type (default: recovered from provenance)"),
     vst: Optional[str] = typer.Option(None, "--vst", help="VST strategy for this split's vst layer (default: recovered from provenance)"),
+    minfeaturereads: Optional[str] = typer.Option(None, "--minfeaturereads", help="Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit (default: recovered from provenance, or 30)"),
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) instead of deleting them once merged into the AnnData object"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
@@ -351,7 +352,7 @@ def addsplit(
 
         args = SimpleNamespace(
             mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
-            bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst,
+            bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst, minfeaturereads=minfeaturereads,
             overwritebams=overwritebams, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
             quiet=quiet
         )

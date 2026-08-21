@@ -113,7 +113,7 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--pairs`**: File listing sample pairs for direct comparison.
 - **`--bed`**: List of additional BED files to define custom features.
 - **`--maxmismatches`**: Maximum mismatches allowed per read. This is one consistent read-level filter applied identically everywhere reads get counted from BAM files -- affects the X matrix, uns aggregate counts (type/amino/anticodon), and coverage data the same way, not a different mismatch-filtered subset for different outputs. Default: `None` (No limit)
-- **`--mincoverage`**: Minimum read count required for a transcript to be included in coverage plots. Default: `None`
+- **`--minfeaturereads`**: Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit. This affects **only** `layers['vst']` -- every feature always gets a full raw coverage row, a full normalized coverage row, and its own VST value regardless of this threshold; features below it are simply excluded from influencing the fit itself (avoiding noisy low-count features distorting the trend curve for every other feature), then transformed using the resulting fit like everything else, matching standard DESeq2 trend-shrinkage methodology. Which features were excluded from the fit is recorded on `adata.obs['vst_fit_excluded']`. Default: `30`
 - **`--minnontrnasize`**: Minimum read length for non-tRNA features. Default: `20`
 - **`--hub`**: Generates a UCSC Genome Browser track hub for the data. Default: `False`
 - **`--hubonly`**: Only generates the track hub and skips AnnData generation. Default: `False`
@@ -153,6 +153,7 @@ trnagraph analyze addsplit -i <input.h5ad> -c <cutoff> [options]
 - **`--gtf`**: Override GTF path. Default: recovered from provenance.
 - **`--dispfittype`**: Override DESeq2 dispersion fit type. Default: recovered from provenance.
 - **`--vst`**: VST strategy for this split's `vst` layer. Default: recovered from provenance.
+- **`--minfeaturereads`**: Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit. Default: recovered from provenance, or `30`.
 - **`--overwritebams`**: Force overwrite of existing split BAM files. Default: `False`.
 - **`--savesplitbams`**: Keep the `u<N>`/`o<N>` split BAM files (under `--bamdir`) instead of deleting them once merged into the AnnData object. Default: `False`.
 - **`-o`, `--output`**: Output `.h5ad` path. Default: overwrite the input file in place.
