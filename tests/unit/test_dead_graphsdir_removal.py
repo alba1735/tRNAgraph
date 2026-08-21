@@ -25,7 +25,7 @@ def _make_map_args(tmp_path, samplenames):
 
     return SimpleNamespace(
         mode='map', output=str(tmp_path / "exp"), database=str(tmp_path / "db"),
-        input=str(manifest), lazy=False, minnontrnasize=20,
+        input=str(manifest), minnontrnasize=20,
         local=False, threads=1, skipcheck=True, bamdir=str(tmp_path / "bam"), quiet=True,
     )
 

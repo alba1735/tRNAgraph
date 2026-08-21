@@ -81,7 +81,7 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 - **`-d`, `--database`** (Required): Path/Name of the Bowtie2 index (tRNA database) created by `makedb`.
 - **`-o`, `--output`** (Required): Experiment name. This is used to name the output directory and report files.
 - **`--bamdir`**: Directory where BAM files will be stored. Default: `bam/<name>`
-- **`--lazy`**: Skip mapping if BAMs exist. Default: `False`.
+- **`--force-remap`**: Force remapping even if a matching bam file already exists. Default (when omitted): skip mapping if a bam already exists (after a fastq/header consistency check).
 - **`--local`**: Use Bowtie2 local alignment mode instead of end-to-end. Default: `False`.
 - **`--minnontrnasize`**: Minimum read length required for a read to be assigned to a non-tRNA feature. Default: `20`
 - **`--skipcheck`**: Skips the validation check that ensures FASTQ read names match BAM headers. Use with caution. Default: `False`

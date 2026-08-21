@@ -1287,7 +1287,7 @@ class AnnDataBuilder():
             self.logger.info("Running mapping step...")
             map_args = SimpleNamespace(**vars(args))
             map_args.output = os.path.basename(os.path.dirname(args.output)) # Experiment name
-            map_args.lazy = not overwrite 
+            map_args.force_remap = overwrite
             map_args.local = False 
             map_args.skipcheck = False
             

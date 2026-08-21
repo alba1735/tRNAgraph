@@ -449,7 +449,7 @@ class MapSamples:
         self.dbname = args.database
         self.expname = args.output
         self.samplefilename = args.input
-        self.lazyremap = args.lazy
+        self.force_remap = getattr(args, 'force_remap', False)
         self.bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
         if args.threads:
             self.cores = args.threads
@@ -511,7 +511,7 @@ class MapSamples:
             fastqfile = sampledata.getfastq(samplename)
             bamfile = os.path.join(self.bamdir, samplename)
             
-            if self.lazyremap and os.path.isfile(bamfile + ".bam"):
+            if not self.force_remap and os.path.isfile(bamfile + ".bam"):
                 if not MapReads.checkheaders(bamfile + ".bam", fastqfile):
                     self.logger.warning(f"Bam file {bamfile}.bam does not match fq file {fastqfile}")
                     if not self.skipfqcheck:

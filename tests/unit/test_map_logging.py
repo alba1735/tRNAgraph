@@ -28,7 +28,7 @@ def _make_manifest(tmp_path, samplenames):
 def _make_args(tmp_path, samplenames, quiet=False):
     return SimpleNamespace(
         mode='map', output=str(tmp_path / "exp"), database=str(tmp_path / "db"),
-        input=_make_manifest(tmp_path, samplenames), lazy=False, minnontrnasize=20,
+        input=_make_manifest(tmp_path, samplenames), minnontrnasize=20,
         local=False, threads=1, skipcheck=True, bamdir=str(tmp_path / "bam"), quiet=quiet,
     )
 

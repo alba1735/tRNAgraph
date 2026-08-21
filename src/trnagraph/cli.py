@@ -250,7 +250,7 @@ def map_cmd(
     output: str = typer.Option(..., "-o", "--output", help="Experiment name to be used"),
     database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
     input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
-    lazy: bool = typer.Option(False, "--lazy", help="Skip mapping reads if bam files exist"),
+    force_remap: bool = typer.Option(False, "--force-remap", help="Force remapping even if a matching bam file already exists (default: skip mapping if bams exist, after a fastq/header consistency check)"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
@@ -264,7 +264,7 @@ def map_cmd(
     with handle_output(quiet, tool="map", destination=destination):
         args = SimpleNamespace(
             mode='map', output=output, database=database, input=input,
-            lazy=lazy, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
+            force_remap=force_remap, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
             bamdir=bamdir, quiet=quiet
         )
 
