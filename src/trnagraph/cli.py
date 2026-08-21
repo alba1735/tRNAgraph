@@ -290,7 +290,7 @@ def build(
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
     filterother: bool = typer.Option(False, "--filterother", help="Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
-    uniqueonly: bool = typer.Option(False, "--uniqueonly", help="Show only unique coverage"),
+    filtermultimapped: bool = typer.Option(False, "--filtermultimapped", help="Drop genomically multi-mapped reads (a read aligning to more than one location in the genome) from the entire coverage build before any column is computed. Unrelated to the separate, always-computed tRNA-identity uniqueness in results/unique/ and graphs/unique/, which this flag does not affect"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
@@ -317,7 +317,7 @@ def build(
             database=database, gtf=gtf, pairs=pairs,
             bed=bed, nofrag=nofrag, nosizefactors=nosizefactors, maxmismatches=maxmismatches,
             mincoverage=mincoverage, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
-            filterother=filterother, bamdir=bamdir, uniqueonly=uniqueonly, dispfittype=dispfittype, threads=threads,
+            filterother=filterother, bamdir=bamdir, filtermultimapped=filtermultimapped, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
             vst=vst, quiet=quiet
         )

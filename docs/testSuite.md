@@ -78,7 +78,7 @@ The suite uses data from:
 Runs `trnagraph.py build` to aggregate the coverage data.
 
 - **Inputs**: Uses the generated BAM files, the downloaded GTF for non-tRNA features, and a pairs file (`config/vibrChol1.pair.txt`).
-- **Configuration**: Runs with `--uniqueonly` to test strict filtering capabilities. The `--split-build` test step re-runs build with `--readlengthsplit 60`, which splits BAM files by read length internally (into temporary `u60`/`o60` BAM files that are deleted once merged into the AnnData object) rather than as a separate preprocessing command.
+- **Configuration**: Runs with `--filtermultimapped` to test strict filtering capabilities. The `--split-build` test step re-runs build with `--readlengthsplit 60`, which splits BAM files by read length internally (into temporary `u60`/`o60` BAM files that are deleted once merged into the AnnData object) rather than as a separate preprocessing command.
 
 ### 5. Post-Processing & Visualization
 

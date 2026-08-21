@@ -89,7 +89,7 @@ class AnalysisPipeline:
         self.minnontrnasize = args.minnontrnasize
         self.maxmismatches = args.maxmismatches
         self.mincoverage = args.mincoverage
-        self.uniqueonlycov = args.uniqueonly
+        self.filtermultimapped = args.filtermultimapped
         self.pairfile = args.pairs
         self.hubonly = args.hubonly
         self.makehubs = args.hub
@@ -585,14 +585,14 @@ class AnalysisPipeline:
                                  locinums=self.trnainfo.locinums, allcoverage=self.expinfo.trnacoveragefile,
                                  trnafasta=self.trnainfo.trnafasta, cores=self.cores,
                                  uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
-                                 uniqueonly=self.uniqueonlycov, sigmismatch=self.expinfo.sigmismatchfile)
+                                 uniqueonly=self.filtermultimapped, sigmismatch=self.expinfo.sigmismatchfile)
         else:
             toolsGetCoverage.main(samplefile=self.samplefilename, bedfile=[self.trnainfo.maturetrnas],
                                  stkfile=self.trnainfo.trnaalign, uniquename=self.expinfo.uniquename,
                                  orgtype=orgtype, bamdir=self.bamdir, allcoverage=self.expinfo.trnacoveragefile,
                                  trnafasta=self.trnainfo.trnafasta, cores=self.cores,
                                  uniqcoverage=self.expinfo.trnauniqcoveragefile, mincoverage=self.mincoverage,
-                                 uniqueonly=self.uniqueonlycov, locibed=[], locistk=self.trnainfo.locialign,
+                                 uniqueonly=self.filtermultimapped, locibed=[], locistk=self.trnainfo.locialign,
                                  sigmismatch=self.expinfo.sigmismatchfile)
 
     def createtrackhub(self):
