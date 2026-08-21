@@ -6,11 +6,12 @@ This document provides a detailed reference for all command-line commands and fl
 
 These options apply to most commands in the toolkit.
 
-| Flag               | Description                                                                         | Default |
-| :----------------- | :---------------------------------------------------------------------------------- | :------ |
-| `-q`, `--quiet`    | Suppresses console output. A run's log is always persisted regardless -- see below. | `False` |
-| `-v`, `--verbose`  | Enables detailed execution logs.                                                    | `False` |
-| `--skip-env-check` | Skips the environment validation checks (dependencies and versions).                | `False` |
+| Flag                  | Description                                                                         | Default |
+| :-------------------- | :---------------------------------------------------------------------------------- | :------ |
+| `-q`, `--quiet`       | Suppresses console output. A run's log is always persisted regardless -- see below. | `False` |
+| `-v`, `--verbose`     | Enables detailed execution logs.                                                    | `False` |
+| `--skip-env-check`    | Skips the environment validation checks (dependencies and versions).                | `False` |
+| `--skip-update-check` | Skips the background check for a newer tRNAgraph release (see `update` below).      | `False` |
 
 Every command except `tools test` (which keeps its own fixed `toolsTestSuite.log`, overwritten each run) always writes a timestamped log under `./.log/` (e.g. `.log/20260101_120000_trim.log`), unconditionally -- even under `--quiet`, which only suppresses the console, never the file. There is no `--log <path>` flag to redirect this; on success the log moves into the command's real output directory (next to whatever it produced); on a crash or premature exit, a warning is printed pointing at the log still sitting in `.log/`, and it's left there rather than moved to a possibly-incomplete destination. `.log/` is untracked by git.
 
@@ -369,3 +370,32 @@ trnagraph tools test [options]
 | `--graph`       | Generate visualization plots (main h5ad only)                  |
 | `--split-graph` | Generate plots for split h5ad files                            |
 | `--hubonly`     | Generate UCSC track hubs only                                  |
+
+---
+
+## Update
+
+### `update`
+
+Updates this git checkout to the latest source and re-syncs the local environment. Refuses to run if the checkout has uncommitted local changes to tracked files, so nothing is at risk of being lost or silently merged over.
+
+**Usage:**
+
+```bash
+trnagraph update [options]
+```
+
+**Options:**
+
+- **`--branch <name>`**: Update to this branch instead of `main` (e.g. `dev`). Mutually exclusive with `--tag`.
+- **`--tag <version>`**: Check out this release tag instead of a branch (e.g. `v1.9.0` or `1.9.0`). This leaves the checkout in git's standard "detached HEAD" state for a tag checkout -- a printed message explains what that means and how to get back to a branch afterward. Mutually exclusive with `--branch`. Refused if the requested version is older than v1.9.0, the version `update` was itself introduced in.
+
+**What it does, in order:**
+
+1. Aborts if the checkout has uncommitted changes to tracked files.
+2. Fetches from the remote the current branch tracks, then checks out `main` (default), the requested `--branch`, or the requested `--tag`.
+3. For a branch, pulls the latest changes.
+4. Syncs conda-managed dependencies with `env update -f requirements.yaml --prune`, run via `mamba` if it's installed (much faster dependency resolution, e.g. any miniforge/mambaforge install) or `conda` otherwise.
+5. Runs `pip install -e .` to re-register any pip-only dependency or entry-point changes.
+
+Separately, every command performs a lightweight, non-blocking check at startup for whether a newer tRNAgraph release is available (comparing against the latest tag on the tracked git remote), printing a one-line notice if so. This check fails silently on any error (no network, no git, unreachable remote) and is cached to only touch the network once every 24 hours; disable it with `--skip-update-check`.

@@ -1,10 +1,22 @@
 import os
 import sys
+import json
+import time
 import shutil
 import subprocess
 import re
 import importlib.metadata
 from typing import Dict, Optional, Tuple
+
+from .. import __version__
+
+def get_project_root() -> str:
+    """
+    Locate the project root (containing requirements.yaml/pyproject.toml/.git) relative to
+    this file. Assumes this file is in src/trnagraph/modules/.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 
 def get_requirements_path() -> str:
     """
@@ -12,10 +24,7 @@ def get_requirements_path() -> str:
     Assumes this file is in src/trnagraph/modules/
     and requirements.yaml is in the project root.
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
-    return os.path.join(project_root, 'requirements.yaml')
+    return os.path.join(get_project_root(), 'requirements.yaml')
 
 def parse_requirements(req_path: str) -> Dict[str, Tuple[str, str]]:
     """
@@ -268,4 +277,129 @@ def validate_environment():
         sys.exit(1)
     else:
         print("Environment validation passed.")
+        pass
+
+
+def get_tracking_remote_name(project_root: str) -> Optional[str]:
+    """
+    Best-effort lookup of the git remote the current branch tracks (e.g. 'github' for a branch
+    tracking 'github/dev'). Returns None on any failure -- detached HEAD, no upstream configured,
+    git unavailable, or `project_root` not a git checkout at all -- rather than raising; callers
+    decide how to handle a missing remote (e.g. `update`'s own multi-remote fallback).
+    """
+    try:
+        result = subprocess.run(
+            ['git', '-C', project_root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    upstream = result.stdout.strip()
+    if '/' not in upstream:
+        return None
+    return upstream.split('/')[0]
+
+
+def get_remote_url(project_root: str, remote_name: str) -> Optional[str]:
+    """Best-effort lookup of a configured remote's URL. Returns None on any failure."""
+    try:
+        result = subprocess.run(
+            ['git', '-C', project_root, 'remote', 'get-url', remote_name],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+_UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+
+def _update_check_cache_path() -> str:
+    cache_home = os.environ.get('XDG_CACHE_HOME') or '~/.cache'
+    return os.path.join(os.path.expanduser(cache_home), 'trnagraph', 'update_check.json')
+
+def _latest_stable_tag(ls_remote_output: str) -> Optional[str]:
+    """Pick the highest non-prerelease semver tag out of a `git ls-remote --tags` listing."""
+    from packaging.version import Version, InvalidVersion
+
+    best_version = None
+    best_tag = None
+    for line in ls_remote_output.splitlines():
+        if 'refs/tags/' not in line:
+            continue
+        tag = line.rsplit('refs/tags/', 1)[1].strip()
+        if tag.endswith('^{}'):
+            tag = tag[:-3]
+        raw = tag[1:] if tag[:1] in ('v', 'V') else tag
+        try:
+            version = Version(raw)
+        except InvalidVersion:
+            continue
+        if version.is_prerelease or version.is_devrelease:
+            continue
+        if best_version is None or version > best_version:
+            best_version, best_tag = version, tag
+    return best_tag
+
+def _print_update_notice_if_newer(latest_tag: Optional[str]) -> None:
+    if not latest_tag:
+        return
+    from packaging.version import Version, InvalidVersion
+
+    raw_latest = latest_tag[1:] if latest_tag[:1] in ('v', 'V') else latest_tag
+    try:
+        if Version(raw_latest) > Version(__version__):
+            print(f"A newer version ({latest_tag}) is available -- run `trnagraph update` to upgrade.")
+    except InvalidVersion:
+        pass
+
+def check_for_updates() -> None:
+    """
+    Best-effort, non-blocking notice if a newer tRNAgraph release exists on the configured git
+    remote (the remote the current branch tracks). Compares tags via
+    `packaging.version.Version`, the same logic `update`'s own version guard uses -- never string
+    comparison. Must never raise or block a command: every failure mode (no network, git
+    unavailable, no remote configured, an unreachable/timing-out remote, not a git checkout at
+    all) is swallowed silently. Cached to a per-user timestamp file
+    (~/.cache/trnagraph/update_check.json, respecting $XDG_CACHE_HOME) so the network is only
+    touched once every 24h, not on every invocation.
+    """
+    try:
+        cache_path = _update_check_cache_path()
+        now = time.time()
+
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r') as f:
+                cached = json.load(f)
+            if now - float(cached.get('checked_at', 0)) < _UPDATE_CHECK_INTERVAL_SECONDS:
+                _print_update_notice_if_newer(cached.get('latest_tag'))
+                return
+
+        project_root = get_project_root()
+        remote_name = get_tracking_remote_name(project_root)
+        if not remote_name:
+            return
+        remote_url = get_remote_url(project_root, remote_name)
+        if not remote_url:
+            return
+
+        result = subprocess.run(
+            ['git', 'ls-remote', '--tags', remote_url],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return
+
+        latest_tag = _latest_stable_tag(result.stdout)
+
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, 'w') as f:
+            json.dump({'checked_at': now, 'latest_tag': latest_tag}, f)
+
+        _print_update_notice_if_newer(latest_tag)
+    except Exception:
         pass

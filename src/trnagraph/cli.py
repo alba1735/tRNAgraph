@@ -16,7 +16,7 @@ from types import SimpleNamespace
 try:
     from .modules.lazy_imports import (
         toolsMap, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from .modules import env_check
@@ -29,7 +29,7 @@ except ImportError:
 
     from tRNAgraph.modules.lazy_imports import (
         toolsMap, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from tRNAgraph.modules import env_check
@@ -154,6 +154,7 @@ def version_callback(value: bool):
 @app.callback()
 def main_callback(
     skip_env_check: bool = typer.Option(False, "--skip-env-check", help="Skip environment validation checks"),
+    skip_update_check: bool = typer.Option(False, "--skip-update-check", help="Skip the background check for a newer tRNAgraph release"),
     version: Optional[bool] = typer.Option(
         None, "--version", callback=version_callback, is_eager=True, help="Show the tRNAgraph version and exit"
     )
@@ -163,6 +164,8 @@ def main_callback(
     """
     if not skip_env_check:
         validate_environment()
+    if not skip_update_check:
+        env_check.check_for_updates()
 
 preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
 app.add_typer(preprocess_app, name="preprocess")
@@ -484,6 +487,21 @@ def graph(
         
         print('Graphing data from database object...\n')
         adataGraph.anndataGrapher(args).main()
+        print('Done!\n')
+
+@app.command("update", help="Update this git checkout (main branch by default) and re-sync the environment")
+def update(
+    branch: Optional[str] = typer.Option(None, "--branch", help="Update to this branch instead of 'main' (e.g. dev)"),
+    tag: Optional[str] = typer.Option(None, "--tag", help="Check out this release tag instead of a branch (results in a detached HEAD -- standard git behavior for tags)"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    if branch and tag:
+        raise Exception('Error: --branch and --tag are mutually exclusive.')
+    with handle_output(quiet, tool="update"):
+        args = SimpleNamespace(branch=branch, tag=tag, quiet=quiet)
+
+        print('Updating tRNAgraph...')
+        toolsUpdate.UpdateManager(args).run()
         print('Done!\n')
 
 @tools_app.command("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
