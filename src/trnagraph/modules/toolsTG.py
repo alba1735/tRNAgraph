@@ -62,6 +62,30 @@ def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: st
     return default
 
 
+def variant_dir_names(args, tag: Optional[str] = None) -> Tuple[str, str]:
+    '''
+    Resolve (results_dir_name, graphs_dir_name) for one `analyze build`/`analyze addsplit`
+    variant, per docs/roadmap.md's settled Phase 2 directory-layout item: variants nest as
+    subfolders of a shared `results`/`graphs` root instead of parallel sibling directories (the
+    old `results_u60`/`graphs_u60`). The single source of truth for this naming, shared by
+    `adataBuild.py` (the AnnData build pipeline) and `toolsSplit.py` (BAM splitting, which
+    writes its own per-variant `mapinfo.txt`/`trnamapinfo.txt` into the same directories) --
+    keeping both in step matters, since one writes what the other later reads.
+
+    A specific split-variant `tag` (e.g. 'u60'/'o60') always nests as `results/<tag>`/
+    `graphs/<tag>`. The default/full variant (`tag=None`) only nests under `results/complete`/
+    `graphs/complete` when `args.readlengthsplit` is actually set for this build -- i.e. only
+    when there's more than one variant on disk that needs disambiguating. A plain build with no
+    split keeps writing straight to `results`/`graphs`, unchanged, so the common (non-split)
+    case has no behavior change at all.
+    '''
+    if tag is not None:
+        return os.path.join('results', tag), os.path.join('graphs', tag)
+    if getattr(args, 'readlengthsplit', None):
+        return os.path.join('results', 'complete'), os.path.join('graphs', 'complete')
+    return 'results', 'graphs'
+
+
 class _TailCaptureHandler(logging.Handler):
     '''
     Captures the last N formatted log messages into a bounded deque, for a live-updating

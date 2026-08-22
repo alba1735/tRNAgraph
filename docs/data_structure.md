@@ -118,7 +118,7 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 > Each split variant gets its **own independently-fit** DESeq2 size factors/dispersion, computed from that variant's own read-length-restricted BAMs — not a shared/global normalization derived from the full dataset. This is intentional: a split subset's read-depth and length-composition profile can differ substantially from the full dataset, so sharing size factors across variants would bias comparisons within a split subset.
 
 > [!NOTE]
-> The read-length-restricted `u<N>`/`o<N>` BAM files used to compute a variant are scratch files, not a retained output — by default they're deleted once merged into the AnnData object, since only the resulting layers/`obsm`/`uns` entries above (plus the `results_<tag>`/`graphs_<tag>` directories) need to persist. Pass `--savesplitbams` to `build`/`addsplit` to keep them under `--bamdir` instead.
+> The read-length-restricted `u<N>`/`o<N>` BAM files used to compute a variant are scratch files, not a retained output — by default they're deleted once merged into the AnnData object, since only the resulting layers/`obsm`/`uns` entries above (plus the `results/<tag>`/`graphs/<tag>` directories, see below) need to persist. Pass `--savesplitbams` to `build`/`addsplit` to keep them under `--bamdir` instead.
 
 ### On-Disk Result Files (`results/<exp>/`)
 
@@ -137,6 +137,9 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 | Pairwise DE (if `--pairs` given) | `de_results/<cond1>_vs_<cond2>.txt`          | `allfeature/de_results/<cond1>_vs_<cond2>.txt`        |
 
 The default (tRNA-controlled) size factors and normalized counts are what get read back into the `.h5ad` (`adata.uns['deseq2_sizefactors_trna']`, `adata.X`); the all-feature-controlled size factors are also read back in as `adata.uns['deseq2_sizefactors_allfeatures']` and used to derive `adata.layers['norm_allfeatures']`. The rest of the `allfeature/`-prefixed files (dispersions, avgs, medians, padjs, logvals, combine, pairwise DE) are written to disk for reference/comparison but are not loaded into the `.h5ad` object. This mirrors the existing pattern used for the tRNA-only-matrix DESeq2 run, whose outputs live under `results/<exp>/trna/`.
+
+> [!NOTE]
+> This table describes a plain build with no `--readlengthsplit`, where everything above lives directly under `results/<exp>/` as shown. When `--readlengthsplit`/`addsplit` is used, each variant's copy of this same file set nests under its own subfolder instead — `results/<exp>/complete/` for the default/full variant, `results/<exp>/u<N>/` and `results/<exp>/o<N>/` for the split variants — so the three don't collide. A plain build without a split is unaffected and keeps writing straight to `results/<exp>/`.
 
 ---
 
@@ -290,7 +293,7 @@ Provenance metadata for reproducibility.
 adata.uns['size_splits']['u60'] = {
     'cutoff': 60, 'direction': 'under',                          # 'under' | 'over'
     'date_added': '2026-08-19T...', 'trnagraph_git_version': '...', 'trnagraph_git_hash': '...',
-    'results_dir_name': 'results_u60', 'graphs_dir_name': 'graphs_u60',
+    'results_dir_name': 'results/u60', 'graphs_dir_name': 'graphs/u60',
     'build_flags': {...},                                        # sanitized snapshot of the args used to compute this variant
     'sizefactors_trna': {...}, 'sizefactors_allfeatures': {...},  # this variant's own independent DESeq2 fit
     'type_counts': DataFrame, 'type_real_counts': DataFrame, 'amino_counts': DataFrame,

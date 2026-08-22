@@ -101,9 +101,10 @@ class AnalysisPipeline:
         self.trnainfo = toolsMap.trnadatabase(self.dbname)
         
         # Determine results and graphs directory names
-        results_dir_name = getattr(args, 'results_dir_name', 'results')
-        graphs_dir_name = getattr(args, 'graphs_dir_name', 'graphs')
-        
+        default_results_dir_name, default_graphs_dir_name = toolsTG.variant_dir_names(args)
+        results_dir_name = getattr(args, 'results_dir_name', None) or default_results_dir_name
+        graphs_dir_name = getattr(args, 'graphs_dir_name', None) or default_graphs_dir_name
+
         self.expinfo = toolsMap.expdatabase(self.expname, results_dir_name, graphs_dir_name)
 
     def run(self):
@@ -585,7 +586,7 @@ class AnnDataBuilder():
 
         `results_dir_name`/`graphs_dir_name` let this be used as a "loader-only" instance
         (analysis_args=None) that reads an already-generated results/graphs directory --
-        e.g. a size-split variant's `results_u60`/`graphs_u60` -- without re-running the
+        e.g. a size-split variant's `results/u60`/`graphs/u60` -- without re-running the
         analysis pipeline. This is how split-variant contributions get computed for merging
         into an existing AnnData object, both at initial build time (_apply_readlength_split_)
         and via the incremental `analyze addsplit` command.
@@ -681,11 +682,14 @@ class AnnDataBuilder():
         else:
             self.phase_tracker = None
 
-        # Initialize expdatabase to get file paths
+        # Initialize expdatabase to get file paths (toolsTG.variant_dir_names tolerates
+        # analysis_args being None -- getattr(None, 'readlengthsplit', None) is falsy, so it
+        # just falls through to the plain 'results'/'graphs' default, same as no split requested)
+        default_results_dir_name, default_graphs_dir_name = toolsTG.variant_dir_names(analysis_args)
         if results_dir_name is None:
-            results_dir_name = getattr(analysis_args, 'results_dir_name', 'results') if analysis_args else 'results'
+            results_dir_name = getattr(analysis_args, 'results_dir_name', None) or default_results_dir_name
         if graphs_dir_name is None:
-            graphs_dir_name = getattr(analysis_args, 'graphs_dir_name', 'graphs') if analysis_args else 'graphs'
+            graphs_dir_name = getattr(analysis_args, 'graphs_dir_name', None) or default_graphs_dir_name
 
         self.expinfo = toolsMap.expdatabase(resultsdir, results_dir_name, graphs_dir_name)
 
@@ -1069,7 +1073,7 @@ class AnnDataBuilder():
         Compute and merge the under/over read-length split variants for `self.analysis_args
         .readlengthsplit` into `adata` in place, as new layers/obsm/uns entries (see
         merge_variant_into_adata()) -- replaces the old behavior of writing separate
-        `_u{N}.h5ad`/`_o{N}.h5ad` files. On-disk `results_u{N}`/`graphs_u{N}` (and o{N})
+        `_u{N}.h5ad`/`_o{N}.h5ad` files. On-disk `results/u{N}`/`graphs/u{N}` (and o{N})
         directories are still produced via AnalysisPipeline, unchanged. The split BAM files
         themselves (under `<bamdir>/u{N}`/`o{N}`) are temporary scratch files by default and
         are deleted once this variant has been merged into `adata` -- pass `--savesplitbams`
@@ -1094,8 +1098,7 @@ class AnnDataBuilder():
                 args_variant.bamdir = os.path.join(default_bamdir, tag)
                 # CRITICAL: Prevent recursive splitting by nullifying readlengthsplit
                 args_variant.readlengthsplit = None
-                args_variant.results_dir_name = f"results_{tag}"
-                args_variant.graphs_dir_name = f"graphs_{tag}"
+                args_variant.results_dir_name, args_variant.graphs_dir_name = toolsTG.variant_dir_names(args_variant, tag=tag)
                 args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(abs_output))[0]}_{tag}.h5ad")
 
                 pipeline_variant = AnalysisPipeline(
@@ -1609,8 +1612,7 @@ def add_split(args):
             args_variant.readlengthsplit = None
             args_variant.overwritebams = args.overwritebams
             args_variant.threads = args.threads
-            args_variant.results_dir_name = f"results_{tag}"
-            args_variant.graphs_dir_name = f"graphs_{tag}"
+            args_variant.results_dir_name, args_variant.graphs_dir_name = toolsTG.variant_dir_names(args_variant, tag=tag)
             args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")
 
             pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)

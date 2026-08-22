@@ -10,6 +10,8 @@ import itertools
 import logging
 import pysam
 
+from . import toolsTG
+
 class BamSplitter:
     '''
     Splits BAM files by read length. Internal helper used by `analyze build
@@ -187,10 +189,8 @@ class BamSplitter:
         under_output_dir = base_output_dir
         over_output_dir = base_output_dir
         
-        under_results_name = f"results_u{self.cutoff}"
-        over_results_name = f"results_o{self.cutoff}"
-        under_graphs_name = f"graphs_u{self.cutoff}"
-        over_graphs_name = f"graphs_o{self.cutoff}"
+        under_results_name, under_graphs_name = toolsTG.variant_dir_names(self.args, tag=f"u{self.cutoff}")
+        over_results_name, over_graphs_name = toolsTG.variant_dir_names(self.args, tag=f"o{self.cutoff}")
         
         self.logger.info(f"Creating output directories for u{self.cutoff}...")
         under_exp_dir = base_output_dir

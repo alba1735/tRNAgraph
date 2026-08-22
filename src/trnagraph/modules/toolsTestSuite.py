@@ -549,11 +549,17 @@ class demoPipeline:
             self.logger.info("Done.")
 
     def graph_db(self) -> None:
-        """Generates graphs from the AnnData object."""
+        """Generates graphs from the AnnData object. Nested under graphs/complete instead of the
+        bare graphs/ directory whenever split variants are also present, mirroring analyze
+        build's own results/complete vs. plain results/ layout decision (docs/roadmap.md) --
+        avoids u60/o60's sibling graphs_u60/graphs_o60 directories colliding in naming intent
+        with an un-nested default."""
         with self._live_box("Generating graphs..."):
+            has_split = self._has_split_variant("vibrChol1/vibrChol1.h5ad", "u60")
+            graphs_dir = "vibrChol1/graphs/complete" if has_split else "vibrChol1/graphs"
             cmd = (
                 f"{self.trnagraph_path} graph "
-                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs --colormap config/colormap.json"
+                f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} --colormap config/colormap.json"
             )
             self._run_command(cmd, "Running graph command...")
 
@@ -565,13 +571,13 @@ class demoPipeline:
         with self._live_box("Generating graphs for split variants..."):
             cmd = (
                 f"{self.trnagraph_path} graph "
-                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs_u60 --variant norm:u60 --colormap config/colormap.json"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/u60 --variant norm:u60 --colormap config/colormap.json"
             )
             self._run_command(cmd, "Running graph command for under split...")
 
             cmd = (
                 f"{self.trnagraph_path} graph "
-                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs_o60 --variant norm:o60 --colormap config/colormap.json"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/o60 --variant norm:o60 --colormap config/colormap.json"
             )
             self._run_command(cmd, "Running graph command for over split...")
 
