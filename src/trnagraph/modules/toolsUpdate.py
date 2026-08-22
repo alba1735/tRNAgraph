@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 import shutil
 import logging
@@ -10,6 +11,7 @@ from typing import Optional, Tuple
 from packaging.version import Version, InvalidVersion
 
 from . import env_check
+from .. import __version__
 
 # The tRNAgraph version `trnagraph update` was itself introduced in -- a release older than this
 # has no `update` command to fall back on, so checking out a tag from before it would leave the
@@ -62,6 +64,7 @@ class UpdateManager:
             )
         else:
             branch = self.args.branch or "main"
+            self._check_branch_not_older_than_installed(remote, branch)
             self._checkout_branch(remote, branch)
             self.logger.info(f"Pulling latest '{branch}' from '{remote}'...")
             self._run(['git', 'pull', remote, branch])
@@ -102,6 +105,59 @@ class UpdateManager:
         if tracking and tracking in remotes:
             return tracking
         return remotes[0]
+
+    def _check_branch_not_older_than_installed(self, remote: str, branch: str) -> None:
+        '''
+        Refuse to update to a branch whose OWN `__version__` is older than the version currently
+        installed -- this is what actually catches `main` being stale (main is deliberately not
+        fast-forwarded to dev yet, see docs/roadmap.md's "update CLI command" item), rather than
+        a hardcoded floor like `--tag`'s MIN_TAG_VERSION. Peeks at `<remote>/<branch>`'s own
+        `src/trnagraph/__init__.py` via `git show` -- no checkout happens, so nothing is mutated
+        if this refuses.
+
+        Two different "can't tell" cases are handled deliberately differently:
+        - The ref itself (`<remote>/<branch>`) doesn't exist at all -- fails open (does nothing)
+          and lets the real checkout step below surface git's own clear error instead of a
+          confusing one here.
+        - The ref exists but has no `src/trnagraph/__init__.py` at all -- fails CLOSED (refuses):
+          on this project's actual history, that means the target commit predates the versioned
+          package structure entirely (added well after v1.0.0), so it's certainly older, not
+          merely "unknown". This is exactly the real-world case that motivated this check: `main`
+          currently points at pre-package-restructure history with no `__init__.py` at all, so
+          treating "file missing" as "unknown, proceed anyway" would silently reproduce the exact
+          bug this guard exists to catch.
+        A malformed/unparsable `__version__` string, on the other hand, is genuinely ambiguous
+        (the file exists, so this isn't pre-versioning history) and fails open.
+        '''
+        ref_check = self._run(['git', 'rev-parse', '--verify', '--quiet', f'{remote}/{branch}'], log_output=False, check=False)
+        if ref_check.returncode != 0:
+            return
+
+        result = self._run(
+            ['git', 'show', f'{remote}/{branch}:src/trnagraph/__init__.py'], log_output=False, check=False,
+        )
+        installed_version = Version(__version__)
+        if result.returncode != 0:
+            raise ValueError(
+                f"Refusing to update to '{branch}': couldn't find src/trnagraph/__init__.py on "
+                f"'{remote}/{branch}' at all, which means it predates this project's versioned "
+                f"package structure -- it's almost certainly older than the version currently "
+                f"installed ({installed_version}). If you really want it anyway, check it out "
+                f"manually instead: git checkout {branch}"
+            )
+        match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', result.stdout)
+        if not match:
+            return
+        try:
+            branch_version = Version(match.group(1))
+        except InvalidVersion:
+            return
+        if branch_version < installed_version:
+            raise ValueError(
+                f"Refusing to update to '{branch}': its own version ({branch_version}) is older than "
+                f"the version currently installed ({installed_version}) -- '{branch}' on '{remote}' is "
+                f"behind. If you really want it anyway, check it out manually instead: git checkout {branch}"
+            )
 
     def _checkout_branch(self, remote: str, branch: str) -> None:
         local_branches = self._run(['git', 'branch', '--list', branch], log_output=False).stdout

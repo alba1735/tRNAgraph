@@ -387,15 +387,5 @@ trnagraph update [options]
 
 **Options:**
 
-- **`--branch <name>`**: Update to this branch instead of `main` (e.g. `dev`). Mutually exclusive with `--tag`.
+- **`--branch <name>`**: Update to this branch instead of `main` (e.g. `dev`). Mutually exclusive with `--tag`. Refused if the branch's own reported version is older than what's currently installed (see below).
 - **`--tag <version>`**: Check out this release tag instead of a branch (e.g. `v1.9.0` or `1.9.0`). This leaves the checkout in git's standard "detached HEAD" state for a tag checkout -- a printed message explains what that means and how to get back to a branch afterward. Mutually exclusive with `--branch`. Refused if the requested version is older than v1.9.0, the version `update` was itself introduced in.
-
-**What it does, in order:**
-
-1. Aborts if the checkout has uncommitted changes to tracked files.
-2. Fetches from the remote the current branch tracks, then checks out `main` (default), the requested `--branch`, or the requested `--tag`.
-3. For a branch, pulls the latest changes.
-4. Syncs conda-managed dependencies with `env update -f requirements.yaml --prune`, run via `mamba` if it's installed (much faster dependency resolution, e.g. any miniforge/mambaforge install) or `conda` otherwise.
-5. Runs `pip install -e .` to re-register any pip-only dependency or entry-point changes.
-
-Separately, every command performs a lightweight, non-blocking check at startup for whether a newer tRNAgraph release is available (comparing against the latest tag on the tracked git remote), printing a one-line notice if so. This check fails silently on any error (no network, no git, unreachable remote) and is cached to only touch the network once every 24 hours; disable it with `--skip-update-check`.

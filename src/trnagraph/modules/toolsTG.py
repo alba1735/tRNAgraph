@@ -65,9 +65,9 @@ def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: st
 def variant_dir_names(args, tag: Optional[str] = None) -> Tuple[str, str]:
     '''
     Resolve (results_dir_name, graphs_dir_name) for one `analyze build`/`analyze addsplit`
-    variant, per docs/roadmap.md's settled Phase 2 directory-layout item: variants nest as
-    subfolders of a shared `results`/`graphs` root instead of parallel sibling directories (the
-    old `results_u60`/`graphs_u60`). The single source of truth for this naming, shared by
+    variant: variants nest as subfolders of a shared `results`/`graphs` root instead of parallel
+    sibling directories (the old `results_u60`/`graphs_u60`). The single source of truth for
+    this naming, shared by
     `adataBuild.py` (the AnnData build pipeline) and `toolsSplit.py` (BAM splitting, which
     writes its own per-variant `mapinfo.txt`/`trnamapinfo.txt` into the same directories) --
     keeping both in step matters, since one writes what the other later reads.
@@ -227,6 +227,10 @@ class PhaseTracker:
         -- pass `variant` (e.g. "Under60") to fold a split-build variant's name into the log line
         without treating it as a separate nesting level (the phase sequence just restarts/repeats
         per variant, labeled, rather than adding a third rendered level).
+
+        `_index` auto-increments assuming phases complete in the SAME order they were declared in
+        `phases=[...]` -- a caller that fans work out to a `multiprocessing.Pool` must use ordered
+        `imap()`, not `imap_unordered()`, if the pooled work is itself wrapped in phase tracking.
         '''
         if self._index >= len(self.phases):
             raise IndexError(f"{self.desc}: no more phases registered (declared {len(self.phases)})")

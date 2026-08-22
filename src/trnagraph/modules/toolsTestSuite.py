@@ -85,8 +85,9 @@ def _friendly_variant_title(label: str):
     '''
     Maps a PhaseTracker phase label's split-variant bracket prefix (e.g. "[Under 60] Counting
     Reads", from AnalysisPipeline's variant_label="Under 60") to a friendlier box title -- "Under"
-    means the fragment (u<N>) variant, "Over" the full-length (o<N>) one, matching roadmap.md's
-    Phase 4 terminology. Returns None for a non-variant label (the main/full build), so the box's
+    means the fragment (u<N>) variant, "Over" the full-length (o<N>) one, matching the
+    fragment-vs-full-length terminology used throughout roadmap.md's multivariate/timecourse
+    feature entry. Returns None for a non-variant label (the main/full build), so the box's
     title is left as whatever _live_box() was originally given (e.g. "Building AnnData object...").
     '''
     match = _VARIANT_LABEL_RE.match(label)
