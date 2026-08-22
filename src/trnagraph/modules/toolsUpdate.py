@@ -49,7 +49,7 @@ class UpdateManager:
 
         remote = self._resolve_remote()
         self.logger.info(f"Fetching latest refs from '{remote}'...")
-        self._run(['git', 'fetch', remote, '--tags', '--prune'])
+        self._fetch(remote)
 
         if tag_ref:
             self.logger.info(f"Checking out tag '{tag_ref}'...")
@@ -105,6 +105,29 @@ class UpdateManager:
         if tracking and tracking in remotes:
             return tracking
         return remotes[0]
+
+    def _fetch(self, remote: str) -> None:
+        '''
+        `git fetch <remote> --tags --prune` fails outright if a *local* tag ref has diverged from
+        the same-named tag on the remote (git treats tags as immutable pointers and refuses to
+        silently move one -- "! [rejected] vX.Y.Z -> vX.Y.Z (would clobber existing tag)"). This
+        can happen if a release tag was ever recreated upstream, or an old checkout cached a tag
+        before that happened. Since `trnagraph update`'s whole purpose is to make this checkout
+        match the remote, that's exactly the case where forcing the local tag to match the
+        remote's is correct -- so on that specific rejection, retry once with `--force` (which
+        only affects tags/remote-tracking refs here, not local branches).
+        '''
+        cmd = ['git', 'fetch', remote, '--tags', '--prune']
+        result = self._run(cmd, check=False)
+        if result.returncode != 0:
+            if 'clobber existing tag' not in result.stderr:
+                raise ValueError(f"Command failed ({' '.join(cmd)}): {result.stderr.strip() or result.stdout.strip()}")
+            self.logger.info(
+                "A local tag has diverged from the one on the remote (likely recreated "
+                f"upstream since this checkout last fetched) -- re-fetching from '{remote}' with "
+                "tags forced to match..."
+            )
+            self._run(cmd + ['--force'])
 
     def _check_branch_not_older_than_installed(self, remote: str, branch: str) -> None:
         '''
