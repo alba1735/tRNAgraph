@@ -171,6 +171,9 @@ def main_callback(
         validate_environment()
     if not skip_update_check:
         env_check.check_for_updates()
+    capture_warning = env_check.warn_if_output_capture_suspected()
+    if capture_warning:
+        print(capture_warning)
 
 preprocess_app = typer.Typer(help="Preprocess raw fastq/fasta files for tRNA analysis", no_args_is_help=True)
 app.add_typer(preprocess_app, name="preprocess")

@@ -432,6 +432,33 @@ def _print_update_notice_if_newer(latest_tag: Optional[str]) -> None:
     except InvalidVersion:
         pass
 
+def warn_if_output_capture_suspected(isatty_fn=None, environ=None) -> Optional[str]:
+    """
+    Returns a warning message if stdout/stderr look non-interactive despite plausibly being
+    inside a human-attended screen/tmux session -- a strong signal of an output-capturing
+    wrapper (most commonly `conda run` without --no-capture-output, which defaults to buffering
+    all output until the wrapped process exits, making a long-running command look completely
+    silent for its entire duration regardless of the actual terminal). Returns None when
+    genuinely interactive, or when non-interactive with no $STY/$TMUX -- that's an ordinary
+    background/cron/CI invocation, nothing suspicious about it. Doesn't print directly, so
+    callers can log/print/test the message independently.
+    """
+    if isatty_fn is None:
+        isatty_fn = lambda: sys.stdout.isatty() or sys.stderr.isatty()
+    if isatty_fn():
+        return None
+    if environ is None:
+        environ = os.environ
+    if environ.get('STY') or environ.get('TMUX'):
+        return (
+            "NOTE: output appears non-interactive even though this looks like a screen/tmux "
+            "session. If this was launched via `conda run`, live progress display needs "
+            "`conda run --no-capture-output` -- by default conda run buffers all output until "
+            "the command finishes, which can look like nothing is happening for a long time."
+        )
+    return None
+
+
 def check_for_updates() -> None:
     """
     Best-effort, non-blocking notice if a newer tRNAgraph release exists on the configured git
