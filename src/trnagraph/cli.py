@@ -116,6 +116,7 @@ def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, nam
 
     real_stdout = sys.stdout
     logger = configure_logging(log_path, quiet)
+    logger.info(version_string())
     failed = False
     try:
         with open(log_path, 'a') as log_fileobj:
@@ -146,9 +147,13 @@ def validate_environment():
     """
     env_check.validate_environment()
 
+def version_string() -> str:
+    channel = env_check.get_version_channel(env_check.get_project_root())
+    return f"tRNAgraph {__version__} ({channel})"
+
 def version_callback(value: bool):
     if value:
-        typer.echo(f"tRNAgraph {__version__}")
+        typer.echo(version_string())
         raise typer.Exit()
 
 @app.callback()

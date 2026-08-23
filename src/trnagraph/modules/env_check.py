@@ -316,6 +316,81 @@ def get_remote_url(project_root: str, remote_name: str) -> Optional[str]:
     return result.stdout.strip() or None
 
 
+def get_current_branch(project_root: str) -> Optional[str]:
+    """
+    Best-effort lookup of the currently checked-out branch name. Returns None on any failure
+    (detached HEAD, git unavailable, or `project_root` not a git checkout at all) rather than
+    raising -- callers decide how to handle "no current branch" (e.g. get_version_channel()'s
+    exact-tag/nightly fallback, or `trnagraph update`'s own hard error for its branch default).
+    """
+    try:
+        result = subprocess.run(
+            ['git', '-C', project_root, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    branch = result.stdout.strip()
+    return None if branch in ('', 'HEAD') else branch
+
+
+def _get_exact_tag(project_root: str) -> Optional[str]:
+    """The tag HEAD is exactly at, if any (e.g. after `trnagraph update --tag v1.9.0`, which
+    leaves a detached HEAD). None if HEAD isn't exactly at a tag, or on any failure."""
+    try:
+        result = subprocess.run(
+            ['git', '-C', project_root, 'describe', '--tags', '--exact-match'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _get_short_hash(project_root: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ['git', '-C', project_root, 'rev-parse', '--short', 'HEAD'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def get_version_channel(project_root: str) -> str:
+    """
+    Short label describing where this checkout's code is actually coming from, since
+    __version__ alone doesn't distinguish 'the official main-branch release' from 'a stale/ahead
+    dev or feature checkout with the same version string bumped in' -- see this project's own
+    `main` being deliberately behind `dev` during stabilization (docs/roadmap.md's update-tool
+    item), which is exactly the kind of thing this label makes visible at a glance:
+      - 'main' branch -> 'stable'
+      - 'dev' branch -> 'beta'
+      - any other branch -> 'nightly @ <short-hash>' (a fork/feature branch, not one of the two
+        known release channels, so the hash is the only precise identifier)
+      - detached HEAD (e.g. from `trnagraph update --tag`) exactly at a release tag -> that tag
+      - detached HEAD not at a tag -> 'nightly @ <short-hash>', same reasoning as other branches
+    """
+    branch = get_current_branch(project_root)
+    if branch == 'main':
+        return 'stable'
+    if branch == 'dev':
+        return 'beta'
+    if branch is None:
+        tag = _get_exact_tag(project_root)
+        if tag:
+            return tag
+    short_hash = _get_short_hash(project_root)
+    return f'nightly @ {short_hash}' if short_hash else 'nightly'
+
+
 _UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 
 def _update_check_cache_path() -> str:

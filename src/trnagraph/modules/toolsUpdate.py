@@ -63,7 +63,7 @@ class UpdateManager:
                 "  git checkout dev"
             )
         else:
-            branch = self.args.branch or "main"
+            branch = self._resolve_target_branch()
             self._check_branch_not_older_than_installed(remote, branch)
             self._checkout_branch(remote, branch)
             self.logger.info(f"Pulling latest '{branch}' from '{remote}'...")
@@ -77,6 +77,26 @@ class UpdateManager:
         self._run([sys.executable, '-m', 'pip', 'install', '-e', '.'])
 
         self.logger.info("\nUpdate complete.")
+
+    def _resolve_target_branch(self) -> str:
+        '''
+        Default to the currently checked-out branch when --branch isn't given, so `update`
+        continues tracking whatever branch was last explicitly selected (via --branch) instead of
+        always snapping back to a hardcoded 'main' -- git's own branch state IS the memory, no
+        separate persisted preference needed. Detached HEAD (e.g. after a previous `trnagraph
+        update --tag ...`) has no "current branch" to continue from, so that's a hard error
+        rather than a silent guess.
+        '''
+        if self.args.branch:
+            return self.args.branch
+        result = self._run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], log_output=False)
+        current = result.stdout.strip()
+        if current == 'HEAD':
+            raise ValueError(
+                "Cannot determine a default branch to update: this checkout is in detached HEAD "
+                "state (e.g. from a previous `trnagraph update --tag ...`). Pass --branch explicitly."
+            )
+        return current
 
     # -- git/environment helpers --
 
@@ -209,7 +229,29 @@ class UpdateManager:
         req_path = env_check.get_requirements_path()
         if not os.path.exists(req_path):
             raise ValueError(f'Error: requirements.yaml not found at {req_path}.')
-        self._run([env_tool, 'env', 'update', '-f', req_path, '--prune'])
+        # Streamed rather than self._run()'s buffered subprocess.run(capture_output=True): a
+        # conda/mamba solve can legitimately take a long time, and with output fully buffered
+        # until the process exits, that's indistinguishable from an actual hang. Live output
+        # (conda/mamba's own progress lines) makes it visible that it's still working.
+        self._run_streaming([env_tool, 'env', 'update', '-f', req_path, '--prune'])
+
+    def _run_streaming(self, cmd) -> None:
+        '''
+        Like _run(), but streams stdout/stderr line-by-line as the subprocess produces them
+        (into the logger, so both the console -- unless --quiet -- and the log file see it in
+        near-real-time) instead of buffering everything until the process exits. Reserved for
+        steps that can legitimately run long (currently just the conda/mamba env sync); the git
+        commands elsewhere in this class are normally fast enough that buffering is fine.
+        '''
+        proc = subprocess.Popen(cmd, cwd=self.project_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        output_lines = []
+        for line in proc.stdout:
+            line = line.rstrip()
+            output_lines.append(line)
+            self.logger.info(line)
+        returncode = proc.wait()
+        if returncode != 0:
+            raise ValueError(f"Command failed ({' '.join(cmd)}): {output_lines[-1] if output_lines else '(no output)'}")
 
     def _run(self, cmd, log_output: bool = True, check: bool = True) -> subprocess.CompletedProcess:
         # check=False -- failures are surfaced via our own `check`/return-code handling below,
