@@ -62,6 +62,43 @@ def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: st
     return default
 
 
+def resolve_nontrna_counts(adata: ad.AnnData, is_full_variant: bool, feature_label: str):
+    '''
+    Shared gate for plotsVolcano.py/plotsPca.py/plotsCorrelation.py's non-tRNA/combined plots.
+    Returns (nontrna_df, skip_message) -- exactly one is non-None. A length-based split cutoff
+    partitions tRNAs by design, but non-tRNA reads aren't classified by that criterion at all, so
+    a split-variant's non-tRNA data doesn't represent a meaningful subset of anything -- non-tRNA
+    plots must only ever be generated for the complete (non-split) variant, regardless of whether
+    adata.uns['nontRNA_counts'] happens to be present on this view. `feature_label` names what's
+    being skipped for the log message (e.g. 'PCA plots', 'correlation matrices').
+    '''
+    if not is_full_variant:
+        return None, (
+            f"Skipping non-tRNA {feature_label}: only ever generated for the complete (non-split) "
+            f"variant, since non-tRNA reads can't be meaningfully partitioned by a tRNA length split."
+        )
+    nontrna_df = adata.uns.get('nontRNA_counts')
+    if nontrna_df is None or nontrna_df.empty:
+        return None, (
+            f"No non-tRNA feature counts found in AnnData object (uns['nontRNA_counts'] missing or "
+            f"empty). Skipping non-tRNA {feature_label}. Re-run `trnagraph analyze build` with --gtf "
+            f"to enable these {feature_label}."
+        )
+    return nontrna_df, None
+
+
+def sort_temp_dir(output_path: str) -> str:
+    '''
+    Directory to use for a `samtools sort -T` prefix, given the sort's final output file path.
+    Defaults to the output file's own directory rather than the system temp dir
+    (tempfile.gettempdir(), i.e. /tmp unless $TMPDIR is set) -- tRAX historically hit a server
+    /tmp-fills-up failure on large samples and fixed it by writing temp files next to the
+    invocation/output instead, and tRNAgraph inherited the same class of risk by relying on the
+    system temp dir here.
+    '''
+    return os.path.dirname(os.path.abspath(output_path))
+
+
 def variant_dir_names(args, tag: Optional[str] = None) -> Tuple[str, str]:
     '''
     Resolve (results_dir_name, graphs_dir_name) for one `analyze build`/`analyze addsplit`
@@ -466,7 +503,14 @@ class adataLog2FC:
         # 'ratio' method silently falls into on zero-heavy count data like this -- see the VST
         # hang fix in adataBuild.py._compute_vst_ for the full story on why that path is
         # pathologically slow at anything beyond ~50-100 samples.
-        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True)
+        # n_cpus=1 is required, not just a performance tweak: this runs inside adataGraph.py's own
+        # multiprocessing.Pool worker processes, and PyDESeq2 defaults to using ALL available CPUs
+        # via joblib's loky backend -- spawning a second real process pool from inside an already-
+        # forked worker, which deadlocks (confirmed live: orphaned trnagraph graph processes found
+        # hung 24+ hours later with orphaned loky resource-tracker children attached). joblib's
+        # n_jobs=1 is the one setting that skips creating a nested pool entirely rather than just
+        # shrinking it, so this must stay pinned at 1 even though DESeq2 could otherwise parallelize.
+        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True, n_cpus=1)
         dds.deseq2()
 
         for pair in pairs:
@@ -1808,10 +1852,9 @@ class samplefile:
             self.replicatename = replicatename
             self.replicatelist = replicatelist
             #self.bamlist = list(curr+ "_sort.bam" for curr in samplelist)
-        except IOError:
-            self.logger.error("Cannot read sample file "+samplefilename)
-            self.logger.error("exiting...")
-            sys.exit(1)
+        except IOError as e:
+            self.logger.error(f"Cannot read sample file {samplefilename}: {e}")
+            raise
     def getsamples(self):
         return self.samplelist
     def getbamlist(self):

@@ -5,6 +5,8 @@ import logging
 import pandas as pd
 import anndata as ad
 
+from . import toolsTG
+
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
@@ -59,7 +61,7 @@ def _collapse_to_corr_group(df_wide, sample_to_group, corr_group):
         return df_wide
     return df_wide.rename(columns=lambda c: sample_to_group.get(str(c), c)).T.groupby(level=0, observed=True).mean().T
 
-def visualizer(adata, corr_method, corr_group, output, threaded=True):
+def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True):
     '''
     Generate correlation graphs for each sample in an AnnData object.
 
@@ -84,15 +86,12 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True):
     # alongside the per-readtype matrices above (no separate flag), but only when non-tRNA
     # feature counts are available -- adata.uns['nontRNA_counts'] is only populated with real
     # rows when `trnagraph analyze build` was given a --gtf; otherwise it's present but empty.
-    nontrna_df = adata.uns.get('nontRNA_counts')
-    if nontrna_df is None or nontrna_df.empty:
-        msg = ('No non-tRNA feature counts found in AnnData object '
-               '(uns[\'nontRNA_counts\'] missing or empty). Skipping non-tRNA correlation matrices. '
-               'Re-run `trnagraph analyze build` with --gtf to enable these matrices.')
+    nontrna_df, skip_message = toolsTG.resolve_nontrna_counts(adata, is_full_variant, 'correlation matrices')
+    if nontrna_df is None:
         if threaded:
-            threaded += msg + '\n'
+            threaded += skip_message + '\n'
         else:
-            logger.warning(msg)
+            logger.warning(skip_message)
     else:
         sample_to_group = dict(zip(adata.obs['sample'].astype(str), adata.obs[corr_group].astype(str)))
 

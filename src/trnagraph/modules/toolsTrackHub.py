@@ -14,14 +14,14 @@ from shutil import which
 
 # Try to import from local toolsTG, otherwise assume it's in the path
 try:
-    from .toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
+    from .toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom, sort_temp_dir
 except ImportError:
     try:
-        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
+        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom, sort_temp_dir
     except ImportError:
         # Fallback for when running from tRNAgraph directory
         sys.path.append(os.path.dirname(__file__))
-        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom
+        from toolsTG import samplefile, getsizefactors, transcriptfile, getnamedict, readbed, revcom, sort_temp_dir
 
 def cigarlength(cigar):
     # 0=M, 1=I. Counts length on query sequence.
@@ -63,7 +63,7 @@ class TrackHubBuilder:
     def convertbam(self, inputbam: str, outputbam: str, force: bool = False, logfile: Optional[Any] = sys.stderr) -> None:
         if not os.path.isfile(outputbam) or force:
             tempprefix = f"{Path(inputbam).stem}_{os.getpid()}"
-            temp_dir = tempfile.gettempdir()
+            temp_dir = sort_temp_dir(outputbam)
             
             self.logger.info(f"Converting {inputbam} to genome coordinates...")
             

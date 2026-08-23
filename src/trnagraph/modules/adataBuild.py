@@ -1360,10 +1360,10 @@ class AnnDataBuilder():
         # Check if we need to map
         try:
             sf = toolsTG.samplefile(args.input)
-            samples = sf.samples
-        except Exception:
-            self.logger.warning("Could not parse metadata to check for existing BAMs. Proceeding with mapping check...")
-            samples = []
+            samples = sf.getsamples()
+        except Exception as e:
+            self.logger.error(f"Could not parse metadata file '{args.input}' to check for existing BAMs: {e}")
+            raise
 
         missing_bams = False
         if not os.path.exists(bamdir):
@@ -1451,6 +1451,20 @@ def _split_bam_dirs_preexisting(bamdir, cutoff, samples):
     return preexisting
 
 
+def _resolve_full_variant_nontrna_counts(existing_full_nontrna_counts, contribution_nontrna_counts):
+    '''
+    A split variant's non-tRNA/small-RNA counts must always be the same value as the object's
+    existing full/unsplit variant, never a fresh per-split recomputation -- a length cutoff
+    partitions tRNAs by design, but non-tRNA reads aren't being classified by that criterion at
+    all, so one split's independently-recomputed non-tRNA counts can come out empty (or on a
+    different scale) than another's purely as an artifact of where that split's cutoff happened
+    to fall, not because the underlying biology differs. Falls back to the split's own value only
+    if the target object has no full-variant non-tRNA counts yet (shouldn't happen in practice,
+    since _adata_build_ always sets uns['nontRNA_counts'] before any split is merged in).
+    '''
+    return existing_full_nontrna_counts if existing_full_nontrna_counts is not None else contribution_nontrna_counts
+
+
 def merge_variant_into_adata(target_adata, contribution: VariantContribution, tag, direction, cutoff, build_flags, overwrite=False):
     '''
     Merge a VariantContribution (from AnnDataBuilder.compute_variant_contribution()) into
@@ -1508,7 +1522,7 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
         'type_real_counts': contribution.type_real_counts,
         'amino_counts': contribution.amino_counts,
         'anticodon_counts': contribution.anticodon_counts,
-        'nontRNA_counts': contribution.nontrna_counts,
+        'nontRNA_counts': _resolve_full_variant_nontrna_counts(target_adata.uns.get('nontRNA_counts'), contribution.nontrna_counts),
     }
 
     # Precompute default log2FC for common cutoffs, mirroring _adata_build_'s equivalent block
@@ -1586,9 +1600,10 @@ def add_split(args):
     # "already there, untouched by this run" apart from "this run just created (or
     # --overwritebams-regenerated) it" (see roadmap.md's "BAM deletion safety" item).
     try:
-        samples = toolsTG.samplefile(effective_input).samples
-    except Exception:
-        samples = []
+        samples = toolsTG.samplefile(effective_input).getsamples()
+    except Exception as e:
+        logger.error(f"Could not parse metadata file '{effective_input}' to check for existing split BAMs: {e}")
+        raise
     preexisting = _split_bam_dirs_preexisting(effective_bamdir, cutoff, samples)
     split_dirs_preexisted = {tag: complete and not args.overwritebams for tag, complete in preexisting.items()}
 

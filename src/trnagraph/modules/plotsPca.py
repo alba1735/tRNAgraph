@@ -8,6 +8,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
+from . import toolsTG
+
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
@@ -117,7 +119,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     return threaded
 
 
-def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True):
+def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True, is_full_variant=True):
     '''
     Generate PCA visualizations for each sample in an AnnData object.
 
@@ -172,15 +174,12 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
     # per-readtype plots above (no separate flag), but only when non-tRNA feature counts are
     # available -- adata.uns['nontRNA_counts'] is only populated with real rows when
     # `trnagraph analyze build` was given a --gtf; otherwise it's present but empty.
-    nontrna_df = adata.uns.get('nontRNA_counts')
-    if nontrna_df is None or nontrna_df.empty:
-        msg = ('No non-tRNA feature counts found in AnnData object '
-               '(uns[\'nontRNA_counts\'] missing or empty). Skipping non-tRNA PCA plots. '
-               'Re-run `trnagraph analyze build` with --gtf to enable these plots.')
+    nontrna_df, skip_message = toolsTG.resolve_nontrna_counts(adata, is_full_variant, 'PCA plots')
+    if nontrna_df is None:
         if threaded:
-            threaded += msg + '\n'
+            threaded += skip_message + '\n'
         else:
-            logger.warning(msg)
+            logger.warning(skip_message)
     else:
         # Non-tRNA-only PCA. adata.uns['nontRNA_counts'] is normalized against the
         # all-feature-controlled DESeq2 size factors (see adataBuild.py), which is the

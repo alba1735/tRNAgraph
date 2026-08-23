@@ -62,8 +62,17 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
     used to draw tRNA points as circles and non-tRNA points as squares (combined allRNA plots).
     '''
     pair_name = f'{pair[0]}-{pair[1]}'
-    x = df_pairs[f'log2_{pair_name}']
-    y = -np.log10(df_pairs[f'pval_{pair_name}'])
+    log2fc = df_pairs[f'log2_{pair_name}']
+    pval = df_pairs[f'pval_{pair_name}']
+    # DESeq2 assigns NaN log2FC/padj to genes excluded by independent filtering (low mean count)
+    # or Cook's-outlier detection -- these were never given a real significance call (not
+    # "insignificant"), so they're dropped rather than plotted. A padj of exactly 0.0 is the
+    # opposite case: a float64 underflow on an extremely significant hit, not noise -- clip it
+    # away from zero instead of dropping it, so adjust_text's KDTree (which needs every point
+    # finite) doesn't lose real data along with a plottable, if extreme, point.
+    finite_mask = log2fc.notna() & pval.notna()
+    x = log2fc[finite_mask]
+    y = -np.log10(pval[finite_mask].clip(lower=np.nextafter(0, 1)))
 
     up_color, down_color = _resolve_pair_colors(colormap, pair)
 
@@ -173,7 +182,7 @@ def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots):
     plt.close(fig)
 
 
-def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=None, threaded=True, config_name='default', overwrite=False):
+def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=None, threaded=True, config_name='default', overwrite=False, is_full_variant=True):
     '''
     Generate volcano visualizations for each pairwise group comparison in an AnnData object.
 
@@ -224,15 +233,12 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=N
     combined_pairs_df = None
     combined_feature_types = None
 
-    nontrna_df = adata.uns.get('nontRNA_counts')
-    if nontrna_df is None or nontrna_df.empty:
-        msg = ('No non-tRNA feature counts found in AnnData object '
-               '(uns[\'nontRNA_counts\'] missing or empty). Skipping non-tRNA and combined volcano plots. '
-               'Re-run `trnagraph analyze build` with --gtf to enable these plots.')
+    nontrna_df, skip_message = toolsTG.resolve_nontrna_counts(adata, is_full_variant, 'and combined volcano plots')
+    if nontrna_df is None:
         if threaded:
-            threaded += msg + '\n'
+            threaded += skip_message + '\n'
         else:
-            logger.warning(msg)
+            logger.warning(skip_message)
     else:
         sample_group_map = dict(zip(adata.obs['sample'].astype(str), adata.obs[grp]))
 

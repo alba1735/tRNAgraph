@@ -1,9 +1,12 @@
 """Regression tests for toolsTG.adataLog2FC.log2fc_df (roadmap.md Phase 1: "Replace manual log2FC with native DESeq2 output")."""
+from unittest.mock import patch
+
 import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
 
+import trnagraph.modules.toolsTG as toolsTG
 from trnagraph.modules.toolsTG import adataLog2FC
 
 READTYPE = "nreads_total_unique_norm"
@@ -83,3 +86,22 @@ def test_log2fc_df_detects_real_signal_and_reports_valid_pvalues():
     pvals = df["pval_A-B"].dropna()
     assert not pvals.empty
     assert ((pvals >= 0) & (pvals <= 1)).all()
+
+
+def test_log2fc_df_pins_deseq2_to_a_single_cpu():
+    """log2fc_df() runs inside adataGraph.py's own multiprocessing.Pool worker processes
+    (plotsHeatmap.py and plotsVolcano.py both call it at graph time). DeseqDataSet defaults to
+    n_cpus=None, which PyDESeq2 resolves to "all available CPUs" via joblib's loky backend --
+    spawning a second real process pool from inside an already-forked worker, a known
+    deadlock-prone pattern (confirmed live on this project: real trnagraph graph processes were
+    found hung 24+ hours later with orphaned loky resource-tracker children attached). joblib's
+    n_jobs=1 is the one setting that avoids creating any nested pool at all (it runs sequentially
+    in-process, not just with a smaller pool), so log2fc_df() must always pin n_cpus=1."""
+    adata = _make_adata({"trnaA": {"A": 400, "B": 400}}, n_per_group=3)
+    log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=80)
+
+    with patch("trnagraph.modules.toolsTG.DeseqDataSet", wraps=toolsTG.DeseqDataSet) as mock_dds:
+        log2fc.log2fc_df()
+
+    assert mock_dds.call_args is not None
+    assert mock_dds.call_args.kwargs.get("n_cpus") == 1

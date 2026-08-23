@@ -250,7 +250,7 @@ class MapReads:
         self.logger.info(temploc)
         
         # Construct samtools command list
-        samtools_args = ["samtools", "sort", "-T", f"{tempfile.gettempdir()}/{temploc}temp", "-", "-o", f"{bamfile}.bam"]
+        samtools_args = ["samtools", "sort", "-T", f"{toolsTG.sort_temp_dir(bamfile)}/{temploc}temp", "-", "-o", f"{bamfile}.bam"]
         
         bowtie_cmd_str = " ".join(bowtie_args)
         self.logger.info(bowtie_cmd_str)
