@@ -11,7 +11,6 @@ This document tracks planned work for tRNAgraph — bugs to fix and features to 
     - Under migration tool notes we can maybe subset the data for retesting but should never overwrite the originals
     - This can also be integreated into MigrationTesting as it will include trax runs from the same dataset
     - Long term testing against this as it is human (hg38 a eukaroyotic organism) would help with long term goals but due to the size of the data is not a priority right now. Since this data will be used in a paper once it is uploaded to GEO we can download it on the fly as needed determine computational power needed to run datasets like that. This should be a features low priority ask.
-- **Logs Fail to Capture Errors**: Errors and other informative information is missing from logs, canceled and crashed jobs.
 
 ### Bugs — Medium Priority
 

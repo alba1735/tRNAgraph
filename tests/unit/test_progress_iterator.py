@@ -138,6 +138,45 @@ def test_tty_branch_removes_tail_handler_and_leaves_propagate_untouched():
     assert logger.propagate is True
 
 
+def test_tty_branch_live_display_does_not_leak_into_redirected_stdout():
+    '''
+    Reproduces a real production bug: cli.py's handle_output() wraps every command in
+    contextlib.redirect_stdout(tee) so print()'d output reaches both the console and the
+    persisted .log/ file. rich.live.Live's internal Console defaults to sys.stdout unless told
+    otherwise -- since Live/Progress/Spinner are constructed with no explicit `console=` here,
+    once tRNAgraph actually ran with a real interactive terminal attached (e.g. after fixing the
+    conda-run-buffering issue elsewhere in this project), every spinner/progress-bar frame's raw
+    ANSI escape codes got captured into `tee` and from there into the log file, flooding it --
+    exactly what this test file's own earlier docstrings already assumed was NOT happening
+    ("writes straight to the real terminal via stderr, bypassing the logging system"). Fix: point
+    Live explicitly at a stderr-bound Console, since contextlib.redirect_stdout only ever
+    touches stdout.
+    '''
+    import io
+    import sys
+
+    class _FakeTTYStream(io.StringIO):
+        """A plain StringIO isn't a tty, so rich would gracefully skip animation regardless of
+        which stream it targets -- masking the real bug. Claiming isatty()=True is what actually
+        makes rich emit live-rendered ANSI frames, matching a genuine attached terminal."""
+        def isatty(self):
+            return True
+
+    logger = logging.getLogger("test_progress_iterator.no_stdout_leak")
+    fake_stdout = _FakeTTYStream()
+    old_stdout = sys.stdout
+    sys.stdout = fake_stdout
+    try:
+        list(toolsTG.progress_iterator(
+            range(3), total=3, desc="Testing", logger=logger,
+            quiet=False, isatty_fn=lambda: True,
+        ))
+    finally:
+        sys.stdout = old_stdout
+
+    assert fake_stdout.getvalue() == ''
+
+
 def test_tty_branch_persists_to_file_handler_while_skipping_console_handler():
     """
     The actual production mechanism (cli.py's configure_logging()): the shared 'trnagraph'

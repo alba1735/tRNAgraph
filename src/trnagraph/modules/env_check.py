@@ -147,27 +147,39 @@ def check_python_package(package: str, requirement: Tuple[str, str]) -> Tuple[bo
     except importlib.metadata.PackageNotFoundError:
         return False, "Not installed"
 
-def get_binary_version(cmd: str, flag: str, regex: str) -> Optional[str]:
+def get_binary_version(cmd: str, flag: str, regex: str, timeout: float = 20.0) -> Tuple[Optional[str], Optional[str]]:
     """
-    Try to get version of a binary.
+    Try to get the version of a binary. Returns (version, failure_reason) -- exactly one is
+    None. Distinguishing WHY a lookup failed (timed out vs no regex match vs some other
+    subprocess error) instead of collapsing every failure into one generic message matters in
+    practice: a Python-based CLI tool (e.g. umi_tools) has to boot a full interpreter and import
+    numpy/pandas/pysam just to print --version, which can push past a short timeout when the
+    machine is under heavy concurrent load (e.g. a `trnagraph` pipeline already running on it) --
+    that failure mode looks identical to "the output format doesn't match" unless it's reported
+    separately. `timeout` defaults to a generous 20s for exactly that reason -- a fast C binary
+    (bedtools, bowtie2, samtools) costs nothing extra from the higher ceiling, but a Python-based
+    one needs the headroom.
     """
     if not shutil.which(cmd):
-        return None
-    
+        return None, "not found"
+
+    args = [cmd]
+    if flag:
+        args.append(flag)
+
     try:
         # Capture both stdout and stderr as some tools print version to stderr (e.g. fastp)
-        args = [cmd]
-        if flag:
-            args.append(flag)
-            
-        result = subprocess.run(args, capture_output=True, text=True, timeout=5)
-        output = result.stdout + result.stderr
-        match = re.search(regex, output)
-        if match:
-            return match.group(1)
-    except Exception:
-        pass
-    return None
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, f"timed out after {timeout}s"
+    except Exception as e:
+        return None, str(e)
+
+    output = result.stdout + result.stderr
+    match = re.search(regex, output)
+    if match:
+        return match.group(1), None
+    return None, "version string not found in command output"
 
 def check_binary_package(package: str, requirement: Tuple[str, str]) -> Tuple[bool, str]:
     """
@@ -202,14 +214,14 @@ def check_binary_package(package: str, requirement: Tuple[str, str]) -> Tuple[bo
     if not shutil.which(cmd):
         return False, f"Command '{cmd}' not found"
 
-    found_version = get_binary_version(cmd, info["flag"], info["regex"])
-    
+    found_version, failure_reason = get_binary_version(cmd, info["flag"], info["regex"])
+
     if found_version:
         if compare_versions(found_version, expected_version, op):
             return True, f"Found {found_version}"
         return False, f"Expected {op}{expected_version}, found {found_version}"
-    
-    return False, f"Command '{cmd}' found but version could not be determined"
+
+    return False, f"Command '{cmd}' found but version could not be determined ({failure_reason})"
 
 def validate_environment():
     """

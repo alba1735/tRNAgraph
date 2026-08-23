@@ -125,6 +125,12 @@ def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, nam
                 yield
     except Exception:
         failed = True
+        # Must happen here, before `finally` detaches the FileHandler below -- whatever renders
+        # the pretty traceback on the terminal happens OUTSIDE this function (Typer/Click's own
+        # top-level exception handler), by which point the log file's handler would already be
+        # gone. Without this, a failed run's log file contained only the startup banner lines and
+        # nothing about what actually went wrong.
+        logger.error(f"{tool} failed with an unhandled exception:", exc_info=True)
         sys.stderr.write(f"WARNING: {tool} failed -- see {log_path} for details.\n")
         raise
     finally:

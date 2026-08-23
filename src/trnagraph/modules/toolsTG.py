@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from rich.live import Live
 from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 from rich.spinner import Spinner
-from rich.console import Group
+from rich.console import Group, Console
 from rich.text import Text
 
 logger = logging.getLogger(__name__)
@@ -187,7 +187,15 @@ def progress_iterator(
             return Group(body, Text(tail_text)) if tail_text else body
 
         try:
-            with Live(get_renderable=render, refresh_per_second=4, transient=True):
+            # console=Console(stderr=True) is required, not cosmetic: cli.py's handle_output()
+            # wraps every command in contextlib.redirect_stdout(tee) so plain print()s reach both
+            # the console and the persisted .log/ file. rich.live.Live's internal Console
+            # defaults to sys.stdout unless told otherwise -- left implicit, every spinner/
+            # progress-bar frame's raw ANSI escape codes get captured into `tee` right along with
+            # everything else, flooding the log file. redirect_stdout only ever touches stdout,
+            # so pointing Live at stderr instead makes it write straight to the real terminal,
+            # bypassing that capture entirely -- matching isatty_fn's own use of stderr above.
+            with Live(get_renderable=render, refresh_per_second=4, transient=True, console=Console(stderr=True)):
                 for i, item in enumerate(iterable):
                     yield item
                     started_bar = True

@@ -103,6 +103,26 @@ def test_handle_output_leaves_log_in_dot_log_and_warns_on_failure(tmp_path, monk
     assert ".log" in stderr
 
 
+def test_handle_output_logs_the_exception_to_the_log_file_on_failure(tmp_path, monkeypatch):
+    """A real server failure (trnagraph update's _check_clean_working_tree raising ValueError)
+    showed the log file containing only the startup banner lines -- the actual exception/
+    traceback never reached it, only the terminal (rendered by Typer/Click's own top-level
+    handler, outside this function, by which point handle_output's `finally` had already closed
+    the FileHandler). The exception must be logged -- with its traceback -- before that happens."""
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError):
+        with handle_output(quiet=True, tool="testtool"):
+            raise ValueError("boom: something specific went wrong")
+
+    log_files = list((tmp_path / ".log").glob("*_testtool.log"))
+    assert len(log_files) == 1
+    content = log_files[0].read_text()
+    assert "ValueError" in content
+    assert "boom: something specific went wrong" in content
+    assert "Traceback" in content
+
+
 def test_handle_output_still_writes_file_log_under_quiet(tmp_path, monkeypatch):
     """--quiet only suppresses the console -- the persisted file log is unconditional."""
     monkeypatch.chdir(tmp_path)
