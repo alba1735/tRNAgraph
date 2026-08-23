@@ -107,18 +107,46 @@ class anndataGrapher:
             self.logger.info('Colormap loaded.\n')
         # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
         # This is done now to prevent saving issues later if multiprocessing is used
-        log2FC_dict = self.adata.uns['log2FC'].copy()
+        self._precompute_and_persist_log2fc()
+
+    def _precompute_and_persist_log2fc(self):
+        '''
+        Precompute log2FC for every {heatgrp,volgrp} x diffrts x {heatcutoff,volcutoff} combo
+        (plus volcano's fixed overview readtypes) the CURRENT invocation's flags actually need,
+        and persist anything newly computed back to the original h5ad -- so a later `graph` run
+        with matching flags (e.g. regenerating figures) hits the cache instead of recomputing.
+        Runs once, before the graph-type multiprocessing.Pool is created, so it's safe to use
+        real parallelism here (n_cpus=self.args.threads) unlike the same-shaped on-demand calls
+        inside plotsVolcano.py/plotsHeatmap.py, which run inside pooled workers and must stay at
+        adataLog2FC's safe default of n_cpus=1 to avoid a nested-process-pool deadlock.
+
+        "Was anything actually new" is tracked via adataLog2FC.main()'s own computed_fresh flag,
+        not by diffing the uns['log2FC'] dict before/after -- a before/after comparison is
+        fundamentally the wrong tool here: a shallow dict.copy() shares the same nested dict
+        objects between the "before"/"after" snapshots, so adding a new readtype/cutoff under an
+        already-existing config_name/compare path (the common case, 'default'/'group' by default)
+        never registers as a difference (equality short-circuits on object identity) -- and using
+        a deep copy instead just trades that silent bug for a crash (`ValueError: truth value of
+        a DataFrame is ambiguous`), since dict equality then actually has to compare the nested
+        DataFrame values directly.
+        '''
+        threads = getattr(self.args, 'threads', None) or None
+        any_computed = False
         if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
                 for readtype in [f'nreads_{i}_norm' for i in self.args.diffrts]: #list(set(self.args.heatrts+self.args.volrts))]:
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
-                        toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
+                        log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
+                        log2fc.main()
+                        any_computed = any_computed or log2fc.computed_fresh
         if 'volcano' in self.args.graphtypes:
             # The volcano combined overview page always uses these two read types (mirroring
             # PCA's default --pcareadtypes), regardless of what --diffrts requests.
             for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
-                toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns).main()
-        if log2FC_dict != self.adata.uns['log2FC'] or self.args.regen_uns:
+                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
+                log2fc.main()
+                any_computed = any_computed or log2fc.computed_fresh
+        if any_computed or self.args.regen_uns:
             self.logger.info('The log2FC uns dictionary has been updated.\n')
             # Persist onto the ORIGINAL (unresolved) adata, into the correct namespaced
             # location -- never write self.adata (the resolved view) back to disk, since for a

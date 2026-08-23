@@ -254,7 +254,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--volgrp`**: Grouping variable used both to define the pairwise group comparisons and to look up per-group colors in `--colormap` (the same `<obs_column>: {<value>: <color>}` shape used by PCA, keyed on `--volgrp`'s value, e.g. `"group"`). Default: `group`.
 - **`--diffrts`**: Read types to generate per-readtype tRNA volcano plots for, shared with heatmap.
 - **`--volcutoff`**: Read count cutoff. Default: `80`.
-- **`--vollabels`**: Number of top significant markers to label on each plot, ranked by `|log2FC| * -log10(p-value)`. Omit to label every significant marker (default); pass `0` to disable labels entirely.
+- **`--vollabels`**: Number of top significant markers to label on each plot, ranked by `|log2FC| * -log10(p-value)`. Default: `100` (labeling every significant marker has unbounded cost on large datasets); pass `0` to disable labels entirely, or any other value to label exactly that many.
 
 > [!NOTE]
 > Two extra subplots are generated automatically (in combined plots) whenever `adata.uns['nontRNA_counts']` is non-empty (i.e., `--gtf` was used at `analyze build`): a non-tRNA-only plot and a combined tRNA + non-tRNA plot. No additional flags are needed, and both are skipped with a log message if non-tRNA counts are unavailable. These use a different DESeq2 normalization than the per-readtype plots — see [Data Structure: Graphing Notes](data_structure.md#6-graphing-notes).

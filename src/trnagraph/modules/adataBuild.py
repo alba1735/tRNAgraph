@@ -576,6 +576,27 @@ class AnalysisPipeline:
         )
         hub_builder.run()
 
+
+def _precompute_default_log2fc(view, threads=None):
+    '''
+    Precompute log2FC for the 'group' comparison's two overview readtypes
+    (nreads_total_unique_norm, nreads_total_norm) across the standard tRNA-seq read-count
+    cutoffs, giving graph-time volcano/heatmap runs at these common combos an immediate cache
+    hit instead of needing an on-demand fit. Shared by _adata_build_() (the full/default
+    variant) and merge_variant_into_adata() (each split variant), so both stay in sync.
+
+    Called once per variant, outside any multiprocessing.Pool, so -- unlike the identically-
+    shaped on-demand calls inside plotsVolcano.py/plotsHeatmap.py, which run inside pooled
+    worker processes and must stay at adataLog2FC's safe default of n_cpus=1 to avoid a
+    nested-process-pool deadlock -- it's safe to use real parallelism here. `threads` should be
+    the same --threads budget already governing the rest of this build/addsplit command, not an
+    independent "use everything" default.
+    '''
+    for cutoff in [20, 40, 80, 100, 200]:  # common read cutoffs for tRNAseq
+        toolsTG.adataLog2FC(view, 'group', 'nreads_total_unique_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
+        toolsTG.adataLog2FC(view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
+
+
 class AnnDataBuilder():
     '''
     Create h5ad AnnData object
@@ -1344,9 +1365,7 @@ class AnnDataBuilder():
         adata.uns['deseq2_sizefactors_trna'] = self.size_factors
         adata.uns['deseq2_sizefactors_allfeatures'] = self.size_factors_allfeatures
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
-        for i in [20,40,80,100,200]: # These are common read cutoffs for tRNAseq
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
-            toolsTG.adataLog2FC(adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
+        _precompute_default_log2fc(adata, threads=self.analysis_args.threads)
         
         return adata
 
@@ -1530,9 +1549,8 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
     # work completely unchanged.
     temp_spec = toolsTG.VariantTag(raw=f'norm:{tag}', norm='norm', tag=tag)
     temp_view = toolsTG.build_variant_view(target_adata, temp_spec)
-    for cutoff_i in [20, 40, 80, 100, 200]:  # common read cutoffs for tRNAseq
-        toolsTG.adataLog2FC(temp_view, 'group', 'nreads_total_unique_norm', readcount_cutoff=cutoff_i, config_name='default', overwrite=True).main()
-        toolsTG.adataLog2FC(temp_view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff_i, config_name='default', overwrite=True).main()
+    variant_threads = build_flags.get('threads')
+    _precompute_default_log2fc(temp_view, threads=variant_threads if isinstance(variant_threads, int) else None)
     target_adata.uns['size_splits'][tag]['log2FC'] = temp_view.uns.get('log2FC', {})
 
     return target_adata

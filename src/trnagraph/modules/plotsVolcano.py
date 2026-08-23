@@ -108,7 +108,8 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
         ax.set_ylim(0, 10)
 
     # Label markers of interest: significant points, most extreme (|log2FC| * -log10(pval)) first.
-    # toplabels=None labels all significant points, 0 disables labels, N labels the top N.
+    # toplabels=None labels all significant points (unbounded cost -- the CLI default is 100
+    # instead, see --vollabels), 0 disables labels, N labels the top N.
     if toplabels != 0:
         score = (x.abs() * y)[sig_mask].sort_values(ascending=False)
         label_idx = score.index if toplabels is None else score.index[:toplabels]
@@ -182,7 +183,7 @@ def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots):
     plt.close(fig)
 
 
-def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=None, threaded=True, config_name='default', overwrite=False, is_full_variant=True):
+def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=100, threaded=True, config_name='default', overwrite=False, is_full_variant=True):
     '''
     Generate volcano visualizations for each pairwise group comparison in an AnnData object.
 

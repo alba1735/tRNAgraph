@@ -41,6 +41,8 @@ class anndataCluster():
         self.stats_metrics_umap = args.umapstatsmetrics
         self.stats_metrics_hdbscan = args.hdbstatsmetrics
         self.mindist = args.mindist
+        threads = getattr(args, 'threads', 0)
+        self.threads = threads if threads else -1  # UMAP/HDBSCAN's own convention: -1 = use all available cores
 
     def main(self):
         # Check if the output file already exists
@@ -154,11 +156,15 @@ class anndataCluster():
         # Remove low variance features
         sel = VarianceThreshold(threshold=(self.variance_threshold))
         # Apply a standardscaler to the data and reduce dimensions
-        standard_reducer = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot, min_dist=self.mindist, metric=self.stats_metrics_umap)
+        # n_jobs is UMAP's own thread count -- UMAP itself overrides it to 1 whenever
+        # random_state is set (its own documented behavior, for reproducibility), so this only
+        # has an effect when no --randomstate seed is given. HDBSCAN's core_dist_n_jobs is not
+        # affected by any seed and always benefits from it.
+        standard_reducer = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_plot, min_dist=self.mindist, metric=self.stats_metrics_umap, n_jobs=self.threads)
         standard_embedding = standard_reducer.fit_transform(sel.fit_transform(adata.X))
-        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components, metric=self.stats_metrics_umap).fit_transform(sel.fit_transform(adata.X))
+        cluster_embedding = umap.UMAP(random_state=self.randomstate, n_neighbors=neighbors_cluster, min_dist=0.0, n_components=n_components, metric=self.stats_metrics_umap, n_jobs=self.threads).fit_transform(sel.fit_transform(adata.X))
         # Perform clustering with HDBSCAN
-        hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size, metric=self.stats_metrics_hdbscan).fit_predict(cluster_embedding)
+        hdbscan_results = hdbscan.HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size, metric=self.stats_metrics_hdbscan, core_dist_n_jobs=self.threads).fit_predict(cluster_embedding)
         # Create a dataframe of the cluster information
         df = pd.DataFrame(standard_embedding, index=adata.obs.index, columns=['standard_umap1','standard_umap2'])
         df_c = pd.DataFrame(cluster_embedding, index=adata.obs.index, columns=['cluster_umap'+str(i) for i in range(1,n_components+1)])

@@ -412,32 +412,52 @@ def scatter_subset_graph_to_full(subset_graph, subset_index, full_index):
 
 
 class adataLog2FC:
-    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False):
+    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
         self.readcount_cutoff = str(readcount_cutoff)
         self.config_name = config_name
         self.overwrite = overwrite
+        # Default of 1 is a safety requirement, not a performance tweak: this class is called
+        # from inside adataGraph.py's own multiprocessing.Pool worker processes (plotsVolcano.py,
+        # plotsHeatmap.py), and PyDESeq2 defaults to using ALL available CPUs via joblib's loky
+        # backend -- spawning a second real process pool from inside an already-forked worker,
+        # which deadlocks. joblib's n_jobs=1 is the one setting that skips creating a nested pool
+        # entirely (it runs sequentially in-process) rather than just shrinking it, so only a
+        # caller that KNOWS it isn't running inside a pool (e.g. adataBuild.py's or
+        # adataGraph.py's own pre-pool precompute step) should ever pass something else.
+        self.n_cpus = n_cpus
         self.log2fc_dict: Dict[str, Any] = {}
+        # Set by main(): whether THIS call actually computed a fresh fit (cache miss) rather than
+        # reusing a cached df (cache hit). Callers that precompute several combos and want to
+        # know whether anything new was added (e.g. to decide whether to persist to disk) should
+        # check this instead of diffing the uns['log2FC'] dict before/after -- a naive dict
+        # comparison silently never detects new entries under an already-existing config_name/
+        # compare key when using a shallow copy (shared nested dict references short-circuit
+        # equality via identity), and raises ValueError ("truth value of a DataFrame is
+        # ambiguous") when using a deep copy instead, since dict equality falls through to
+        # comparing the nested DataFrame values directly.
+        self.computed_fresh = False
 
     def main(self) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         # Search nested adata.uns for log2FC for compare, readtype, the readcutoff
         self.log2fc_dict = self.adata.uns.get('log2FC', {})
-        
+
         # Ensure nested structure exists
         self.log2fc_dict.setdefault(self.config_name, {}) \
                         .setdefault(self.compare, {}) \
                         .setdefault(self.readtype, {}) \
                         .setdefault(self.readcount_cutoff, {})
-        
+
         df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
-        
+
         if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
             self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df'] = df
             self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
             self.adata.uns['log2FC'] = self.log2fc_dict
+            self.computed_fresh = True
         else:
             pairs = self.log2fc_dict[self.config_name][self.compare]['pairs']
 
@@ -510,7 +530,7 @@ class adataLog2FC:
         # hung 24+ hours later with orphaned loky resource-tracker children attached). joblib's
         # n_jobs=1 is the one setting that skips creating a nested pool entirely rather than just
         # shrinking it, so this must stay pinned at 1 even though DESeq2 could otherwise parallelize.
-        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True, n_cpus=1)
+        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True, n_cpus=self.n_cpus)
         dds.deseq2()
 
         for pair in pairs:

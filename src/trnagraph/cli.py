@@ -386,6 +386,7 @@ def cluster(
     hdbstatsmetrics: str = typer.Option("euclidean", "-uh", "--hdbstatsmetrics", help="Specify hdbscan statistics metrics to use for feature selection with UMAP"),
     clusterobsexperimental: List[str] = typer.Option([], "--clusterobsexperimental", help="This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to cluster, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max). Passed to HDBSCAN's core_dist_n_jobs always, and to UMAP's n_jobs when no --randomstate seed is set (UMAP itself overrides n_jobs to 1 when seeded, for reproducibility)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
     output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
@@ -405,7 +406,7 @@ def cluster(
             neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
             hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
             umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
-            variant=variant, overwrite=overwrite, output=output_path, quiet=quiet
+            variant=variant, threads=threads, overwrite=overwrite, output=output_path, quiet=quiet
         )
         
         print('Clustering data from database object...\n')
@@ -460,7 +461,7 @@ def graph(
     logornamode: bool = typer.Option(False, "--logornamode", help="Specify wether to print the output as RNA rather than DNA"),
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
-    vollabels: Optional[int] = typer.Option(None, "--vollabels", help="Specify number of top significant markers to label on each volcano plot; omit to label all significant markers, or pass 0 to disable labels"),
+    vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many"),
 ):
     output_path = os.path.abspath(output)
     with handle_output(quiet, tool="graph", destination=output_path, name_suffix=_adata_basename(anndata)):
