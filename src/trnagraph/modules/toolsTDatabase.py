@@ -39,6 +39,14 @@ class tRNADatabaseBuilder:
         self.addseqs = args.addseqs
         self.forcecca = args.forcecca
         self.orgmode = args.orgmode or "euk"
+        from . import toolsGetCoverage
+        if self.orgmode not in toolsGetCoverage.POSITION_TABLES:
+            # An unrecognised mode used to fall through to eukaryotic positions,
+            # so a typo produced a plausible-looking but wrongly numbered database.
+            raise ValueError(
+                f"Unknown organism mode {self.orgmode!r}. Expected one of: "
+                + ", ".join(sorted(toolsGetCoverage.POSITION_TABLES))
+            )
         self.threads = args.threads
         
         # Point to the package root (src/trnagraph) instead of modules/
@@ -48,16 +56,16 @@ class tRNADatabaseBuilder:
         self._init_positions()
 
     def _init_positions(self):
-        '''Define Sprinzl numbering positions for different organism types'''
-        common_start = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45]
-        common_end = [46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76]
-        e_vars = ['e1','e2','e3','e4','e5','e6','e7','e8','e9','e10','e11','e12','e13','e14']
-        
+        '''Sprinzl numbering positions per organism mode.
+
+        Sourced from toolsGetCoverage.POSITION_TABLES rather than redefined here,
+        so the database build and the coverage step can never disagree about what
+        a position means.
+        '''
+        from . import toolsGetCoverage
         self.pos_maps = {
-            "euk": [-1] + common_start[:17] + ['17a'] + common_start[17:20] + ['20a','20b'] + common_start[20:] + e_vars + ['e15','e16','e17','e18','e19'] + common_end,
-            "arch": [-1] + common_start[:17] + ['17a'] + common_start[17:20] + ['20a','20b'] + common_start[20:] + e_vars + common_end,
-            "bact": common_start + e_vars + ['e15','e16','e17'] + common_end,
-            "mito": [-1] + common_start + e_vars + ['e15','e16','e17'] + common_end
+            mode: list(table)
+            for mode, table in toolsGetCoverage.POSITION_TABLES.items()
         }
 
     def check_dependencies(self):

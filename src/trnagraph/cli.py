@@ -198,7 +198,7 @@ def makedb(
     namemap: str = typer.Option(..., "-m", "--namemap", help="Specify location of the tRNA name mapping file"),
     addtrna: Optional[str] = typer.Option(None, "--addtrna", help="Specify location of additional tRNA sequences file"),
     addseqs: Optional[str] = typer.Option(None, "--addseqs", help="Specify location of additional sequences file"),
-    orgmode: str = typer.Option("euk", "-s", "--orgmode", help="Specify organism mode used for tRNAScan-SE"),
+    orgmode: str = typer.Option("euk", "-s", "--orgmode", help="Organism mode used for tRNAScan-SE and for Sprinzl position numbering. One of: euk, arch, bact, mito. An unrecognised value is rejected rather than silently treated as euk"),
     forcecca: bool = typer.Option(False, "--forcecca", help="Force addition of CCA tail"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     output: str = typer.Option("db", "-o", "--output", help="Specify output directory/name for bowtie2 index files"),
@@ -207,6 +207,15 @@ def makedb(
     # -o is a name prefix (e.g. "references/vibrChol1/trnadb/vibrChol1_db"), not itself a
     # directory -- the index files land in its dirname.
     destination = os.path.dirname(output) or "."
+    # Checked before the file paths: it costs nothing and is the kind of typo
+    # worth reporting immediately rather than after the paths are sorted out.
+    valid_orgmodes = ("euk", "arch", "bact", "mito")
+    if orgmode not in valid_orgmodes:
+        raise typer.BadParameter(
+            f"Unknown organism mode {orgmode!r}. Expected one of: "
+            + ", ".join(valid_orgmodes),
+            param_hint="--orgmode",
+        )
     with handle_output(quiet, tool="makedb", destination=destination):
         if not os.path.isfile(genome):
             raise Exception('Error: genome fasta file does not exist.')
@@ -305,7 +314,6 @@ def build(
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
     filterother: bool = typer.Option(False, "--filterother", help="Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
-    filtermultimapped: bool = typer.Option(False, "--filtermultimapped", help="Drop genomically multi-mapped reads (a read aligning to more than one location in the genome) from the entire coverage build before any column is computed. Unrelated to the separate, always-computed tRNA-identity uniqueness in results/unique/ and graphs/unique/, which this flag does not affect"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
@@ -332,7 +340,7 @@ def build(
             database=database, gtf=gtf, pairs=pairs,
             bed=bed, maxmismatches=maxmismatches,
             minfeaturereads=minfeaturereads, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
-            filterother=filterother, bamdir=bamdir, filtermultimapped=filtermultimapped, dispfittype=dispfittype, threads=threads,
+            filterother=filterother, bamdir=bamdir, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
             vst=vst, quiet=quiet
         )

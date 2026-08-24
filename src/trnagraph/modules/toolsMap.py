@@ -353,12 +353,27 @@ class trnadatabase:
         self.dbinfo = dbname+"-dbinfo.txt"
     
     def getorgtype(self):
+        """Organism mode recorded by `preprocess makedb`, defaulting to euk.
+
+        Blank lines are skipped -- `fields[0]` on an empty split() raised
+        IndexError. A recorded mode that is not one tRNAgraph knows about is an
+        error rather than a silent fall back to eukaryotic positions, which would
+        otherwise produce plausible-looking but wrong Sprinzl numbering.
+        """
+        from . import toolsGetCoverage
+
         orgtype = "euk"
         if os.path.exists(self.dbinfo):
             for currline in open(self.dbinfo):
                 fields = currline.split()
-                if fields[0] == "orgmode":
+                if len(fields) >= 2 and fields[0] == "orgmode":
                     orgtype = fields[1]
+        if orgtype not in toolsGetCoverage.POSITION_TABLES:
+            raise ValueError(
+                f"Database {self.dbinfo} records an unknown organism mode "
+                f"{orgtype!r}. Expected one of: "
+                + ", ".join(sorted(toolsGetCoverage.POSITION_TABLES))
+            )
         return orgtype
 
 class expdatabase:

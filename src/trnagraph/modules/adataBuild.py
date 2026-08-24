@@ -82,7 +82,6 @@ class AnalysisPipeline:
                 self.cores = 8
         self.minnontrnasize = args.minnontrnasize
         self.maxmismatches = args.maxmismatches
-        self.filtermultimapped = args.filtermultimapped
         self.pairfile = args.pairs
         self.hubonly = args.hubonly
         self.makehubs = args.hub
@@ -565,7 +564,13 @@ class AnalysisPipeline:
                              locinums=self.trnainfo.locinums, allcoverage=self.expinfo.trnacoveragefile,
                              trnafasta=self.trnainfo.trnafasta, cores=self.cores,
                              uniqcoverage=self.expinfo.trnauniqcoveragefile,
-                             uniqueonly=self.filtermultimapped, sigmismatch=self.expinfo.sigmismatchfile)
+                             # Hardcoded, not a parameter: tRAX's getcoverage.py ignores its own
+                             # --uniqueonly flag and always passes True, so coverage is unique-reads-only
+                             # there. Turning this back into a configurable value is what commit dca2673
+                             # did by accident, silently changing every coverage file (~1.28x tRAX on
+                             # hg38). The unique/multi breakdown survives regardless, in the coverage
+                             # table's own columns and in obs's nreads_*_unique_* vs nreads_* pairs.
+                             uniqueonly=True, sigmismatch=self.expinfo.sigmismatchfile)
 
     def createtrackhub(self):
         hub_builder = toolsTrackHub.TrackHubBuilder(
