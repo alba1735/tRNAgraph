@@ -125,20 +125,40 @@ bactpositions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,
 mitopositions = [-1,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,'e1','e2','e3','e4','e5','e6','e7','e8','e9','e10','e11','e12','e13','e14','e15','e16','e17',46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76]
 
 
+# The Sprinzl position table for each organism mode. This is the single source of
+# truth: toolsTDatabase builds its own map from POSITION_TABLES rather than
+# repeating the literals, so the database and the coverage step cannot drift apart
+# (the planned e19->e27 variable-arm extension would otherwise update only one).
+POSITION_TABLES = {
+    "euk": eukpositions,
+    "arch": archpositions,
+    "bact": bactpositions,
+    "mito": mitopositions,
+}
+
+
+def positions_for(orgtype: str) -> list:
+    """Sprinzl positions for an organism mode, refusing anything unrecognised.
+
+    An unknown mode used to fall through to eukaryotic positions silently, so a
+    typo like `-s bacteria` produced a plausible-looking but wrong result.
+    """
+    try:
+        return POSITION_TABLES[orgtype]
+    except KeyError:
+        raise ValueError(
+            f"Unknown organism mode {orgtype!r}. Expected one of: "
+            + ", ".join(sorted(POSITION_TABLES))
+        ) from None
+
+
 def gettnanums(trnaalign: toolsTG.RnaAlignment, margin: int = 0, orgtype: str = "euk") -> List[str]:
     trnanum = []
     currcount = 0
     enum = 1
     gapnum = 1
     intronnum = 1
-    if orgtype == "bact":
-        positions = bactpositions
-    elif orgtype == "arch":
-        positions = archpositions
-    elif orgtype == "mito":
-        positions = mitopositions
-    else:
-        positions = eukpositions
+    positions = positions_for(orgtype)
     
     for i in range(margin):
         trnanum.append(f'head{margin - i}')
@@ -594,8 +614,13 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
     if locistk:
         with open(locistk, "r") as f:
             locistk_obj = list(toolsTG.read_rna_stk(f))[0]
-        locistk_obj = locistk_obj.add_margin(lociedgemargin)
 
+    # Numbering happens BEFORE either alignment is margined. gettnanums() adds the
+    # margin itself (head/tail labels around the consensus), so handing it an
+    # already-margined alignment applies the margin twice: the padding is consumed
+    # as ordinary consensus positions, the list overruns the alignment width, and
+    # the trailing tail labels drop off. tRAX orders it the same way
+    # (getcoverage.py numbers at :700, margins at :707).
     if orgtype != "euk" and numfile and os.path.isfile(numfile):
         positionnums = list(readtrnanums(numfile, margin=edgemargin))
         locipositionnums = list(readtrnanums(locinums, margin=lociedgemargin)) if locinums else []
@@ -604,6 +629,8 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
         locipositionnums = gettnanums(locistk_obj, margin=lociedgemargin, orgtype=orgtype) if locistk_obj else []
 
     trnastk = trnastk.add_margin(edgemargin)
+    if locistk_obj:
+        locistk_obj = locistk_obj.add_margin(lociedgemargin)
 
     basetrnas = []
     for currfile in bedfile:
