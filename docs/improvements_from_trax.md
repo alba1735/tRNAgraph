@@ -1,86 +1,84 @@
-# Changes from tRAX
+# Coming from tRAX
 
-This document tracks statistical methodology differences, logic changes, and implementation improvements between tRNAgraph and tRAX (the legacy pipeline it replaces). It is a technical record, not a feature list — entries describe what changed and why, not how much better the result is. For validation status (which outputs match tRAX numerically and which differ), see `MigrationTesting/docs/validation_status.md`. For architectural background, see `MigrationTesting/docs/pipeline_differences.md`.
+What changes when you move a tRAX workflow to tRNAgraph. Skim the tables; read the notes only if a number doesn't look the way you expect.
 
-Entries are added as changes are made; resolved/superseded entries are not removed, since this is a historical record (unlike `roadmap.md`, which stays forward-looking only).
+---
 
-## Statistical Methodology Differences
+## The three things that matter most
 
-### Read classification: deterministic sorting vs. non-deterministic set iteration
+1. **Results live in one `.h5ad` AnnData object**, not a folder of text files. tRAX-format flat files are still written alongside it, so existing scripts keep working.
+2. **Most outputs match tRAX numerically.** The exceptions are listed under [Where numbers differ](#where-numbers-differ) below.
+3. **Several flags were renamed or removed.** See [Flag changes](#flag-changes).
 
-tRAX classifies a read that overlaps multiple genomic features (e.g. a pre-tRNA region overlapping a mature tRNA locus) via Python `set` iteration, which is hash-order dependent and effectively random from run to run. tRNAgraph sorts candidate features deterministically instead, so classification is reproducible.
+---
 
-Effect: ~0.1-0.5% of reads may be classified into a different category than a given tRAX run would have assigned. This concentrates in categories with the most feature overlap — pre-tRNA vs. mature tRNA is the primary case; anticodon/amino-acid count differences from this cause are on the order of single-count discrepancies. See `MigrationTesting/docs/counting_logic_changes.md` for the algorithm-level diff.
+## Bug fixes
 
-`toolsTG.py`'s `RangeBin.getbin()` (the underlying candidate-lookup structure both tRAX and tRNAgraph's classifiers build on) still iterates an internal Python `set` too, so not every call site that touches it is automatically safe just because `counttypereads`'s own classification was fixed — whether a given `RangeBin` consumer is actually affected depends on whether its OUTCOME depends on *which* tied candidate wins (`trnaloci`: yes, branches on the winning candidate's own strand/start/end) or not (`featurelist`: no, the only action taken is keyed on the candidate's bed category name, not its identity). Don't assume every `RangeBin`/set-iteration site is broken just because it pattern-matches structurally — check whether the result actually depends on iteration order first.
+Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 
-### Differential expression: PyDESeq2 vs. R DESeq2
+| What | tRAX | tRNAgraph |
+| --- | --- | --- |
+| **Read classification order** | A read overlapping several features was assigned via Python `set` iteration — hash-order dependent, so results varied between runs | Candidates sorted deterministically; same input always gives the same answer |
+| **`avgs.txt` columns** | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast | Real per-group means, one column per group |
+| **`--mincoverage` scope** | Dropped low-count genes from the coverage file, which silently removed them from *every* downstream output | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row |
 
-tRAX's DESeq2 calls run through R via `Rscript` subprocesses. tRNAgraph uses PyDESeq2 (a Python reimplementation of the same negative-binomial GLM methodology) directly, with no R dependency anywhere in the pipeline. Results are statistically comparable but not bit-identical, due to implementation differences in dispersion estimation and optimization between the two packages.
+---
 
-### Primary size factors: tRNA/tRX-controlled vs. all-feature-controlled
+## Improvements
 
-tRAX's `SizeFactors.txt` is always computed by DESeq2's `estimateSizeFactors()` over all features (tRNAs plus any other GTF-annotated features). tRNAgraph's primary size factors (`adata.obs['deseq2_sizefactor']`, `adata.uns['deseq2_sizefactors_trna']`, on-disk `<exp>-SizeFactors.txt`) are computed using only tRNA/tRX features as the normalization reference instead, so non-tRNA feature abundance changes don't distort tRNA normalization. The all-feature-driven computation (tRAX's method) is still run and kept as `adata.uns['deseq2_sizefactors_allfeatures']` / `<exp>-allfeature_SizeFactors.txt` for direct tRAX-parity comparison.
+| Area | tRAX | tRNAgraph | Why |
+| --- | --- | --- | --- |
+| Differential expression | R `DESeq2` via subprocess | `PyDESeq2`, in-process | Drops the R dependency, and results land straight in the AnnData object instead of being parsed back from text |
+| Variance stabilisation | `rlog` | VST | DESeq2's own documentation recommends VST over rlog for anything but small sample counts, because rlog costs far more to compute |
+| Trimming | `cutadapt` / `SeqPrep` | `fastp` | One tool covering adapter and quality trimming instead of two |
+| Size factors | Computed from all features | Computed from tRNAs only. The all-feature set is still written, as `<exp>-allfeature_SizeFactors.txt` | Non-tRNA abundance can shift independently of tRNAs, which distorts tRNA normalisation when both go into the same reference set |
+| Mismatch data | Per-position detail only via an R script | Stored at full per-position granularity in the AnnData object | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary |
 
-### Trimming: fastp vs. cutadapt/SeqPrep
+---
 
-tRAX trims adapters with SeqPrep/cutadapt. tRNAgraph uses fastp. The two tools' adapter-detection and quality-trimming logic differ slightly at read edges, which propagates into small differences in downstream mapped-read counts. `MigrationTesting`'s test suite runs tRNAgraph against both trimmers (`vibrChol1_fastp`/`vibrChol1_cutadapt`) so this effect can be isolated from other differences during validation.
+## New features
 
-### Variance-stabilizing transform: VST vs. rlog
+- **Read-length splits** — `analyze build -c 60` produces `u60`/`o60` variants inside the same `.h5ad`, no separate runs.
+- **Clustering** — `analyze cluster` adds UMAP/HDBSCAN coordinates to the object.
+- **A plotting layer over the object** — coverage, PCA, volcano, heatmap, radar, seqlogo, correlation, count plots from `trnagraph graph`.
+- **A built-in demo pipeline** — `trnagraph tools test` runs end to end on a bundled dataset.
 
-tRAX's R pipeline produces an rlog-transformed count matrix (`<exp>-rlog.txt` / `<exp>-<type>_rlog.txt`, via DESeq2's `rlog()`). tRNAgraph implements PyDESeq2's VST (`adata.layers['vst']`) instead of rlog; the two are alternative variance-stabilizing transforms serving the same purpose (DESeq2's own documentation recommends VST over rlog for anything but small sample counts, given rlog's higher computational cost). tRNAgraph does not produce an rlog-equivalent file.
+---
 
-### Low-coverage feature filtering: `--mincoverage` (hard row drop) vs. `--minfeaturereads` (VST-fit-only exclusion)
+## Migration
 
-tRAX's `--mincoverage` (default 30) and tRNAgraph's original, identically-behaving equivalent both worked as a hard filter: a tRNA gene whose total raw read count (summed across all samples) fell below the threshold was dropped from the coverage output file entirely. Because tRNAgraph's `adata.obs` row universe is built directly from that same coverage file's index, this silently removed the gene from the *entire* AnnData object -- not just the coverage/Sprinzl-position matrix, but the gene-level columns volcano/heatmap plots read from too.
+### Flag changes
 
-Renamed to `--minfeaturereads` and re-scoped to affect only `adata.layers['vst']`. Every gene now always gets a full raw coverage row, a full normalized coverage row, and its own VST value regardless of this threshold. The threshold instead controls only which genes' counts are allowed to influence the VST dispersion-trend *fit* (`AnnDataBuilder._compute_vst_`'s `fit_mask`): a handful of noisy, very-low-count genes can otherwise distort the fitted trend curve for every other gene too, so they're excluded from the fit itself, then transformed using the resulting fit like everything else -- standard DESeq2 trend-shrinkage methodology (fit on a well-behaved subset, apply to all), not a compromise. Which genes were excluded from the fit is recorded on `adata.obs['vst_fit_excluded']`. `--volcutoff`/`--heatcutoff` remain the correct, independent knobs for low-count protection on the DE/plotting side; this flag is unrelated to those.
+| tRAX / old tRNAgraph | Now | Note |
+| --- | --- | --- |
+| `--uniqueonly` | *(removed)* | Multi-mapped reads are always excluded from coverage, which is what tRAX did in practice |
+| `--mincoverage` | `--minfeaturereads` | Also re-scoped — see Bug fixes |
+| `--dumpother` | `--filterother` | Rename only |
+| `--lazy` | `--force-remap` | Sense inverted: remapping is now the thing you opt into |
+| `--nofrag` | *(removed)* | |
+| `--nosizefactors` | *(removed)* | Was broken |
+| `--maponly` | *(removed)* | From `tools test` |
 
-### Differential expression: manual t-test vs. PyDESeq2 GLM (log2FC path)
+`--skip-env-check` and `--skip-update-check` are *global* options — they go before the subcommand (`trnagraph --skip-env-check analyze build ...`).
 
-tRNAgraph's `adata.obs`-column-driven log2FC computation (used by heatmap/volcano plots and the `tools log2fc` command's default `group` comparison) previously computed log2 fold-change and significance via a two-sample t-test (`scipy.stats.ttest_ind_from_stats`) on precomputed per-group mean/std/count, with no multiple-testing correction. This was a tRNAgraph-internal implementation choice, not something inherited from tRAX (tRAX does not have an equivalent ad hoc per-`obs`-column log2FC path).
+### Outputs tRAX produces that tRNAgraph does not
 
-This path now fits a PyDESeq2 `DeseqDataSet`/`DeseqStats` per comparison instead — the same statistical methodology tRNAgraph already uses for its build-time DESeq2 output, applied consistently to this on-demand path. The reported p-value changed from an uncorrected raw p-value to `padj` (Benjamini-Hochberg adjusted). See `toolsTG.py`'s `adataLog2FC.log2fc_df`.
+| File | Why |
+| --- | --- |
+| `trimindex.txt` | fastp uses a different manifest convention |
+| `Rlog-<exp>.txt` | Captured R subprocess output; there is no R subprocess |
+| `positionmismatches.txt` | Was generated by an R script. The data is in the AnnData object instead |
 
-## Outputs Not Produced by tRNAgraph
+### Where numbers differ
 
-tRAX outputs with no tRNAgraph equivalent, because the underlying mechanism doesn't exist in tRNAgraph's architecture (see `MigrationTesting/docs/validation_status.md` for the full list and reasoning):
+| Output | Difference | Why |
+| --- | --- | --- |
+| `typecounts`, `readlengths`, `anticodoncounts`, `aminocounts` | ~0.1–0.5% of reads | Deterministic classification replacing tRAX's hash-order-dependent version |
+| `dispersions`, some `combine.txt` values | Small | PyDESeq2 vs. R DESeq2 |
+| `SizeFactors.txt` | Different basis | tRNA-controlled rather than all-feature. Compare against `<exp>-allfeature_SizeFactors.txt` for a like-for-like check |
+| `coverage`, `pretRNAcoverage` | Extra features present | tRAX dropped genes below `--mincoverage`; tRNAgraph keeps them |
+| BAMs and everything downstream | Varies | fastp vs. cutadapt/SeqPrep produce slightly different read sets |
 
-- `trimindex.txt` — tRAX's SeqPrep/cutadapt trim-run manifest bookkeeping; tRNAgraph's fastp-based trimmer uses a different manifest convention.
-- `Rlog-<expname>.txt` — captured stdout/stderr of tRAX's `Rscript` subprocess calls; tRNAgraph has no R subprocess to capture.
-- `positionmismatches.txt` — generated by an R script (`boxplotmismatches.R`); the underlying per-position mismatch data is stored in tRNAgraph's AnnData object instead (see below).
+---
 
-## Data Storage Changes
-
-### Flat files vs. AnnData
-
-tRAX writes each pipeline stage's output to a flat text file. tRNAgraph assembles the same information into a single AnnData object (`obs` = tRNA gene × sample observations, `var` = Sprinzl position × coverage-type features, `X`/`layers` = count matrices, `uns` = unstructured/aggregate results). Flat-file outputs matching tRAX's format are still written for `analyze build`'s primary DESeq2 runs (for validation and for users who want tRAX-compatible files directly), but downstream analysis in tRNAgraph (plotting, clustering, further DE) operates on the AnnData object, not the flat files.
-
-Per-position mismatch/base-composition data (mismatch count, deletions, per-nucleotide coverage) that tRAX only exposes via `mismatches.txt` and R-generated `positionmismatches.txt` is stored at full per-position granularity in the AnnData object's coverage-type layers (`mismatchedbases`, `deletedbases`, `adenines`, `thymines`, `cytosines`, `guanines`, `deletions`); tRNAgraph's flat-file `mismatches.txt` output is kept for tRAX parity but is not the only place this data lives.
-
-## CLI Flag Clarity Fixes
-
-Renames/documentation fixes for a flag whose name or help text was ambiguous, carried over unchanged from tRAX, with no behavior change (default stays the same as tRAX's).
-
-### `--uniqueonly` → `--filtermultimapped` (`analyze build`)
-
-tRAX's `processsamples.py` has an identically-ambiguous `--uniqueonlycov` flag (default `False`, help text just "Show only unique coverage"), and tRNAgraph inherited both the name and the ambiguity unchanged. The problem: tRNAgraph already has a completely different, unrelated "uniqueness" concept that's always computed regardless of this flag — whether a read maps unambiguously to one specific tRNA transcript (as opposed to sharing an anticodon/amino acid with other tRNAs), tracked via `isuniqueaminomapping()`/`isuniqueacmapping()`/`isuniquetrnamapping()` and surfaced in the always-generated `results/unique/`/`graphs/unique/` output. The flag being renamed controls a second, orthogonal axis instead: whether a read maps to exactly one location in the *genome* at all (`issinglemapped()`) — when set, genomically-multi-mapped reads are dropped from every coverage column before any computation happens (main `coverage`, `readstarts`/`readends`, mismatch tracking, all of it), not filtered into a separate file. Renamed to `--filtermultimapped` to describe the actual mechanism (drop genomically-multi-mapped reads) without colliding with the unrelated tRNA-identity "unique" terminology already in use elsewhere in the output. Default unchanged (`False`, matching tRAX's own default/recommended behavior of including multi-mapped reads).
-
-## Implementation Notes
-
-Fixes made during tRNAgraph development, not differences from tRAX, but recorded here since they affect statistical output and are the kind of thing that could silently regress. Relevant to any future code that touches PyDESeq2 or AnnData slots — most directly a future multi-factor DE engine, which would construct fresh `DeseqDataSet`s the same way these fixes did.
-
-- **VST hang / unresponsiveness on larger sample counts (fixed), two contributing causes**: (1) `DeseqDataSet`'s default `size_factors_fit_type='ratio'` silently falls back to its `'iterative'` method whenever every feature has at least one zero-count sample — normal for tRNA coverage data — and that method's cost (a `scipy.optimize` Powell search over one parameter per *sample*) blows up non-linearly with sample count: fine at ~50 samples, unresponsive past ~100. Any code constructing a `DeseqDataSet` should pass `size_factors_fit_type='poscounts'` explicitly rather than relying on the default. (2) Separately, `vst_fit()` only skips its own internal size-factor recomputation when *both* `obsm['size_factors']` is set *and* `self.logmeans` is not `None`; tRNAgraph was setting only the former, so its pre-computed tRNA-control size factors were silently discarded and PyDESeq2 recomputed its own via that same slow iterative method. If a future change needs to inject externally-precomputed size factors again, both need setting — see the workaround in `adataBuild.py`'s `_compute_vst_`. Fixed there for both causes.
-- **AnnData slot convention: per-obs-aligned data goes in `obsm`, not `uns`.** General rule, first found via one concrete instance: sample-level UMAP/HDBSCAN cluster coordinates were stored wholesale in `adata.uns` instead of `adata.obsm`, despite being per-observation-aligned data (fixed in `adataCluster.py`'s `adataCombine`, namespaced per split variant where applicable). The general principle: anything with one row per (a subset of) `adata.obs_names`, reindexable onto the full obs axis, belongs in `obsm` — `uns` is for data that genuinely doesn't conform to any axis (different cardinality/shape entirely). See `adataCombine`'s sample-vs-group split for a worked example of telling the two cases apart.
-- **DE code must feed PyDESeq2 raw counts, never pre-normalized ones.** PyDESeq2 does its own internal normalization; feeding it an already-normalized (`_norm`) column double-normalizes and biases the fit. Every `adata.obs` readtype column has a raw/normalized pair (`_raw`/`_norm`); always derive the `_raw` column for anything DESeq2-based.
-- **A "no results" edge case must still return the expected columns.** A DE/stats function that can legitimately produce zero result rows (e.g. nothing passes a cutoff) must still return the same column set callers index unconditionally downstream — an empty result with the wrong (missing) columns caused a real `KeyError` in `plotsVolcano.py` during this work.
-- **`vst_transform(counts=...)` doesn't renormalize the way you'd expect for rows outside the original fit set.** When given explicit `counts` (as opposed to `None`), PyDESeq2 recomputes normalization via its own internal median-of-ratios from `logmeans`/`filtered_genes`, NOT via `obsm['size_factors']` — passing counts for rows outside the original fit set through this path gives them a different, inconsistent normalization from the fit-set rows. To apply a fitted trend to unseen rows consistently, read back the fitted trend curve/dispersion (`uns['vst_trend_coeffs']` for parametric, `var['vst_genewise_dispersions']`+`min_disp` for mean) and apply the formula by hand to those rows' own externally-normalized counts instead.
-- **Never let a `DeseqDataSet` use its default `n_cpus=None` (all-available-CPUs `joblib`/`loky`) from inside code that's already running under a `multiprocessing.Pool` worker.** `adataGraph.py` runs each graph type in its own pooled worker process; `toolsTG.py`'s `adataLog2FC.log2fc_df()` (called by `plotsHeatmap.py`/`plotsVolcano.py` from inside that pool) constructed a `DeseqDataSet` with no `n_cpus`, spawning a second real process pool from inside an already-forked worker. `joblib`'s `n_jobs=1` is the setting that avoids creating any nested pool at all (it runs sequentially in-process, not just with a smaller pool) — passing any `n_cpus > 1` here, even a "fairly divided" number, still nests a real pool and remains deadlock-prone. Confirmed live: `trnagraph graph` processes were found still running 24+ hours later, blocked in `futex_wait_queue_me`/`pipe_read`, each with an orphaned `loky` resource-tracker child attached. Any future code constructing a `DeseqDataSet` from inside pooled/forked code must pass `n_cpus=1` explicitly.
-- **A DE result column feeding a plot must be treated as containing NaN and Inf, not just extreme finite values.** DESeq2's `padj` is `NaN` for genes excluded by independent filtering or Cook's-outlier detection (never given a real significance call, not "insignificant") and can underflow to exactly `0.0` for extremely significant genes. `plotsVolcano.py`'s `_draw_volcano()` passed both straight into `adjustText`'s `adjust_text()`, which builds a `scipy.spatial.KDTree` over every point (not just labeled ones) and requires all of them finite. Fix: drop `NaN` rows before plotting (they were never real data points); clip an exact-zero p-value away from zero instead of dropping it, so a genuinely extreme hit isn't lost from the plot along with the noise.
-- **A parsing utility should never call `sys.exit()`, and an attribute access on its result should be checked to actually exist.** `toolsTG.samplefile` never defined a `.samples` attribute (only `.samplelist` and a `.getsamples()` method); both of its call sites (`adataBuild.py`'s `_handle_preprocessing()` and `add_split()`) read `sf.samples` anyway, raising `AttributeError` unconditionally, on every single invocation regardless of whether the metadata file was well-formed. A bare `except Exception:` at each call site silently swallowed this and fell back to an empty sample list, which then skipped per-sample BAM-existence validation entirely — the check had never actually run in practice. Separately, `samplefile.__init__` called `sys.exit(1)` on a read failure instead of raising, which would have bypassed even a well-behaved `except Exception:` anyway (`SystemExit` isn't an `Exception` subclass). Fixed all three; both call sites now log the real exception and re-raise instead of degrading silently.
-- **Don't default a large-file temp path (e.g. `samtools sort -T`) to `tempfile.gettempdir()`.** tRAX hit a production failure when a server's system `/tmp` filled up during large-sample sorting, and fixed it by writing temp files next to the invocation/output instead of relying on `/tmp`; `toolsMap.py`'s `map_sample()` and `toolsTrackHub.py`'s `convertbam()` had inherited the same risk via `tempfile.gettempdir()`. Fixed with a shared `toolsTG.sort_temp_dir(output_path)` helper that defaults to the output file's own directory instead.
-- **Check whether a split/filter criterion actually applies to the data before recomputing per-split, rather than assuming a fresh per-variant computation is always more correct.** A read-length split (`u<N>`/`o<N>`) meaningfully partitions tRNA reads by design, but non-tRNA reads aren't being classified by that same criterion at all — `adataBuild.py`'s split-variant contribution computed non-tRNA/small-RNA counts independently for each split anyway, from that split's own length-filtered counting output. Since a length cutoff can partition unrelated non-tRNA ncRNA populations very unevenly, one split's non-tRNA counts could end up empty while another's didn't — a data-completeness bug, not just a statistical nuance. Fixed by always reusing the object's existing full/unsplit non-tRNA counts for every split variant (`adataBuild._resolve_full_variant_nontrna_counts()`), and by suppressing non-tRNA/combined plots entirely for split-variant renders regardless of data availability (`toolsTG.resolve_nontrna_counts()`, used by `plotsVolcano.py`/`plotsPca.py`/`plotsCorrelation.py`) — a split-variant's non-tRNA view was never a meaningful subset of anything to begin with.
-- **Don't diff a dict with `!=` (shallow-copy or deep-copy alike) to detect "was anything added" when its values can be DataFrames.** `adataGraph.py`'s pre-pool log2FC precompute step ("safe to run outside the graph-type pool, so it can persist results back to disk before multiprocessing starts") snapshotted `uns['log2FC']` with a shallow `dict.copy()`, then compared it to the post-precompute state to decide whether to write the h5ad back to disk. Two independent bugs, discovered together: (1) `adataLog2FC.main()` mutates `uns['log2FC']` in place, and a shallow copy shares the same nested dict objects as the "before" snapshot, so adding a new readtype/cutoff key under an already-existing `config_name`/`compare` path (the common case, `'default'`/`'group'` by default) never registered as a difference — Python short-circuits `==`/`!=` on identical object references before ever calling `DataFrame.__eq__`. Confirmed against a real object: only 2 of 5 `--diffrts` readtypes had ever actually been persisted, with zero "uns dictionary updated" log lines anywhere. (2) Switching the snapshot to a deep copy "fixes" the identity short-circuit but immediately hits a second bug: dict equality then genuinely has to compare the nested DataFrame values, and `DataFrame.__eq__`/`__bool__` raises `ValueError: truth value of a DataFrame is ambiguous` rather than collapsing to a single bool. The correct fix is to not diff the container at all — track "did any individual computation actually run" as an explicit signal from the thing doing the computing (`adataLog2FC.main()` now sets `self.computed_fresh`), and let the caller check that instead of comparing snapshots.
-- **A "safe to parallelize" default still needs the actual `--threads` value threaded through, not just permission to use more than 1.** Pinning `DeseqDataSet`'s `n_cpus=1` inside `adataLog2FC` (see the nested-process-pool entry above) is a hard safety requirement for calls made from inside `adataGraph.py`'s pooled workers, but `adataLog2FC.log2fc_df()` is also called from two places that run *before* any pool exists and are therefore not subject to that constraint at all: `adataGraph.py`'s own pre-pool precompute step, and `adataBuild.py`'s build-time/split-merge-time precompute (`_precompute_default_log2fc()`). All three now take an explicit `n_cpus` parameter (`adataLog2FC.__init__`, default `1`) so each caller states its own safety context instead of the class guessing — the two non-pooled callers pass the command's own already-resolved `--threads` value, respecting whatever CPU budget the user already specified for that command rather than silently either forcing serial or silently grabbing every core independent of what else was requested.
-- **`adjust_text`'s per-plot label-repulsion cost is unbounded by default and unrelated to any threading/DESeq2 concern.** `plotsVolcano.py`'s `--vollabels` previously defaulted to `None` ("label every significant point"); on a real large dataset a single group-pair comparison produced 70-77 significant points needing repulsion via `adjustText`'s KDTree-based algorithm, repeated across every readtype/pair/nontRNA/allRNA/combined-overview plot generated for a variant. Changed the default to `100` (`0` still disables labels entirely, any explicit N still means exactly N) to bound the worst case; this is a real, separate cost driver from the nested-pool/parallelization work above; don't conflate the two when investigating a slow `graph` run.
-- **`analyze cluster` had no `--threads` flag, and neither UMAP nor HDBSCAN calls in `adataCluster.py` ever had a thread count wired into them regardless.** Added `-n`/`--threads` (default `0` = all available cores, consistent with `graph`'s existing convention) and wired it into HDBSCAN's `core_dist_n_jobs` (unaffected by `--randomstate`) and UMAP's `n_jobs` (UMAP itself overrides this to `1` whenever `random_state` is set, for reproducibility — expected, not a bug, so the flag is a genuine no-op in the common seeded case, but still correct to pass).
+_Full flag and option reference: `cli_reference.md`. AnnData schema: `data_structure.md`._
