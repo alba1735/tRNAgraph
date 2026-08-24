@@ -504,7 +504,6 @@ class demoPipeline:
                 "--gtf references/vibrChol1/annotations/GCF_000006745.1.gtf "
                 "--pairs config/vibrChol1.pair.txt "
                 "--bamdir processed/vibrChol1/bam "
-                "--filtermultimapped "
                 "-o vibrChol1"
                 f"{extra_flags}"
             )
