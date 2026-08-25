@@ -2,6 +2,71 @@
 
 <!-- version list -->
 
+## v2.0.0 (2026-08-25)
+
+### Bug Fixes
+
+- **audit**: Route pretRNAcoverage to the normalization-matched reference
+  ([`2b29f84`](https://github.com/alba1735/tRNAgraph/commit/2b29f8431924dfc14562ebfbbddb9d9f4506b34b))
+
+- **cli**: Capture real errors in logs and stop rich from polluting them
+  ([`a2fffd5`](https://github.com/alba1735/tRNAgraph/commit/a2fffd594f23985d55186ba74bb30439eb4bcec3))
+
+- **coverage**: Always exclude multi-mapped reads to match tRAX
+  ([`f3db434`](https://github.com/alba1735/tRNAgraph/commit/f3db434cc0a165f1d359797b2bb7ff246cd8ec42))
+
+- **coverage**: Number the loci alignment before adding its edge margin
+  ([`51ab27b`](https://github.com/alba1735/tRNAgraph/commit/51ab27b3ac9df7a21cbe7d17798e638d326a0f53))
+
+- **docs**: Update improvements_from_trax and roadmap for bug fixes and clarifications
+  ([`1b6c07e`](https://github.com/alba1735/tRNAgraph/commit/1b6c07e30525305a061349d9c2050f54a6f4d5c6))
+
+- **docs**: Update roadmap with detailed bug fixes and validation results for remote pipeline
+  failures
+  ([`295bb5c`](https://github.com/alba1735/tRNAgraph/commit/295bb5ca2eda1f9cdda8a130d694991868fc5174))
+
+- **makedb**: Validate organism mode and unify the Sprinzl position tables
+  ([`5b57713`](https://github.com/alba1735/tRNAgraph/commit/5b5771365fc284272136a2997397bdf932f73312))
+
+### Continuous Integration
+
+- Derive the release version automatically instead of forcing a minor
+  ([`d32b9e4`](https://github.com/alba1735/tRNAgraph/commit/d32b9e41da34e2fa3ed7ffe390d85c53bb0dfd12))
+
+- Force the release bump level and fix dev pre-releases
+  ([`31dbebd`](https://github.com/alba1735/tRNAgraph/commit/31dbebd01a2d88a2145f2cd4a542c7871bcc5f2d))
+
+### Documentation
+
+- Add citation metadata and keep its version in step with releases
+  ([`9427781`](https://github.com/alba1735/tRNAgraph/commit/9427781d8095e7d3f6a8ca7b717fd61990f15881))
+
+- Document the read basis and the coverage specificity partition
+  ([`cca3ca0`](https://github.com/alba1735/tRNAgraph/commit/cca3ca047b8d2cefe6e82a147140f8087ad5bb5c))
+
+- Rewrite the tRAX migration guide and drop internal-tool references
+  ([`a981d10`](https://github.com/alba1735/tRNAgraph/commit/a981d100e69e177138b6e2028b2fbcc4952b4e3a))
+
+- **roadmap**: Record hg38 validation outcome and narrow the open divergences
+  ([`2b29f84`](https://github.com/alba1735/tRNAgraph/commit/2b29f8431924dfc14562ebfbbddb9d9f4506b34b))
+
+### Features
+
+- **coverage**: Make tRAX's read-specificity partition selectable and plot it
+  ([`2b5cfbd`](https://github.com/alba1735/tRNAgraph/commit/2b5cfbd57fdd04d0fa5b6d9d1169dbece0e11f15))
+
+- **release**: Enhance version bump options and improve semantic-release configuration
+  ([`dfad2a6`](https://github.com/alba1735/tRNAgraph/commit/dfad2a6bb6ad2a889499b64ec4b19bdc1253c38b))
+
+### Refactoring
+
+- **cli**: Report the dev channel as prerelease rather than beta
+  ([`67d0790`](https://github.com/alba1735/tRNAgraph/commit/67d0790d8f1ec6030b5e79afdb2f1b1cdcc1fd91))
+
+- **graph**: Default every graph type to unique counts
+  ([`e78fb38`](https://github.com/alba1735/tRNAgraph/commit/e78fb38183a20fd09bf1a699e0bd3e6f84d4df0a))
+
+
 ## v1.8.0 (2026-08-21)
 
 ### Bug Fixes
