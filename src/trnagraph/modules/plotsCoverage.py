@@ -42,12 +42,31 @@ class visualizer():
         self.quiet = quiet
         # Clean AnnData object for plotting
         self.adata, self.readstarts, self.readends = self.clean_adata(adata)
+        # Held before the coverage_type subset so the stacked specificity overview can read
+        # all four partition categories at once; every other plot uses the subset self.adata.
+        self.partition_source = adata
+        # This class owns its own directory layout: `output` is the coverage base, the
+        # per-category plots go under <base>/<covtype-alias>/, and the stacked overview --
+        # which shows every category at once and so has no single category to file under --
+        # stays at <base>/. See toolsTG.coverage_category_dir().
+        self.category_dir = toolsTG.coverage_category_dir(self.coverage_type)
         if colormap != None: #and self.coverage_combine_all == False:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
             coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
             self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
+        self.category_output = f'{output}{self.category_dir}/'
+
+    def build_output_dirs(self):
+        '''
+        Create the directories this class writes into. Called by adataGraph before plotting
+        so the per-category tree is made in one place rather than by whichever method
+        happens to run first.
+        '''
+        logger.info(toolsTG.builder(self.category_output))
+        logger.info(toolsTG.builder(f'{self.category_output}{self.coverage_obs}/'))
+        logger.info(toolsTG.builder(f'{self.category_output}{self.coverage_obs}/low_coverage/'))
 
     def clean_adata(self, adata):
         '''
@@ -106,28 +125,135 @@ class visualizer():
         
         return df
 
+    def _covobs_list(self):
+        '''tRNAs to plot, ordered by anticodon then copy number -- shared by the combined
+        and specificity-overview pages so both paginate identically.'''
+        ulist = sorted(self.adata.obs[self.coverage_obs].unique())
+        if self.coverage_obs == 'trna':
+            ulist = sorted(ulist, key=lambda x: ('-'.join(x.split('-')[:-1]), int(x.split('-')[-1])))
+        return ulist
+
+    def _partition_frame(self):
+        '''
+        Coverage per position for each of tRAX's four read-specificity categories, aggregated
+        across --covgrp with --covmethod, as {covobs: DataFrame(position x category)}.
+
+        Built once, up front, and plotted serially rather than through the Pool the combined
+        pages use: the four category views would otherwise be pickled to every worker for a
+        single set of pages, which costs more than the plotting saves.
+        '''
+        views = {}
+        for category in toolsTG.COVERAGE_PARTITION:
+            sub = self.partition_source[:, np.isin(self.partition_source.var.coverage, [category])]
+            sub = sub[:, np.isin(sub.var.gap, self.coverage_gap)]
+            views[category] = sub[~sub.obs[self.coverage_grp].isna()]
+        frames = {}
+        for covobs in self._covobs_list():
+            columns = {}
+            for category, view in views.items():
+                subset = view[view.obs[self.coverage_obs] == covobs]
+                df = pd.DataFrame(subset.X.T, columns=subset.obs[self.coverage_grp].values)
+                columns[category] = self.__coverage_transform__(df, singlecol=True)
+            frames[covobs] = pd.DataFrame(columns)
+        return frames
+
+    def generate_partition_overview(self):
+        '''
+        Stacked plot of how specifically each position's reads could be assigned, porting
+        tRAX's newcoverageplots.R `makecovplot(allmultmelt, ...)` -- its most informative
+        coverage artifact and one tRNAgraph had no equivalent for.
+
+        The four categories are mutually exclusive and sum to total coverage, so stacking
+        them shows at a glance what fraction of a tRNA's signal is transcript-specific
+        versus merely isodecoder-, isotype- or amino-level assignable. Reading that from the
+        per-category directories instead would mean opening four PDFs and comparing heights
+        by eye.
+
+        Styled as tRNAgraph's own plots rather than as ggplot2's: a sequential mako ramp
+        (light = least specific, dark = most) rather than R's categorical hues, since the
+        categories are an ordered specificity scale, not unordered groups.
+
+        Lives at the coverage base directory, not under a category, because it shows every
+        category at once and so belongs to none of them -- and it is identical under
+        --allreads, which selects a category rather than changing this partition.
+        '''
+        present = set(self.partition_source.var['coverage'])
+        missing = [c for c in toolsTG.COVERAGE_PARTITION if c not in present]
+        if missing:
+            logger.warning(
+                f'Skipping the coverage specificity overview: {missing} not found in this '
+                f'AnnData object. Rebuild with the current `trnagraph analyze build` to '
+                f'populate the full read-specificity partition.'
+            )
+            return
+        frames = self._partition_frame()
+        palette = sns.color_palette('mako_r', len(toolsTG.COVERAGE_PARTITION))
+        labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
+        ulist = self._covobs_list()
+        pages = [ulist[i * 16:(i + 1) * 16] for i in range((len(ulist) + 15) // 16)]
+        outend = (f'combined_{self.coverage_obs}_specificity_by_'
+                  f'{self.coverage_grp}_{self.coverage_method}.pdf')
+        with PdfPages(f'{self.output}{outend}') as pdf:
+            for page in pages:
+                fig = plt.figure(figsize=(24, 22))
+                for i, covobs in enumerate(page):
+                    ax = fig.add_subplot(4, 4, i + 1)
+                    self.generate_partition_plot(frames[covobs], ax, covobs, palette,
+                                                 xaxis=page.index(covobs) > 11)
+                handles = [mpatches.Patch(color=c, label=l) for c, l in zip(palette, labels)]
+                # One legend per page rather than per subplot: the categories are identical
+                # in all sixteen, so repeating it sixteen times only costs plot area.
+                fig.legend(handles=handles[::-1], loc='upper right', frameon=False,
+                           bbox_to_anchor=(0.995, 0.995))
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close(fig)
+        logger.info(f'Coverage specificity overview saved to {self.output}{outend}')
+
+    def generate_partition_plot(self, df, ax, covobs, palette, xaxis=True):
+        '''
+        One stacked specificity plot. Deliberately reuses generate_plot()'s axis furniture --
+        the same D/A/T-arm shading, the 37/58 modification guides and the 0-75 position range
+        -- so a specificity page reads as the same kind of figure as a coverage page.
+        '''
+        ax.stackplot(df.index, *[df[c].values for c in toolsTG.COVERAGE_PARTITION],
+                     colors=palette, zorder=2, linewidth=0)
+        ax.set_title(f'{covobs} read specificity')
+        ax.set_ylabel('Normalized Readcounts')
+        ax.set_xlim(0, 75)
+        ax.set_xticks([18.01, 35.01, 37, 57.01, 58])
+        ax.set_xticklabels(['\nD-Arm', '\nA-Arm', '37', '\nT-Arm', '58'])
+        if xaxis:
+            ax.set_xlabel('Positions on tRNA')
+        # Same identical-ylim guard as generate_plot(): a tRNA with no coverage at all leaves
+        # the top of the range at 0, which matplotlib warns about but which is benign here.
+        top = ax.get_ylim()[1]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
+            ax.set_ylim(0, top)
+        for i in [37, 58]:
+            ax.plot([i, i], [0, top], linewidth=1, ls='--', color='black', zorder=3)
+        for i in [[14, 21], [32, 38], [54, 60], [10, 25], [27, 43], [49, 65]]:
+            ax.fill_between(i, [top, top], color='#cacaca', alpha=0.35, zorder=0)
+        ax.tick_params(axis='both', which='both', bottom=False, top=False, left=False, right=False)
+
     def generate_combine(self):
         '''
         Generate combined coverage plots for all tRNAs using multiprocessing.
         '''
-        # Generate list of tRNAs to plot sorting by name alphabetically and numerically with the copy number since sorting tRNAs is annoying
-        ulist = sorted(self.adata.obs[self.coverage_obs].unique())
-        # Sort by anticodon and then by copy number if tRNA
-        if self.coverage_obs == 'trna':
-            ulist = sorted(ulist, key=lambda x: ('-'.join(x.split('-')[:-1]), int(x.split('-')[-1])))
+        ulist = self._covobs_list()
         # Generate list of tRNAs to plot split by 16 for each page
         ulist = [ulist[i*16:(i+1)*16] for i in range((len(ulist)+15)//16)]
         # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
         # Generate plots with confidence intervals
         outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci_{self.coverage_method}.pdf'
-        with PdfPages(f'{self.output}{outend}') as pdf:
+        with PdfPages(f'{self.category_output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='ci'), ulist)
             for page in pages:
                 pdf.savefig(page, bbox_inches='tight')
         # Generate plots with fill
         outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill_{self.coverage_method}.pdf'
-        with PdfPages(f'{self.output}{outend}') as pdf:
+        with PdfPages(f'{self.category_output}{outend}') as pdf:
             with Pool(self.threads) as p:
                 pages = p.map(partial(self.generate_combine_page, coverage_fill='fill'), ulist)
             for page in pages:
@@ -218,7 +344,7 @@ class visualizer():
             outend = f'{covobs}_{self.coverage_type}_with_{cov_fill}_{self.coverage_method}.pdf'
         if cov_fill == 'ci':
             outend = '_'.join(outend.split('_')[:-1]) + '.pdf'
-        outstart = f'{self.output}{self.coverage_obs}/'
+        outstart = f'{self.category_output}{self.coverage_obs}/'
         low_coverage = False
         if ax.get_ylim()[1] < 20:
             outstart += 'low_coverage/'

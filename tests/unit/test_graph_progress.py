@@ -115,10 +115,16 @@ def test_main_passes_shared_phase_tracker_into_coverage_visualizer():
             captured["phase_tracker"] = kwargs.get("phase_tracker")
             captured["quiet"] = kwargs.get("quiet")
 
+        def build_output_dirs(self):
+            pass
+
         def generate_split(self):
             pass
 
         def generate_combine(self):
+            pass
+
+        def generate_partition_overview(self):
             pass
 
     with patch("trnagraph.modules.adataGraph.plotsCoverage.visualizer", _FakeVisualizer), \

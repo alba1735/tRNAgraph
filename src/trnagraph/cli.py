@@ -459,7 +459,7 @@ def graph(
     corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
     covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),
     covobs: str = typer.Option("trna", "--covobs", help="Specify the basis for each individual coverage plot"),
-    covtype: Optional[str] = typer.Option(None, "--covtype", help="Specify a coverage type for coverage plots corresponding to coverage file outputs. Defaults to 'uniquecoverage', or to 'coverage' under --allreads"),
+    covtype: Optional[str] = typer.Option(None, "--covtype", help="Coverage category to plot. tRAX's four-way read-specificity partition: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino' -- plus 'total' for their sum. Any other adata.var coverage value (readstarts, mismatchedbases, ...) is also accepted. Defaults to 'unique', or to 'total' under --allreads. Each category is written to its own subfolder; the stacked overview of all four sits above them"),
     covgap: bool = typer.Option(False, "--covgap", help="Specify wether to include gaps in coverage plots"),
     covmethod: str = typer.Option("mean", "--covmethod", help="Specify method to use for coverage plots when combining multiple groups"),
     combinedpdfonly: bool = typer.Option(False, "--combinedpdfonly", help="Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output"),

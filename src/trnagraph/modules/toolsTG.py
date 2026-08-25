@@ -348,6 +348,59 @@ ALL_READS_ONLY_READTYPES = ('wholeprecounts', 'partialprecounts', 'trailercounts
 #: all-reads basis is that total and the unique basis is its transcript-specific part.
 COVTYPE_DEFAULTS = {READ_BASIS_UNIQUE: 'uniquecoverage', READ_BASIS_ALL: 'coverage'}
 
+# tRAX bins each read into exactly one of four categories by how specifically it could be
+# assigned, using bowtie2's YM/YA/YR tags (counts of aminos/anticodons/transcripts the read
+# hit). getcoverage.py's getsamplecoverage() does this as an if/elif chain, so the four are
+# mutually exclusive and sum to 'coverage'. They are a PARTITION, not a filter -- the
+# genome MAPQ >= 2 prefilter sits beneath all four equally.
+#
+# The display labels are tRAX's own, from newcoverageplots.R's column renaming, and read as
+# "the finest level this read resolves to". They are kept verbatim so a tRAX user recognises
+# them; the CLI aliases are the short forms of the same idea.
+
+#: --covtype alias -> adata.var['coverage'] value. Raw var values stay accepted so nothing
+#: that already scripted --covtype uniquecoverage breaks.
+COVERAGE_CATEGORY_ALIASES = {
+    'unique': 'uniquecoverage',
+    'transcript': 'uniquecoverage',
+    'isodecoder': 'multitrnacoverage',
+    'isotype': 'multianticodoncoverage',
+    'notamino': 'multiaminocoverage',
+    'total': 'coverage',
+}
+
+#: adata.var['coverage'] value -> the alias used for its output directory.
+COVERAGE_CATEGORY_DIRS = {
+    'uniquecoverage': 'unique',
+    'multitrnacoverage': 'isodecoder',
+    'multianticodoncoverage': 'isotype',
+    'multiaminocoverage': 'notamino',
+    'coverage': 'total',
+}
+
+#: Display labels, verbatim from newcoverageplots.R.
+COVERAGE_CATEGORY_LABELS = {
+    'uniquecoverage': 'Transcript Specific',
+    'multitrnacoverage': 'Isodecoder Specific',
+    'multianticodoncoverage': 'Isotype Specific',
+    'multiaminocoverage': 'Not Amino Specific',
+}
+
+#: Stacking order, least specific first, matching the factor levels newcoverageplots.R sets
+#: so the stacked overview reads the same way round as tRAX's.
+COVERAGE_PARTITION = (
+    'multiaminocoverage', 'multianticodoncoverage', 'multitrnacoverage', 'uniquecoverage',
+)
+
+
+def coverage_category_dir(covtype: str) -> str:
+    '''
+    Output subdirectory for a resolved --covtype. Partition members get their short alias;
+    anything else (readstarts, mismatchedbases, ...) uses its own name, so every coverage
+    run lands in exactly one directory named for what it plotted.
+    '''
+    return COVERAGE_CATEGORY_DIRS.get(covtype, covtype)
+
 
 def read_basis(allreads: bool) -> str:
     '''Map the --allreads flag onto a basis token. The default (flag absent) is unique.'''
@@ -410,7 +463,7 @@ def resolve_covtype(covtype: Optional[str], basis: str) -> str:
     the basis only supplies the default when none was given.
     '''
     if covtype:
-        return covtype
+        return COVERAGE_CATEGORY_ALIASES.get(covtype, covtype)
     return COVTYPE_DEFAULTS[basis]
 
 

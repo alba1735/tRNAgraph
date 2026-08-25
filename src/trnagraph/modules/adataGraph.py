@@ -337,15 +337,17 @@ class anndataGrapher:
             threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded)
         if gt == 'coverage':
             pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output, phase_tracker=self.phase_tracker, quiet=self.quiet)
-            # Generate folders/subfolders if coveragecombine is specified
-            self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/'))
-            self.logger.info(toolsTG.builder(f'{output}{self.args.covobs}/low_coverage/'))
+            # plotsCoverage owns its own layout below `output`: per-category plots under
+            # <covtype-alias>/, the specificity overview at the base.
+            pcV.build_output_dirs()
             # Generate coverage plots with combine or split pdfs
             if not self.args.combinedpdfonly:
                 self.logger.info('Generating individual coverage plots pdfs...')
                 pcV.generate_split()
             self.logger.info('Generating combined coverage plots pdf...')
             pcV.generate_combine()
+            self.logger.info('Generating coverage specificity overview pdf...')
+            pcV.generate_partition_overview()
         if gt == 'heatmap':
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         if gt == 'logo':
