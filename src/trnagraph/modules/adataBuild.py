@@ -89,6 +89,27 @@ def _filter_nontrna_rows_from_type_counts_file(path):
     return removed
 
 
+def _load_split_nontrna_read_counts(normalizedcounts_allfeatures_path, fallback_columns, fix_index):
+    '''
+    The non-tRNA feature counts for uns['nontRNA_counts'], read from the all-feature-normalized
+    counts file.
+
+    Non-tRNA features must not be normalized against tRNA/tRX-controlled size factors -- those
+    represent the tRNA population, not the whole library -- so this reads the all-feature-
+    controlled file rather than the primary one.
+
+    That file does not exist for a read-length split variant, which excludes non-tRNA features
+    and therefore runs no all-feature DESeq2 pass at all; the answer there is an empty frame over
+    the sample axis. Reading it unconditionally is what crashed the first real split build after
+    all-feature normalization became complete-variant only.
+    '''
+    if not os.path.exists(normalizedcounts_allfeatures_path):
+        return pd.DataFrame(columns=list(fallback_columns))
+    counts = fix_index(pd.read_csv(normalizedcounts_allfeatures_path, sep='\t', header=0))
+    non_trna = counts[~counts.index.str.contains('tRNA')]
+    return non_trna[~non_trna.index.str.contains('tRX')]
+
+
 def _filter_nontrna_rows_from_counts_file(path):
     '''
     Drop non-tRNA feature rows from a feature-indexed count/annotation file in place, returning
@@ -877,9 +898,8 @@ class AnnDataBuilder():
         # Use the all-feature-controlled normalized counts (same combined counts file, but
         # size factors estimated over all features) so adata.uns['nontRNA_counts'] is on a
         # statistically appropriate scale for non-tRNA analysis.
-        normalized_read_counts_allfeatures = _fix_index(pd.read_csv(self.expinfo.normalizedcounts_allfeatures, sep='\t', header=0))
-        non_trna_read_counts = normalized_read_counts_allfeatures[~(normalized_read_counts_allfeatures.index.str.contains('tRNA'))]
-        self.non_trna_read_counts = non_trna_read_counts[~(non_trna_read_counts.index.str.contains('tRX'))]
+        self.non_trna_read_counts = _load_split_nontrna_read_counts(
+            self.expinfo.normalizedcounts_allfeatures, normalized_read_counts.columns, _fix_index)
 
         # Clean all non tRNAs from normalized read counts by removing all rows that do not have a tRNA in the feature column
         normalized_read_counts = normalized_read_counts[(normalized_read_counts.index.str.contains('tRNA')) | (normalized_read_counts.index.str.contains('tRX'))]

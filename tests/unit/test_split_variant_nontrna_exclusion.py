@@ -355,3 +355,70 @@ def test_every_split_pipeline_construction_passes_split_tag():
         f"{len(without_tag)} AnalysisPipeline constructions omit split_tag; only the "
         f"full/complete variant's may."
     )
+
+
+from trnagraph.modules.adataBuild import _load_split_nontrna_read_counts
+
+
+def test_nontrna_read_counts_load_is_empty_when_the_allfeature_file_is_absent(tmp_path):
+    """Regression for a crash on the first real split build after all-feature normalization
+    became complete-variant only. AnnDataBuilder.__init__ derived uns['nontRNA_counts'] by
+    reading the allfeature normalizedreadcounts file unconditionally -- a second all-feature read
+    beyond the size-factors one -- so the split loader died with FileNotFoundError on a file the
+    split no longer writes. For a split the answer is an empty frame anyway: non-tRNA features
+    are excluded from splits entirely."""
+    absent = str(tmp_path / 'allfeature' / 'exp-allfeature_normalizedreadcounts.txt')
+    fallback_columns = ['s1', 's2']
+
+    result = _load_split_nontrna_read_counts(absent, fallback_columns, lambda df: df)
+
+    assert list(result.columns) == fallback_columns
+    assert len(result) == 0
+
+
+def test_nontrna_read_counts_load_drops_trna_and_trx_rows_when_the_file_exists(tmp_path):
+    """The complete variant's path is unchanged: read the all-feature-normalized counts and keep
+    only the non-tRNA rows."""
+    path = str(tmp_path / 'exp-allfeature_normalizedreadcounts.txt')
+    pd.DataFrame(
+        {'s1': [1.0, 2.0, 3.0, 4.0], 's2': [1.0, 2.0, 3.0, 4.0]},
+        index=['tRNA-Ala-AGC-1_wholecounts', 'tRX-Ala-AGC-1_wholecounts',
+               'ENSG00000201098', 'ENSG00000206652'],
+    ).to_csv(path, sep='\t')
+
+    result = _load_split_nontrna_read_counts(
+        path, ['s1', 's2'], lambda df: df.set_index(df.columns[0]) if df.index.dtype != 'object' else df
+    )
+
+    assert list(result.index) == ['ENSG00000201098', 'ENSG00000206652']
+
+
+def test_no_all_feature_file_is_read_without_an_existence_guard():
+    """Split variants write no allfeature/ outputs, so every read of one has to tolerate its
+    absence. Two such reads existed and only one was guarded on the first attempt -- the
+    unguarded second crashed the first real split build after the change. Assert the invariant
+    structurally rather than relying on having grepped for every attribute name."""
+    source = inspect.getsource(adataBuild)
+    tree = ast.parse(source)
+
+    offenders = []
+    for func in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        reads = [
+            n for n in ast.walk(func)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            and n.func.attr in ('read_csv', 'read_table') and n.args
+            and 'allfeature' in ast.unparse(n.args[0]).lower()
+        ]
+        if not reads:
+            continue
+        has_guard = any(
+            isinstance(n, ast.Attribute) and n.attr == 'exists'
+            for n in ast.walk(func)
+        )
+        if not has_guard:
+            offenders.extend(f"{func.name}:{r.lineno}" for r in reads)
+
+    assert not offenders, (
+        f"all-feature file read with no os.path.exists guard in: {offenders}. "
+        f"A read-length split variant writes no allfeature/ outputs."
+    )
