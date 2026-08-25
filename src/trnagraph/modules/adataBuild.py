@@ -73,22 +73,6 @@ def _full_build_phase_names(analysis_args):
 TRNA_TYPE_LABELS = ('tRNA', 'tRNA_antisense', 'pretRNA', 'pretRNA_antisense', 'Mt_tRNA')
 
 
-def _filter_nontrna_rows_from_type_counts_file(path):
-    '''
-    Drop non-tRNA rows from a type-indexed count file in place, returning how many were removed.
-    Same split-variant rationale as _filter_nontrna_rows_from_counts_file(), but keyed on the
-    type-label vocabulary those files actually use instead of on feature names.
-    '''
-    if not os.path.exists(path):
-        return 0
-    df = pd.read_csv(path, sep='\t', index_col=0)
-    keep = [str(name) in TRNA_TYPE_LABELS for name in df.index]
-    removed = len(df) - sum(keep)
-    if removed:
-        df[keep].to_csv(path, sep='\t')
-    return removed
-
-
 def _load_split_nontrna_read_counts(normalizedcounts_allfeatures_path, fallback_columns, fix_index):
     '''
     The non-tRNA feature counts for uns['nontRNA_counts'], read from the all-feature-normalized
@@ -110,10 +94,55 @@ def _load_split_nontrna_read_counts(normalizedcounts_allfeatures_path, fallback_
     return non_trna[~non_trna.index.str.contains('tRX')]
 
 
-def _filter_nontrna_rows_from_counts_file(path):
+def _filter_rows_by_label(path, keep_label, has_header):
     '''
-    Drop non-tRNA feature rows from a feature-indexed count/annotation file in place, returning
-    how many rows were removed.
+    Drop rows whose first tab-separated field fails `keep_label`, in place, returning how many
+    were removed. A no-op when the file is absent or nothing matches.
+
+    Filters line-wise rather than round-tripping through pandas, so every kept line is preserved
+    byte for byte. That is not fastidiousness: these files use tRAX's convention where the header
+    names only the data columns, one field shorter than the data rows, and readers depend on it
+    -- `pd.read_csv(sep='\t')` with no index_col auto-detects the first column as the index only
+    because of that raggedness. pandas' to_csv always writes a leading separator, which turned
+    the labels into an ordinary string column and made plotsCount's `df*100/df.sum()` fail with
+    "unsupported operand type(s) for /: 'str' and 'str'". `has_header` is explicit because
+    genetypes.txt has no header line at all, and reading it with index_col=0 silently consumed
+    its first real data row.
+    '''
+    if not os.path.exists(path):
+        return 0
+    with open(path) as handle:
+        lines = handle.readlines()
+    if not lines:
+        return 0
+
+    header = lines[:1] if has_header else []
+    kept, removed = [], 0
+    for line in lines[len(header):]:
+        if not line.strip():
+            continue
+        if keep_label(line.split('\t', 1)[0].strip()):
+            kept.append(line)
+        else:
+            removed += 1
+    if removed:
+        with open(path, 'w') as handle:
+            handle.writelines(header + kept)
+    return removed
+
+
+def _filter_nontrna_rows_from_type_counts_file(path):
+    '''
+    Drop non-tRNA rows from a type-indexed count file (typecounts.txt/typerealcounts.txt).
+    Same split-variant rationale as _filter_nontrna_rows_from_counts_file(), but keyed on the
+    type-label vocabulary those files use instead of on feature names.
+    '''
+    return _filter_rows_by_label(path, lambda label: label in TRNA_TYPE_LABELS, has_header=True)
+
+
+def _filter_nontrna_rows_from_counts_file(path, has_header=True):
+    '''
+    Drop non-tRNA feature rows from a feature-indexed count/annotation file.
 
     Used only for read-length split variants. A split cutoff partitions tRNA reads by design,
     but non-tRNA features are not classified by that criterion at all and span a far wider size
@@ -124,17 +153,9 @@ def _filter_nontrna_rows_from_counts_file(path):
     every variant; that module's ordering behaviour is validated against tRAX and is not worth
     perturbing for a reason unrelated to classification.
 
-    A no-op when the file is absent or holds no non-tRNA rows -- `--gtf` is optional, and
-    without one no non-tRNA feature is ever counted in the first place.
+    Pass has_header=False for genetypes.txt, which has no header line.
     '''
-    if not os.path.exists(path):
-        return 0
-    df = pd.read_csv(path, sep='\t', index_col=0)
-    keep = [toolsTG.is_trna_feature(str(name)) for name in df.index]
-    removed = len(df) - sum(keep)
-    if removed:
-        df[keep].to_csv(path, sep='\t')
-    return removed
+    return _filter_rows_by_label(path, toolsTG.is_trna_feature, has_header)
 
 
 class AnalysisPipeline:
@@ -318,8 +339,10 @@ class AnalysisPipeline:
         if self.split_tag is None:
             return
         removed = 0
-        for path in (self.expinfo.genecounts, self.expinfo.genetypes):
-            removed += _filter_nontrna_rows_from_counts_file(path)
+        # genecounts (readcounts.txt) carries a header naming the samples; genetypes.txt has no
+        # header line at all and starts straight into data.
+        removed += _filter_nontrna_rows_from_counts_file(self.expinfo.genecounts, has_header=True)
+        removed += _filter_nontrna_rows_from_counts_file(self.expinfo.genetypes, has_header=False)
         for path in (self.expinfo.genetypecounts, self.expinfo.genetyperealcounts):
             removed += _filter_nontrna_rows_from_type_counts_file(path)
         if removed:

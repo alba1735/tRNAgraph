@@ -68,13 +68,28 @@ from trnagraph.modules.adataBuild import _filter_nontrna_rows_from_counts_file
 
 
 def _write_counts(path, feature_names):
-    """A readcounts.txt-shaped file: features as rows, samples as columns."""
-    df = pd.DataFrame(
-        {'s1': range(len(feature_names)), 's2': range(len(feature_names))},
-        index=feature_names,
-    )
-    df.to_csv(path, sep='\t')
-    return df
+    """A readcounts/typecounts-shaped file, in the exact on-disk format the pipeline writes.
+
+    Critically the header names ONLY the data columns, with no leading empty field for the
+    index -- tRAX's convention, which toolsCountReads reproduces. Readers depend on that
+    raggedness: pd.read_csv(sep='\t') with no index_col auto-detects the first column as the
+    index only because the header is one field shorter than the data rows. pandas' own to_csv
+    always emits a leading separator, so round-tripping a file through it silently converts the
+    labels into a string data column -- which is what made plotsCount's `df*100/df.sum()` fail
+    with "unsupported operand type(s) for /: 'str' and 'str'".
+    """
+    with open(path, 'w') as f:
+        f.write('s1\ts2\n')
+        for i, name in enumerate(feature_names):
+            f.write(f'{name}\t{i}\t{i}\n')
+    return pd.read_csv(path, sep='\t', index_col=0)
+
+
+def _write_headerless(path, rows):
+    """A genetypes.txt-shaped file: no header row at all, straight into data."""
+    with open(path, 'w') as f:
+        for name, type_value in rows:
+            f.write(f'{name}\t{type_value}\tchrI\t0.0\n')
 
 
 def test_filter_drops_non_trna_rows_and_keeps_every_trna_row(tmp_path):
@@ -422,3 +437,53 @@ def test_no_all_feature_file_is_read_without_an_existence_guard():
         f"all-feature file read with no os.path.exists guard in: {offenders}. "
         f"A read-length split variant writes no allfeature/ outputs."
     )
+
+
+def _read_like_the_pipeline(path):
+    """How adataBuild loads typecounts/typerealcounts into uns: no index_col, relying on the
+    header being one field shorter than the data rows."""
+    return pd.read_csv(path, sep='\t')
+
+
+def test_filtered_type_counts_still_load_the_way_adatabuild_loads_them(tmp_path):
+    """The bug that crashed `tools test`: rewriting the file through pandas' to_csv added a
+    leading separator to the header, so this read stopped auto-detecting the index. The type
+    labels became an ordinary string column, and plotsCount's `df*100/df.sum()` then raised
+    "unsupported operand type(s) for /: 'str' and 'str'"."""
+    path = str(tmp_path / 'exp-typecounts.txt')
+    _write_counts(path, TYPECOUNTS_ROWS)
+
+    _filter_nontrna_rows_from_type_counts_file(path)
+
+    loaded = _read_like_the_pipeline(path)
+    assert list(loaded.index) == ['Mt_tRNA', 'pretRNA_antisense', 'pretRNA', 'tRNA_antisense', 'tRNA']
+    assert list(loaded.columns) == ['s1', 's2']
+    # every value must be numeric -- this is what the failing division needed
+    assert (loaded * 100 / loaded.sum()).notna().all().all()
+
+
+def test_filtered_counts_file_keeps_the_ragged_header_convention(tmp_path):
+    """Same invariant for the feature-indexed files."""
+    path = str(tmp_path / 'exp-readcounts.txt')
+    _write_counts(path, [n for n, _ in GENETYPES_SAMPLE])
+
+    _filter_nontrna_rows_from_counts_file(path)
+
+    header = open(path).readline()
+    assert not header.startswith('\t'), "header gained a leading separator for the index"
+    assert header.rstrip('\n').split('\t') == ['s1', 's2']
+
+
+def test_genetypes_has_no_header_and_must_not_lose_its_first_row(tmp_path):
+    """genetypes.txt starts straight into data. Reading it with index_col=0 consumes the first
+    data row as a header, silently deleting a real feature from the split's annotation."""
+    path = str(tmp_path / 'exp-genetypes.txt')
+    rows = [(n, t) for n, t in GENETYPES_SAMPLE]
+    _write_headerless(path, rows)
+
+    removed = _filter_nontrna_rows_from_counts_file(path, has_header=False)
+
+    kept = [line.split('\t')[0] for line in open(path) if line.strip()]
+    expected = [n for n, _ in rows if toolsTG.is_trna_feature(n)]
+    assert kept == expected, "first data row must survive"
+    assert removed == 6
