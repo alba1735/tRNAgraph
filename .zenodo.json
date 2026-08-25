@@ -1,0 +1,29 @@
+{
+  "title": "tRNAgraph: advanced analysis of tRNA-seq data",
+  "description": "<p>tRNAgraph is a tool for advanced analysis of tRNA-seq data. It builds an <a href=\"https://anndata.readthedocs.io/\">AnnData</a> object from a tRNA-seq processing run and provides read classification, coverage analysis, clustering, differential expression and visualization on top of it.</p>",
+  "upload_type": "software",
+  "license": "gpl-3.0",
+  "creators": [
+    {
+      "name": "Bagi, Alex",
+      "affiliation": "University of California, Santa Cruz",
+      "orcid": "0000-0003-2393-2196"
+    }
+  ],
+  "keywords": [
+    "tRNA",
+    "tRNA-seq",
+    "bioinformatics",
+    "sequencing",
+    "differential expression",
+    "AnnData"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/alba1735/tRNAgraph",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ],
+  "version": "1.10.4"
+}

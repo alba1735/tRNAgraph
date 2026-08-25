@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: tRNAgraph
+abstract: >-
+  tRNAgraph is a tool for advanced analysis of tRNA-seq data. It builds an AnnData
+  object from a tRNA-seq processing run and provides read classification, coverage
+  analysis, clustering, differential expression and visualization on top of it.
+type: software
+authors:
+  - family-names: Bagi
+    given-names: Alex
+    email: abagi@ucsc.edu
+    affiliation: "University of California, Santa Cruz"
+    orcid: "https://orcid.org/0000-0003-2393-2196"
+repository-code: "https://github.com/alba1735/tRNAgraph"
+url: "https://github.com/alba1735/tRNAgraph"
+license: GPL-3.0-only
+keywords:
+  - tRNA
+  - tRNA-seq
+  - bioinformatics
+  - sequencing
+  - differential-expression
+  - AnnData
+version: 1.10.4

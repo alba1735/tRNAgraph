@@ -64,6 +64,11 @@ tag_format = "v{version}"
 commit_parser = "conventional"
 version_variables = [
     "src/trnagraph/__init__.py:__version__",
+    # Keep the citation metadata's version in step with the release automatically. Zenodo
+    # archives on a published GitHub Release and reads .zenodo.json; CITATION.cff drives
+    # GitHub's own "Cite this repository" widget.
+    "CITATION.cff:version",
+    ".zenodo.json:version",
 ]
 
 [tool.semantic_release.branches.main]
