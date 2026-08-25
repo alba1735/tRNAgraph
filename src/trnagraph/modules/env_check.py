@@ -384,7 +384,7 @@ def get_version_channel(project_root: str) -> str:
     `main` being deliberately behind `dev` during stabilization (docs/roadmap.md's update-tool
     item), which is exactly the kind of thing this label makes visible at a glance:
       - 'main' branch -> 'stable'
-      - 'dev' branch -> 'beta'
+      - 'dev' branch -> 'prerelease'
       - any other branch -> 'nightly @ <short-hash>' (a fork/feature branch, not one of the two
         known release channels, so the hash is the only precise identifier)
       - detached HEAD (e.g. from `trnagraph update --tag`) exactly at a release tag -> that tag
@@ -394,7 +394,11 @@ def get_version_channel(project_root: str) -> str:
     if branch == 'main':
         return 'stable'
     if branch == 'dev':
-        return 'beta'
+        # 'prerelease' rather than 'beta': it pairs with 'stable' as a release status, whereas
+        # 'beta' implies a maturity grade this project does not otherwise use. It describes the
+        # branch's position relative to main -- not semantic-release's `prerelease` setting,
+        # which is false for dev (see pyproject.toml), so a release cut here is a plain x.y.z.
+        return 'prerelease'
     if branch is None:
         tag = _get_exact_tag(project_root)
         if tag:

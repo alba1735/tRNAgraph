@@ -1,5 +1,5 @@
 """Regression test for roadmap.md's update-tool item: show which branch/channel (main=stable,
-dev=beta, anything else=nightly) tRNAgraph is running from, in --version output and every
+dev=prerelease, anything else=nightly) tRNAgraph is running from, in --version output and every
 command's log, so the confusion this project's error_log_update_server.txt shows (main being far
 behind dev, invisibly) is easier to spot at a glance."""
 import subprocess
@@ -52,12 +52,12 @@ def test_version_channel_main_is_stable(tmp_path):
     assert get_version_channel(str(repo)) == 'stable'
 
 
-def test_version_channel_dev_is_beta(tmp_path):
+def test_version_channel_dev_is_prerelease(tmp_path):
     repo = tmp_path / 'repo'
     _init_repo(repo)
     _run(repo, 'checkout', '-q', '-b', 'dev')
 
-    assert get_version_channel(str(repo)) == 'beta'
+    assert get_version_channel(str(repo)) == 'prerelease'
 
 
 def test_version_channel_other_branch_is_nightly_with_hash(tmp_path):

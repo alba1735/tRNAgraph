@@ -72,6 +72,11 @@ prerelease = false
 
 [tool.semantic_release.branches.dev]
 match = "dev"
+# dev is the pre-release channel: releases cut from it are suffixed '-alpha.N' and pip skips
+# them unless --pre is passed, which is the intent. Stable x.y.z releases come from main.
+# Note this requires main to actually be maintained -- it sat 106 commits behind dev during
+# stabilization, and PSR computes from a branch's own tag history, so cutting a stable release
+# from main is only meaningful once dev has been brought across.
 prerelease = true
 prerelease_token = "alpha"
 
