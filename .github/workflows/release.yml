@@ -5,11 +5,13 @@ name: Release
 # should be cut, per the branch selected. `dev` produces pre-releases (e.g. 1.9.0-alpha.1);
 # `main` (once brought in sync with dev and used as the stable branch) produces final releases.
 #
-# `bump` overrides the version increment python-semantic-release would derive from the commit
-# log. It defaults to `minor` because 2.0.0 is reserved for roadmap completion and the
-# accompanying paper release -- a `!`/BREAKING CHANGE commit would otherwise consume that
-# number automatically, since the conventional parser treats it as a major bump. Switch to
-# `auto` once 2.0.0 has been cut and normal semver arithmetic should resume.
+# `bump` defaults to `auto`, letting python-semantic-release derive the increment from the
+# commit log. Do not casually change it to a forced level: forcing one defeats prerelease
+# finalization, so `1.x.0-alpha.1` on dev becomes `1.(x+1).0` rather than `1.x.0` on main and
+# the alpha's number is never released. PSR also weighs every tag in the repository, not just
+# those reachable from the current branch, so an alpha tag raises the floor for a stable
+# release even when it is not an ancestor of main. The patch/minor/major choices remain for a
+# deliberate, considered override.
 #
 # --as-prerelease is passed whenever the branch is `dev`, and is NOT optional: forcing a bump
 # level bypasses the prerelease determination that [tool.semantic_release.branches.dev] would
@@ -30,13 +32,13 @@ on:
       bump:
         description: "Version increment (auto = derive from commit log)"
         required: true
-        default: "minor"
+        default: "auto"
         type: choice
         options:
-          - minor
-          - patch
-          - major
           - auto
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
