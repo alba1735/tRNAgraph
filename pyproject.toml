@@ -62,6 +62,10 @@ testpaths = ["tests/unit"]
 [tool.semantic_release]
 tag_format = "v{version}"
 commit_parser = "conventional"
+# Release commits are authored as the maintainer. Left unset, python-semantic-release
+# commits as "semantic-release <semantic-release>", which registers as a second identity
+# in the repository's contributor list.
+commit_author = "Alex Bagi <alexbagi24@gmail.com>"
 version_variables = [
     "src/trnagraph/__init__.py:__version__",
     # Keep the citation metadata's version in step with the release automatically. Zenodo
