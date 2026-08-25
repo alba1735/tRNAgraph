@@ -19,7 +19,9 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | What | tRAX | tRNAgraph |
 | --- | --- | --- |
 | **Read classification order** | A read overlapping several features was assigned via Python `set` iteration — hash-order dependent, so results varied between runs | Candidates sorted deterministically; same input always gives the same answer |
-| **`avgs.txt` columns** | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast | Real per-group means, one column per group |
+| **`avgs.txt` columns** | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast | `baseMean` emitted once under its own name; the per-group means moved to `groupavgs.txt`, one column per group |
+| **`combine.txt` trailing columns** | Per-group medians, labelled with bare group names | Same — previously per-group means under the same labels, so a column-aligned diff compared a mean against a median |
+| **`padjs.txt`** | Holds *unadjusted* p-values despite the name — `analyzecounts.R` takes column 5 of each `results()` object, and column 5 of a DESeq2 results table is `pvalue` | Holds genuine Benjamini-Hochberg `padj` |
 | **`--mincoverage` scope** | Dropped low-count genes from the coverage file, which silently removed them from *every* downstream output | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row |
 | **`aminocounts` / `anticodoncounts`** | Held unique-read counts, duplicating `unique/` — so no all-reads view existed | Main files hold all reads; `unique/` keeps the unique breakdown and still matches tRAX exactly |
 

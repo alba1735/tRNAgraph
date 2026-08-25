@@ -129,14 +129,15 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 | Size factors                     | `<exp>-SizeFactors.txt`                      | `<exp>-allfeature_SizeFactors.txt`                    |
 | Normalized counts                | `<exp>-normalizedreadcounts.txt`             | `<exp>-allfeature_normalizedreadcounts.txt`           |
 | Dispersions                      | `<exp>-dispersions.txt`                      | `<exp>-allfeature_dispersions.txt`                    |
-| Per-condition avgs               | `<exp>-avgs.txt`                             | `<exp>-allfeature_avgs.txt`                           |
-| Per-condition medians            | `<exp>-medians.txt`                          | `<exp>-allfeature_medians.txt`                        |
+| Mean normalized count (`baseMean`) | `<exp>-avgs.txt`                           | `<exp>-allfeature_avgs.txt`                          |
+| Per-group avgs                   | `<exp>-groupavgs.txt`                        | `<exp>-allfeature_groupavgs.txt`                      |
+| Per-group medians                | `<exp>-medians.txt`                          | `<exp>-allfeature_medians.txt`                        |
 | Adjusted p-values                | `<exp>-padjs.txt`                            | `<exp>-allfeature_padjs.txt`                          |
 | Log2 fold changes                | `<exp>-logvals.txt`                          | `<exp>-allfeature_logvals.txt`                        |
 | Combined DE summary              | `<exp>-combine.txt`                          | `<exp>-allfeature_combine.txt`                        |
 | Pairwise DE (if `--pairs` given) | `de_results/<cond1>_vs_<cond2>.txt`          | `allfeature/de_results/<cond1>_vs_<cond2>.txt`        |
 
-The default (tRNA-controlled) size factors and normalized counts are what get read back into the `.h5ad` (`adata.uns['deseq2_sizefactors_trna']`, `adata.X`); the all-feature-controlled size factors are also read back in as `adata.uns['deseq2_sizefactors_allfeatures']` and used to derive `adata.layers['norm_allfeatures']`. The rest of the `allfeature/`-prefixed files (dispersions, avgs, medians, padjs, logvals, combine, pairwise DE) are written to disk for reference/comparison but are not loaded into the `.h5ad` object. This mirrors the existing pattern used for the tRNA-only-matrix DESeq2 run, whose outputs live under `results/<exp>/trna/`.
+The default (tRNA-controlled) size factors and normalized counts are what get read back into the `.h5ad` (`adata.uns['deseq2_sizefactors_trna']`, `adata.X`); the all-feature-controlled size factors are also read back in as `adata.uns['deseq2_sizefactors_allfeatures']` and used to derive `adata.layers['norm_allfeatures']`. The rest of the `allfeature/`-prefixed files (dispersions, avgs, groupavgs, medians, padjs, logvals, combine, pairwise DE) are written to disk for reference/comparison but are not loaded into the `.h5ad` object. This mirrors the existing pattern used for the tRNA-only-matrix DESeq2 run, whose outputs live under `results/<exp>/trna/`.
 
 > [!NOTE]
 > This table describes a plain build with no `--readlengthsplit`, where everything above lives directly under `results/<exp>/` as shown. When `--readlengthsplit`/`addsplit` is used, each variant's copy of this same file set nests under its own subfolder instead — `results/<exp>/complete/` for the default/full variant, `results/<exp>/u<N>/` and `results/<exp>/o<N>/` for the split variants — so the three don't collide. A plain build without a split is unaffected and keeps writing straight to `results/<exp>/`.

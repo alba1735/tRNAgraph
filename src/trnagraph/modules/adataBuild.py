@@ -498,9 +498,23 @@ class AnalysisPipeline:
                 avgs_df[cond] = norm_counts[valid_samples].mean(axis=1)
                 medians_df[cond] = norm_counts[valid_samples].median(axis=1)
                 
+        # tRAX's -avgs.txt is DESeq2's baseMean -- the mean of normalized counts across ALL
+        # samples, invariant to the contrast requested. analyzecounts.R's colgetavgname() takes
+        # column 1 of each results() object and writes it once per pairwise comparison, so tRAX's
+        # columns are labelled per comparison while every one of them holds the same numbers.
+        # Emit the quantity once under its real name rather than porting that duplication.
+        # Computed from the normalized counts directly (DESeq2's own definition) rather than
+        # lifted out of a results() object, so it is still written when no comparison ran.
+        basemean_df = pd.DataFrame({'baseMean': norm_counts.mean(axis=1)})
+
         avgs_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}avgs.txt")
+        # The per-group means are the more useful quantity of the two and are kept -- under a
+        # name that does not collide with tRAX's, which holds baseMean above. No tRAX file
+        # corresponds to this one.
+        groupavgs_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}groupavgs.txt")
         medians_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}medians.txt")
-        avgs_df.to_csv(avgs_file, sep='\t')
+        basemean_df.to_csv(avgs_file, sep='\t')
+        avgs_df.to_csv(groupavgs_file, sep='\t')
         medians_df.to_csv(medians_file, sep='\t')
         
         # 3. Aggregated DE Results (padjs, logvals)
@@ -535,9 +549,12 @@ class AnalysisPipeline:
         for col in padjs_df.columns:
             combine_df[f"pval_{col}"] = padjs_df[col]
             
-        # Add Averages
-        for col in avgs_df.columns:
-            combine_df[col] = avgs_df[col]
+        # Add per-group medians. tRAX's -combine.txt is cbind(alllogvals, allprobs, medcountmat)
+        # -- its trailing per-group columns are medians, matching its own -medians.txt exactly.
+        # These were means here, under the same group labels, so a column-aligned diff against
+        # tRAX compared a mean against a median without either side looking wrong.
+        for col in medians_df.columns:
+            combine_df[col] = medians_df[col]
             
         combine_file = os.path.join(output_dir, f"{os.path.basename(self.expinfo.expname)}-{prefix}combine.txt")
         combine_df.to_csv(combine_file, sep='\t')
