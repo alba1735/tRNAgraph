@@ -60,8 +60,64 @@ def _full_build_phase_names(analysis_args):
     return phases
 
 
+# The type labels in typecounts.txt/typerealcounts.txt that count as tRNA. toolsCountReads
+# writes the first four as literals; every other row in those files is a GTF biotype out of
+# emblbiotypes, a --bed feature set, or an extra-sequence class.
+#
+# Mt_tRNA is included even though it is GTF-driven rather than database-derived -- gtRNAdb and
+# tRNAscan-SE exclude mitochondrial tRNAs, so a makedb-built database contains none and this row
+# is structurally 0.0 today. Mitochondrial tRNAs are tRNAs, they are planned to become
+# first-class (see docs/roadmap.md), and at roughly 60-75nt a read-length cutoff partitions them
+# meaningfully, unlike the non-tRNA feature classes this filter targets. Keeping the data
+# flowing now is cheaper than dropping it and re-adding it later.
+TRNA_TYPE_LABELS = ('tRNA', 'tRNA_antisense', 'pretRNA', 'pretRNA_antisense', 'Mt_tRNA')
+
+
+def _filter_nontrna_rows_from_type_counts_file(path):
+    '''
+    Drop non-tRNA rows from a type-indexed count file in place, returning how many were removed.
+    Same split-variant rationale as _filter_nontrna_rows_from_counts_file(), but keyed on the
+    type-label vocabulary those files actually use instead of on feature names.
+    '''
+    if not os.path.exists(path):
+        return 0
+    df = pd.read_csv(path, sep='\t', index_col=0)
+    keep = [str(name) in TRNA_TYPE_LABELS for name in df.index]
+    removed = len(df) - sum(keep)
+    if removed:
+        df[keep].to_csv(path, sep='\t')
+    return removed
+
+
+def _filter_nontrna_rows_from_counts_file(path):
+    '''
+    Drop non-tRNA feature rows from a feature-indexed count/annotation file in place, returning
+    how many rows were removed.
+
+    Used only for read-length split variants. A split cutoff partitions tRNA reads by design,
+    but non-tRNA features are not classified by that criterion at all and span a far wider size
+    range, so their per-split numbers record where the cutoff happened to fall rather than
+    anything about the data -- on a real hg38 build the `other` biotype came out 12.41M under
+    60nt against 0.99M over it. Filtering here, after the counting pass has written its files
+    and before DESeq2 reads them, keeps toolsCountReads' classification path byte-identical for
+    every variant; that module's ordering behaviour is validated against tRAX and is not worth
+    perturbing for a reason unrelated to classification.
+
+    A no-op when the file is absent or holds no non-tRNA rows -- `--gtf` is optional, and
+    without one no non-tRNA feature is ever counted in the first place.
+    '''
+    if not os.path.exists(path):
+        return 0
+    df = pd.read_csv(path, sep='\t', index_col=0)
+    keep = [toolsTG.is_trna_feature(str(name)) for name in df.index]
+    removed = len(df) - sum(keep)
+    if removed:
+        df[keep].to_csv(path, sep='\t')
+    return removed
+
+
 class AnalysisPipeline:
-    def __init__(self, args, expname=None, phase_tracker=None, variant_label=None):
+    def __init__(self, args, expname=None, phase_tracker=None, variant_label=None, split_tag=None):
         self.logger = logging.getLogger(__name__)
         self.args = args
         self.dbname = args.database
@@ -89,6 +145,11 @@ class AnalysisPipeline:
         self.dispfittype = getattr(args, 'dispfittype', 'mean')  # Default to 'mean' for robustness
         self.quiet = getattr(args, 'quiet', False)
         self.variant_label = variant_label
+        # The split variant this pipeline is building ('u60'/'o60'), or None for the full/
+        # complete variant. Distinct from variant_label, which is a human-readable phase-tracker
+        # string ("Under 60") and must not be given control-flow meaning -- a later cosmetic
+        # change to a log label would otherwise silently alter what gets analysed.
+        self.split_tag = split_tag
         # A caller that spans a larger sequence (e.g. AnnDataBuilder, whose own phases -- and
         # potentially multiple split-variant repeats of this class's phases -- surround this
         # instance's slice of the work) passes its own shared tracker in; otherwise this instance
@@ -115,8 +176,12 @@ class AnalysisPipeline:
         if not os.path.exists(self.expinfo.resultsdir):
             os.makedirs(self.expinfo.resultsdir)
 
-        # Subdirectories in results
-        for subdir in ["mismatch", "pretRNAs", "unique", "trna", "allfeature"]:
+        # Subdirectories in results. All-feature normalization is complete-variant only, so a
+        # split variant gets no allfeature/ directory to leave empty.
+        subdirs = ["mismatch", "pretRNAs", "unique", "trna"]
+        if self.split_tag is None:
+            subdirs.append("allfeature")
+        for subdir in subdirs:
             path = os.path.join(self.expinfo.resultsdir, subdir)
             if not os.path.exists(path):
                 os.makedirs(path)
@@ -133,6 +198,10 @@ class AnalysisPipeline:
         self.logger.info("Counting Reads")
         with self.phase_tracker.phase(variant=self.variant_label):
             self.countfeatures()
+        # Before run_deseq2() reads these counts, so a split's size factors are never estimated
+        # over non-tRNA features. Idempotent: the type-indexed files don't exist yet and are
+        # skipped here, then filtered by the second call after counttypes() writes them.
+        self.apply_split_variant_filters()
 
         # DESeq2 analysis using PyDESeq2
         self.logger.info("Analyzing counts")
@@ -143,6 +212,7 @@ class AnalysisPipeline:
         self.logger.info("Counting Read Types")
         with self.phase_tracker.phase(variant=self.variant_label):
             self.counttypes()
+        self.apply_split_variant_filters()
 
         # Run DESeq2 on unique count files (they're generated by counttypes())
         self.logger.info("Analyzing unique counts")
@@ -215,6 +285,29 @@ class AnalysisPipeline:
                             trnaends=self.expinfo.trnaendfile, trnauniquecounts=self.expinfo.trnauniquefile,
                             cores=self.cores, maxmismatches=self.maxmismatches, quiet=self.quiet)
 
+    def apply_split_variant_filters(self):
+        '''
+        Strip non-tRNA rows from this variant's count outputs, for split variants only.
+
+        Runs after the counting passes have written their files and before DESeq2 reads them, so
+        toolsCountReads' classification path stays byte-identical for every variant. A no-op for
+        the complete variant, and a no-op with no --gtf, where no non-tRNA feature was ever
+        counted in the first place.
+        '''
+        if self.split_tag is None:
+            return
+        removed = 0
+        for path in (self.expinfo.genecounts, self.expinfo.genetypes):
+            removed += _filter_nontrna_rows_from_counts_file(path)
+        for path in (self.expinfo.genetypecounts, self.expinfo.genetyperealcounts):
+            removed += _filter_nontrna_rows_from_type_counts_file(path)
+        if removed:
+            self.logger.info(
+                f"Split variant '{self.split_tag}': removed {removed} non-tRNA rows from the "
+                f"count outputs. A read-length cutoff cannot meaningfully partition non-tRNA "
+                f"features, so they are carried only by the complete variant."
+            )
+
     def run_deseq2(self):
         # 1. Main Counts - tRNA/tRX-controlled size factors (default; drives adata.X/obs/raw)
         self.run_deseq2_on_file(
@@ -226,15 +319,22 @@ class AnalysisPipeline:
             use_trna_control=True
         )
 
-        # 1b. Main Counts - all-feature size factors (secondary, kept for comparison)
-        self.run_deseq2_on_file(
-            counts_file=self.expinfo.genecounts,
-            norm_counts_file=self.expinfo.normalizedcounts_allfeatures,
-            size_factors_file=self.expinfo.allfeaturesizefactors,
-            output_dir=os.path.join(self.expinfo.resultsdir, "allfeature"),
-            prefix="allfeature_",
-            use_trna_control=False
-        )
+        # 1b. Main Counts - all-feature size factors (secondary, kept for comparison).
+        # Complete-variant only. A split variant has had its non-tRNA features removed, so
+        # "all features" and "tRNA only" would be the same set and this pass would merely
+        # duplicate the primary one; computing it from the unfiltered counts instead -- which is
+        # what used to happen -- estimated size factors over a non-tRNA pool that a tRNA-length
+        # cutoff had arbitrarily truncated, and then normalized real tRNA data with them via the
+        # user-reachable `--variant allfeatures:<tag>`.
+        if self.split_tag is None:
+            self.run_deseq2_on_file(
+                counts_file=self.expinfo.genecounts,
+                norm_counts_file=self.expinfo.normalizedcounts_allfeatures,
+                size_factors_file=self.expinfo.allfeaturesizefactors,
+                output_dir=os.path.join(self.expinfo.resultsdir, "allfeature"),
+                prefix="allfeature_",
+                use_trna_control=False
+            )
 
         # 2. tRNA Counts
         self.run_deseq2_on_file(
@@ -333,7 +433,7 @@ class AnalysisPipeline:
             control_genes = None
             if use_trna_control:
                 # Select only features containing 'tRNA' or 'tRX' for computing size factors
-                trna_features = [f for f in counts_df.columns if 'tRNA' in f or 'tRX' in f]
+                trna_features = [f for f in counts_df.columns if toolsTG.is_trna_feature(f)]
                 if trna_features:
                     control_genes = trna_features
                     self.logger.info(f"Using {len(control_genes)} tRNA features for size factor calculation.")
@@ -745,8 +845,13 @@ class AnnDataBuilder():
         sizefactors = self.expinfo.sizefactors
         self.size_factors = pd.read_csv(sizefactors, sep=" ", header=0).to_dict('index')[0]
         self.size_factors_list = None
-        # Secondary, all-feature-controlled size factors kept for comparison against the tRNA-controlled default
-        self.size_factors_allfeatures = pd.read_csv(self.expinfo.allfeaturesizefactors, sep=" ", header=0).to_dict('index')[0]
+        # Secondary, all-feature-controlled size factors kept for comparison against the
+        # tRNA-controlled default. Absent for a read-length split variant, which excludes
+        # non-tRNA features and so runs no all-feature DESeq2 pass at all.
+        if os.path.exists(self.expinfo.allfeaturesizefactors):
+            self.size_factors_allfeatures = pd.read_csv(self.expinfo.allfeaturesizefactors, sep=" ", header=0).to_dict('index')[0]
+        else:
+            self.size_factors_allfeatures = None
         # For adding unique counts to coverage file
         trnauniquecounts = self.expinfo.trnauniqcountsfile #'-trnauniquecounts.txt'
         self.unique_counts = pd.read_csv(trnauniquecounts, sep='\t', header=0).to_dict('index')
@@ -1093,8 +1198,11 @@ class AnnDataBuilder():
 
         x_norm = x_df
         x_raw = pd.DataFrame(x_norm.values * np.array(size_factors_list)[:, None], index=x_df.index, columns=x_df.columns)
-        allfeature_sf = np.array([self.size_factors_allfeatures.get(s, 1.0) for s in obs_df['sample'].values])
-        x_norm_allfeatures = pd.DataFrame(x_raw.values / allfeature_sf[:, None], index=x_df.index, columns=x_df.columns)
+        # Complete-variant only -- see VariantContribution.x_norm_allfeatures.
+        x_norm_allfeatures = None
+        if self.size_factors_allfeatures is not None:
+            allfeature_sf = np.array([self.size_factors_allfeatures.get(s, 1.0) for s in obs_df['sample'].values])
+            x_norm_allfeatures = pd.DataFrame(x_raw.values / allfeature_sf[:, None], index=x_df.index, columns=x_df.columns)
 
         x_vst = None
         if vst_strategy != 'none':
@@ -1147,6 +1255,7 @@ class AnnDataBuilder():
                 pipeline_variant = AnalysisPipeline(
                     args_variant, expname=base_output_dir,
                     phase_tracker=self.phase_tracker, variant_label=f"{direction.capitalize()} {cutoff}",
+                    split_tag=tag,
                 )
                 pipeline_variant.run()
 
@@ -1492,18 +1601,31 @@ def _split_bam_dirs_preexisting(bamdir, cutoff, samples):
     return preexisting
 
 
-def _resolve_full_variant_nontrna_counts(existing_full_nontrna_counts, contribution_nontrna_counts):
+def _empty_split_nontrna_counts(target_adata):
     '''
-    A split variant's non-tRNA/small-RNA counts must always be the same value as the object's
-    existing full/unsplit variant, never a fresh per-split recomputation -- a length cutoff
-    partitions tRNAs by design, but non-tRNA reads aren't being classified by that criterion at
-    all, so one split's independently-recomputed non-tRNA counts can come out empty (or on a
-    different scale) than another's purely as an artifact of where that split's cutoff happened
-    to fall, not because the underlying biology differs. Falls back to the split's own value only
-    if the target object has no full-variant non-tRNA counts yet (shouldn't happen in practice,
-    since _adata_build_ always sets uns['nontRNA_counts'] before any split is merged in).
+    The non-tRNA counts a split variant carries: an empty frame over the object's sample axis.
+
+    A read-length cutoff partitions tRNA reads by design, but non-tRNA features are not being
+    classified by that criterion at all and span a far wider size range, so a split's non-tRNA
+    numbers record where the cutoff fell rather than anything about the data. They are therefore
+    excluded from split variants outright rather than recomputed per split (which produced the
+    "o60 got the non-tRNA plots, u60 didn't" bug) or copied from the full variant (which left a
+    duplicate that nothing was allowed to read).
+
+    This must be an explicit empty value rather than an omission: build_variant_view() overlays
+    uns keys onto a split's view only when the key is present, so leaving it out would show the
+    parent object's full-variant counts on the split instead.
+
+    Columns come from the full variant's own frame where it has any, preserving its exact sample
+    labels and order, and otherwise from the object's obs -- `--gtf` is optional, and without one
+    the full variant's frame is itself empty and may carry no columns at all.
     '''
-    return existing_full_nontrna_counts if existing_full_nontrna_counts is not None else contribution_nontrna_counts
+    existing = target_adata.uns.get('nontRNA_counts')
+    if existing is not None and len(existing.columns) > 0:
+        columns = list(existing.columns)
+    else:
+        columns = list(dict.fromkeys(target_adata.obs['sample'].astype(str)))
+    return pd.DataFrame(columns=columns)
 
 
 def merge_variant_into_adata(target_adata, contribution: VariantContribution, tag, direction, cutoff, build_flags, overwrite=False):
@@ -1540,7 +1662,8 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
 
     target_adata.layers[f'raw_{tag}'] = _reindexed(contribution.x_raw).values
     target_adata.layers[f'norm_{tag}'] = _reindexed(contribution.x_norm).values
-    target_adata.layers[f'norm_allfeatures_{tag}'] = _reindexed(contribution.x_norm_allfeatures).values
+    # No norm_allfeatures_{tag} layer: all-feature normalization is complete-variant only, so
+    # `--variant allfeatures:<tag>` deliberately has nothing to resolve to.
     if contribution.x_vst is not None:
         x_vst_df = pd.DataFrame(contribution.x_vst, index=contribution.x_norm.index, columns=contribution.x_norm.columns)
         target_adata.layers[f'vst_{tag}'] = _reindexed(x_vst_df).values
@@ -1558,12 +1681,11 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
         'graphs_dir_name': build_flags.get('graphs_dir_name'),
         'build_flags': build_flags,
         'sizefactors_trna': contribution.sizefactors_trna,
-        'sizefactors_allfeatures': contribution.sizefactors_allfeatures,
         'type_counts': contribution.type_counts,
         'type_real_counts': contribution.type_real_counts,
         'amino_counts': contribution.amino_counts,
         'anticodon_counts': contribution.anticodon_counts,
-        'nontRNA_counts': _resolve_full_variant_nontrna_counts(target_adata.uns.get('nontRNA_counts'), contribution.nontrna_counts),
+        'nontRNA_counts': _empty_split_nontrna_counts(target_adata),
     }
 
     # Precompute default log2FC for common cutoffs, mirroring _adata_build_'s equivalent block
@@ -1670,7 +1792,7 @@ def add_split(args):
             args_variant.results_dir_name, args_variant.graphs_dir_name = toolsTG.variant_dir_names(args_variant, tag=tag)
             args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")
 
-            pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir)
+            pipeline_variant = AnalysisPipeline(args_variant, expname=base_output_dir, split_tag=tag)
             pipeline_variant.run()
 
             logger.info(f"Building AnnData contribution ({direction.capitalize()} {cutoff})...")

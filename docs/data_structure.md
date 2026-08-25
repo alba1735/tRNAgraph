@@ -56,7 +56,7 @@ classDiagram
         +vst : matrix (float32)
         +raw_u60 : matrix (int64)
         +norm_u60 : matrix (float32)
-        ...one raw/norm/norm_allfeatures/vst set per split tag
+        ...one raw/norm/vst set per split tag (no norm_allfeatures — complete variant only)
     }
 
     class Obsm_Variants {
@@ -107,7 +107,7 @@ A tRNAgraph object can hold the full (unsplit) dataset alongside one or more **r
 
 Because a length split only changes *which reads* contribute to coverage — it doesn't add a new tRNA or sample — each variant reuses the object's existing `obs`/`var` shape and is stored as a set of additional, tag-suffixed entries:
 
-- **Layers**: each of `raw`/`norm` (the default-normalized data — this can't reuse `adata.X`, since `.X` is singular and already holds the full/unsplit default)/`norm_allfeatures`/`vst` (if built) has a `_<tag>` suffixed sibling per variant, e.g. `adata.layers['raw_u60']`, `adata.layers['norm_u60']`, `adata.layers['norm_allfeatures_u60']`, `adata.layers['vst_u60']`. `<tag>` is `u<N>` (under) or `o<N>` (over).
+- **Layers**: each of `raw`/`norm` (the default-normalized data — this can't reuse `adata.X`, since `.X` is singular and already holds the full/unsplit default)/`vst` (if built) has a `_<tag>` suffixed sibling per variant, e.g. `adata.layers['raw_u60']`, `adata.layers['norm_u60']`, `adata.layers['vst_u60']`. `<tag>` is `u<N>` (under) or `o<N>` (over). There is deliberately **no** `norm_allfeatures_<tag>`: see the note on split variants and non-tRNA features below.
 - **`adata.obsm['size_split_<tag>']`**: a single DataFrame, indexed identically to `adata.obs`, holding every per-obs numeric column that variant needs (`deseq2_sizefactor`, `nreads_<readtype>_raw`/`_norm`, etc.) under the exact same (unsuffixed) column names used in the default `adata.obs` — and, once `analyze cluster --variant norm:<tag>` has been run for that variant, its cluster labels/UMAP coordinates too. `adata.obs` itself holds only the full/default variant's numeric columns; identity columns (`trna`, `sample`, `group`, `amino`, ...) are shared across all variants.
 - **`adata.uns['size_splits'][tag]`**: everything else split-specific — see [§4 Unstructured Data](#4-unstructured-data-adatauns) below.
 - **`adata.obsp`**: the sample-level UMAP neighbor graph from clustering, see [Clustering Results](#clustering-results) below.
@@ -121,6 +121,9 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 > The read-length-restricted `u<N>`/`o<N>` BAM files used to compute a variant are scratch files, not a retained output — by default they're deleted once merged into the AnnData object, since only the resulting layers/`obsm`/`uns` entries above (plus the `results/<tag>`/`graphs/<tag>` directories, see below) need to persist. Pass `--savesplitbams` to `build`/`addsplit` to keep them under `--bamdir` instead.
 
 ### On-Disk Result Files (`results/<exp>/`)
+
+> [!IMPORTANT]
+> **Split variants exclude non-tRNA features entirely.** A read-length cutoff partitions tRNA reads by design, but non-tRNA GTF features aren't being classified by that criterion at all and span a far wider size range, so their per-split numbers record where the cutoff happened to fall rather than anything about the data. A split variant's `readcounts`/`genetypes`/`typecounts`/`typerealcounts` therefore carry tRNA rows only (mitochondrial tRNAs included — they are tRNAs, and a cutoff around 60nt partitions them meaningfully), its `uns['size_splits'][tag]['nontRNA_counts']` is empty, and the non-tRNA/combined plots are skipped. Because "all features" and "tRNA only" are then the same set, **all-feature normalization is computed for the complete variant only**: there is no `allfeature/` output directory and no `norm_allfeatures_<tag>` layer for a split, and `--variant allfeatures:<tag>` fails with a message saying so. Use `norm:<tag>`, `raw:<tag>` or `vst:<tag>` for a split. This has no effect on a build without `--readlengthsplit`, and none at all when no `--gtf` was given, since no non-tRNA feature is counted in that case anyway.
 
 `trnagraph analyze build` always runs DESeq2 twice on the main feature matrix and writes both sets of outputs to disk before they're loaded into the `.h5ad`. The default (tRNA-controlled) run's files keep their original, unprefixed names at the top of `results/<exp>/`; the secondary (all-feature-controlled) run's files live in an `allfeature/` subdirectory with an `allfeature_` filename prefix:
 

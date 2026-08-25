@@ -43,11 +43,13 @@ class VariantContribution(BaseModel):
 
     x_raw: pd.DataFrame
     x_norm: pd.DataFrame
-    x_norm_allfeatures: pd.DataFrame
+    # None for a read-length split variant: all-feature normalization is computed only for the
+    # complete variant, since a split has its non-tRNA features excluded entirely.
+    x_norm_allfeatures: Optional[pd.DataFrame] = None
     x_vst: Optional[np.ndarray] = None
     obsm_counts: pd.DataFrame
     sizefactors_trna: Dict[str, Any]
-    sizefactors_allfeatures: Dict[str, Any]
+    sizefactors_allfeatures: Optional[Dict[str, Any]] = None
     type_counts: pd.DataFrame
     type_real_counts: pd.DataFrame
     amino_counts: pd.DataFrame

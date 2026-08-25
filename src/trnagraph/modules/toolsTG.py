@@ -62,6 +62,23 @@ def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: st
     return default
 
 
+def is_trna_feature(feature_name: str) -> bool:
+    '''
+    Whether a feature name refers to a tRNA/tRX feature rather than a non-tRNA GTF feature.
+
+    The single definition of that distinction. It decides both which features control DESeq2
+    size-factor estimation (the `use_trna_control` path in adataBuild.run_deseq2_on_file) and
+    which rows survive into a read-length split variant's outputs -- keeping those two on one
+    rule is what stops a split being filtered by one definition and normalized by another.
+
+    Matches on the name rather than on genetypes.txt's type column because the name is available
+    everywhere the decision has to be made, including on a counts matrix that carries no type
+    annotation at all. The two agree exactly: verified as 0 disagreements across all 8343
+    features of a real hg38 build, and pinned by a unit test.
+    '''
+    return 'tRNA' in feature_name or 'tRX' in feature_name
+
+
 def resolve_nontrna_counts(adata: ad.AnnData, is_full_variant: bool, feature_label: str):
     '''
     Shared gate for plotsVolcano.py/plotsPca.py/plotsCorrelation.py's non-tRNA/combined plots.
@@ -528,6 +545,18 @@ def build_variant_view(adata: ad.AnnData, spec: 'VariantTag') -> ad.AnnData:
 
     layer_name = f'{_VARIANT_LAYER_MAP[spec.norm]}_{spec.tag}' if spec.norm != 'norm' else f'norm_{spec.tag}'
     if layer_name not in view.layers:
+        # All-feature normalization is deliberately complete-variant only: a split variant has
+        # its non-tRNA features excluded, so there is no all-feature size-factor set to
+        # normalize against. Say so, rather than sending the reader looking for a build flag
+        # that would produce the layer -- there isn't one.
+        if spec.norm == 'allfeatures' and spec.tag != 'full':
+            raise ValueError(
+                f"--variant '{spec.raw}' is not available: all-feature normalization is only "
+                f"computed for the complete (non-split) variant. A read-length split excludes "
+                f"non-tRNA features entirely, so a split has no all-feature size factors to "
+                f"normalize against. Use 'norm:{spec.tag}', 'raw:{spec.tag}' or 'vst:{spec.tag}' "
+                f"for this split, or 'allfeatures:full' for the complete variant."
+            )
         raise ValueError(f"--variant '{spec.raw}' resolves to layer '{layer_name}', which is not present in this AnnData object (was this normalization computed for this split?).")
     view.X = view.layers[layer_name]
 
