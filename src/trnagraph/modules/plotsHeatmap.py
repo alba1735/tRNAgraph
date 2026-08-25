@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 
 def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False):
     '''
-    Generate heatmap visualizations for each group in an AnnData object. The combined,
+    Generate heatmap visualizations for each group in an AnnData object. `readtypes` are
+    fully-resolved obs column names (e.g. 'nreads_total_unique_norm'), already carrying the
+    read basis chosen once for the whole `graph` command -- see toolsTG.resolve_readtype().
+
+    The combined,
     multi-comparison heatmap PDFs are saved at the top level; when --heatsubplots is set, the
     individual per-comparison heatmaps are also saved to an `individual/` subfolder, mirroring
     plotsCoverage.py's split-vs-combined output layout.
@@ -35,7 +39,8 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
     df_combine = pd.DataFrame()
     # Create a heatmap for each group
     for readtype in readtypes:
-        readtype = f'nreads_{readtype}_norm'
+        # `readtypes` arrives as resolved obs column names -- adataGraph.resolved_diffrts()
+        # applies the command-wide read basis once, so no module decides its own denominator.
         # Create a color palette for the heatmap
         cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
         # Create a correlation matrix from reads stored in adata observations
@@ -48,7 +53,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
             continue
         df['readtype'] = readtype
         # combine df with df_combine by stacking them vertically if readtype is not total_unique or total
-        if readtype != 'nreads_total_unique_norm' and readtype != 'nreads_total_norm':
+        if readtype not in ('nreads_total_unique_norm', 'nreads_total_norm'):
             df_combine = pd.concat([df_combine, df], axis=0)
         # save df to csv
         csv_output = output.replace('graphs', 'results')

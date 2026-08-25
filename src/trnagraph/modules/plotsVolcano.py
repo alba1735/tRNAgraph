@@ -32,9 +32,12 @@ DEFAULT_DOWN_COLOR = '#1f77b4'
 NONSIG_COLOR = '#7f7f7f'
 MARKER_SHAPES = {'tRNA': 'o', 'nonTRNA': 's'}
 
-# The combined overview page always uses these two tRNA read types, mirroring PCA's default
-# --pcareadtypes (total_unique + total), regardless of what --diffrts requests for the
-# individual per-readtype plots.
+# The combined overview page always shows BOTH read bases side by side, regardless of
+# --diffrts and regardless of --allreads. That is deliberate and is not the inconsistency
+# --allreads exists to fix: the defect being avoided is two plots resting on different
+# denominators *without saying so*, whereas a labelled side-by-side comparison is the only
+# way to see how much transcript-level multi-mapping actually moves a dataset. plotsPca.py
+# carries the same constant for the same reason.
 OVERVIEW_TRNA_READTYPES = ('nreads_total_unique_norm', 'nreads_total_norm')
 
 
@@ -211,8 +214,8 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=1
 
     trna_dfs = {}
     pairs = None
-    for readtype in readtypes:
-        rt = f'nreads_{readtype}_norm'
+    for rt in readtypes:
+        # `readtypes` arrives as resolved obs column names from adataGraph.resolved_diffrts().
         df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, rt, readcount_cutoff=cutoff, config_name=config_name, overwrite=overwrite).main()
         trna_dfs[rt] = df
         pairs = log2fc_dict[config_name][grp]['pairs']

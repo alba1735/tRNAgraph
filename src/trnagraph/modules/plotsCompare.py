@@ -15,7 +15,7 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True):
+def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
     # Fall back to 'sample' (with a warning) if the specified columns aren't in the AnnData object
     comparegrp1 = toolsTG.resolve_grp_column(adata, comparegrp1, 'comparegrp1')
     comparegrp2 = toolsTG.resolve_grp_column(adata, comparegrp2, 'comparegrp2')
@@ -26,9 +26,13 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True)
         pal = sns.husl_palette(len(adata.obs[comparegrp1].unique()))
         pal = dict(zip(sorted(adata.obs[comparegrp1].unique()), pal))
 
+    # Was hardcoded to all reads while plotsCluster was hardcoded to unique, so two plots of
+    # one dataset rested on different denominators with nothing on either saying so.
+    readtype = toolsTG.resolve_readtype('total', read_basis, adata)
+
     for countgrp in ['amino','iso']:
         # Get log2 fold change dataframe from analysis_tools
-        df = toolsTG.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], 'nreads_total_norm', 0)
+        df = toolsTG.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], readtype, 0)
         # log2fc_compare_df can legitimately produce zero valid comparegrp1/comparegrp2 pairs
         # (e.g. comparegrp1 has no comparegrp2 value shared across every one of its own values --
         # notably always true when comparegrp1 is a per-observation-unique column like 'sample',

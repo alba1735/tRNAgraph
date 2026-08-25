@@ -20,6 +20,7 @@ import pandas as pd
 import pytest
 
 from trnagraph.modules.adataGraph import anndataGrapher
+from trnagraph.modules import toolsTG
 from trnagraph.modules.toolsSchemas import VariantTag
 
 READCOUNT_CUTOFF = 80
@@ -59,13 +60,16 @@ def _make_adata(n_per_group=4, precomputed_readtypes=('total_unique',)):
     return adata
 
 
-def _make_grapher(adata, graphtypes=('volcano',), diffrts=('total_unique',), regen_uns=False, threads=4):
+def _make_grapher(adata, graphtypes=('volcano',), diffrts=('total',), regen_uns=False, threads=4):
     grapher = anndataGrapher.__new__(anndataGrapher)
     grapher.logger = logging.getLogger('trnagraph.modules.adataGraph')
     grapher.adata = adata
     grapher.adata_original = adata
     grapher.config_name = 'default'
     grapher.variant_spec = VariantTag(raw='norm:full', norm='norm', tag='full')
+    # --diffrts carries bare readtypes; the basis is resolved once for the whole command.
+    # __init__ is bypassed here, so it has to be set by hand alongside variant_spec.
+    grapher.read_basis = toolsTG.READ_BASIS_UNIQUE
     grapher.args = SimpleNamespace(
         anndata='fake.h5ad', graphtypes=list(graphtypes), heatgrp='group', volgrp='group', diffrts=list(diffrts),
         heatcutoff=READCOUNT_CUTOFF, volcutoff=READCOUNT_CUTOFF, regen_uns=regen_uns, threads=threads,

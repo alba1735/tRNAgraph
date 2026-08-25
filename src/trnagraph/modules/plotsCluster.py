@@ -6,13 +6,15 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
+from . import toolsTG
+
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
-    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True):
+    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
         self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.output = output
@@ -25,6 +27,11 @@ class visualizer():
         self.colormap = colormap
         self.numericcolormap =  'mako_r' # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
         self.point_size = 20
+        # --allreads can only change how an EXISTING embedding is coloured: the UMAP
+        # coordinates and HDBSCAN labels were computed by `analyze cluster` and written into
+        # obs long before `graph` ran, so no graph-time flag can alter the projection itself.
+        self.readtype = toolsTG.resolve_readtype('total', read_basis, adata)
+        self.readtype_label = 'Unique Reads' if read_basis == toolsTG.READ_BASIS_UNIQUE else 'Reads'
 
     def generate_plots(self):
         # Generate overview plot
@@ -33,7 +40,7 @@ class visualizer():
             self.overviewPlot(self.adata, 'sample', self.output)
             self.clusterPlot(self.adata, 'sample', 'amino', self.output)
             self.clusterPlot(self.adata, 'sample', 'iso', self.output)
-            self.clusterPlot(self.adata, 'sample', 'nreads_total_unique_norm', self.output, numeric=True)
+            self.clusterPlot(self.adata, 'sample', self.readtype, self.output, numeric=True)
             self.clusterPlot(self.adata, 'sample', 'fragment', self.output)
             self.clusterPlot(self.adata, 'sample', 'sample', self.output)
             self.clusterPlot(self.adata, 'sample', 'group', self.output)
@@ -41,7 +48,7 @@ class visualizer():
             self.overviewPlot(self.adata, 'group', self.output)
             self.clusterPlot(self.adata, 'group', 'amino', self.output)
             self.clusterPlot(self.adata, 'group', 'iso', self.output)
-            self.clusterPlot(self.adata, 'group', 'nreads_total_unique_norm', self.output, numeric=True)
+            self.clusterPlot(self.adata, 'group', self.readtype, self.output, numeric=True)
             self.clusterPlot(self.adata, 'group', 'fragment', self.output)
             self.clusterPlot(self.adata, 'group', 'group', self.output)
             self.clusterPlot(self.adata, 'group', 'group_cluster', self.output)
@@ -70,7 +77,7 @@ class visualizer():
         # Create a 3 x 3 subplot with the umap projection and the cluster labels as the last subplot
         fig, axs = plt.subplots(2, 3, figsize=(24,16))
         # Plot first through ninth subplots
-        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), ('Total Number of Unique Reads','nreads_total_unique_norm',0,2),
+        plot_list = [('Amino Acid','amino',0,0), ('Isotype','iso',0,1), (f'Total Number of {self.readtype_label}',self.readtype,0,2),
                      ('Fragment','fragment',1,0), (f'{umapgroup.capitalize()}',f'{umapgroup}',1,1), ('HDBScan',cluster,1,2)]
         for i in plot_list:
             if i[2] == 0 and i[3] == 2:

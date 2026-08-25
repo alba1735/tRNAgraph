@@ -27,6 +27,13 @@ class anndataGrapher:
         # must never be written back to self.args.anndata directly.
         self.variant_spec = toolsTG.parse_variant(self.adata_original, getattr(self.args, 'variant', 'norm:full'))
         self.adata = toolsTG.build_variant_view(self.adata_original, self.variant_spec)
+        # Resolve the read basis ONCE, here, for the whole command -- graphs plot unique
+        # (transcript-specific) counts unless --allreads says otherwise. This must happen
+        # before _precompute_and_persist_log2fc() below, which reads self.args.diffrts to
+        # decide which log2FC entries to compute and cache: resolving later would populate
+        # the cache against the wrong basis and every heatmap/volcano would silently read it.
+        self.read_basis = toolsTG.read_basis(getattr(self.args, 'allreads', False))
+        self.args.covtype = toolsTG.resolve_covtype(getattr(self.args, 'covtype', None), self.read_basis)
         self.config_name = 'default'
         # Resolve grouping-column args before anything below reads them -- the log2FC
         # precompute a few lines down reads self.args.heatgrp/volgrp directly, ahead of the
@@ -134,7 +141,7 @@ class anndataGrapher:
         any_computed = False
         if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
-                for readtype in [f'nreads_{i}_norm' for i in self.args.diffrts]: #list(set(self.args.heatrts+self.args.volrts))]:
+                for readtype in self.resolved_diffrts():
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
                         log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
                         log2fc.main()
@@ -142,7 +149,7 @@ class anndataGrapher:
         if 'volcano' in self.args.graphtypes:
             # The volcano combined overview page always uses these two read types (mirroring
             # PCA's default --pcareadtypes), regardless of what --diffrts requests.
-            for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
+            for readtype in plotsVolcano.OVERVIEW_TRNA_READTYPES:
                 log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
                 log2fc.main()
                 any_computed = any_computed or log2fc.computed_fresh
@@ -156,6 +163,15 @@ class anndataGrapher:
             else:
                 self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['log2FC'] = self.adata.uns['log2FC']
             self.adata_original.write(self.args.anndata)
+
+    def resolved_diffrts(self):
+        '''
+        --diffrts as obs column names for the resolved read basis. Kept as a method rather
+        than resolved in place so the bare readtype survives in self.args for the output
+        path and for --verbose, and so heatmap/volcano and the log2FC precompute cannot
+        drift apart over which column a given readtype means.
+        '''
+        return [toolsTG.resolve_readtype(rt, self.read_basis, self.adata) for rt in self.args.diffrts]
 
     def _resolve_grp_args(self):
         '''
@@ -290,9 +306,16 @@ class anndataGrapher:
                 colormap = self.args.colormap[cmappar]
         # Create the output directory (namespaced by --variant when non-default, so different
         # --variant runs into the same --output don't overwrite each other's files)
+        # The path names CONTENT, not the flags that were typed: a segment is added only when
+        # nothing already in the path distinguishes that output. --variant always qualifies.
+        # The read basis qualifies every graph type EXCEPT coverage, where --covtype already
+        # names the category -- an extra 'allreads/' there would regenerate byte-identical
+        # (and, for coverage, very expensive) plots into a second directory.
         output = self.args.output + '/' + gt + '/'
         if self.variant_spec.raw != 'norm:full':
-            output = self.args.output + '/' + gt + '/' + self.variant_spec.raw.replace(':', '_') + '/'
+            output += self.variant_spec.raw.replace(':', '_') + '/'
+        if gt != 'coverage' and self.read_basis != toolsTG.READ_BASIS_UNIQUE:
+            output += self.read_basis + '/'
         if threaded:
             threaded += toolsTG.builder(output) + '\n'
         else:
@@ -305,11 +328,11 @@ class anndataGrapher:
                 else:
                     self.logger.warning('No cluster run information found in AnnData object. Please run the cluster command first.\n')
             else:
-                threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded).generate_plots()
+                threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded, read_basis=self.read_basis).generate_plots()
         if gt == 'compare':
-            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded)
+            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded, read_basis=self.read_basis)
         if gt == 'correlation':
-            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full')
+            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis)
         if gt == 'count':
             threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded)
         if gt == 'coverage':
@@ -324,19 +347,19 @@ class anndataGrapher:
             self.logger.info('Generating combined coverage plots pdf...')
             pcV.generate_combine()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.args.diffrts, self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         if gt == 'logo':
-            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output).generate_plots()
+            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis).generate_plots()
         if gt == 'pca':
-            threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full')
+            threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis)
         if gt == 'radar':
             if 'all' in self.args.radarmethod:
                 self.args.radarmethod = ['mean', 'median', 'max', 'sum']
             for radarmethod in self.args.radarmethod:
-                pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded)
+                pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded, read_basis=self.read_basis)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.args.diffrts, self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full')
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full')
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'

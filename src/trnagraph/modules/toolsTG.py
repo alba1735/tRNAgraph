@@ -315,6 +315,105 @@ class PhaseTracker:
 
 from .toolsSchemas import VariantTag
 
+# ---------------------------------------------------------------------------
+# Read basis: unique (transcript-specific) vs. all reads
+# ---------------------------------------------------------------------------
+# "Unique" means TRANSCRIPT-SPECIFIC throughout both tRNAgraph and tRAX: a read whose
+# bowtie2 YR tag shows it aligned to exactly one mature-tRNA transcript. It is NOT
+# genome-level uniqueness. toolsCountReads.getbamcounts() gates adduniquecount() on
+# isuniquetrnamapping() (the YR tag), and toolsGetCoverage fills 'uniquecoverage' from the
+# same predicate, so obs['nreads_*_unique_*'] and var 'uniquecoverage' are the same concept.
+# The genome MAPQ >= 2 filter is a separate, always-on prefilter sitting beneath every read
+# basis and every coverage category -- see tests/unit/test_filtermultimapped_default.py.
+#
+# Every `trnagraph graph` plot selects its counts through resolve_readtype(), so a single
+# --allreads switches the entire command at once. Readtypes therefore arrive WITHOUT a
+# '_unique' component: accepting one would let a caller reintroduce, per graph type, exactly
+# the silent cross-plot inconsistency --allreads exists to remove.
+
+READ_BASIS_UNIQUE = 'unique'
+READ_BASIS_ALL = 'allreads'
+
+#: Readtypes carrying BOTH bases in obs (nreads_<rt>_unique_norm and nreads_<rt>_norm).
+#: Verified against a built object; these five are the ones adataBuild populates twice.
+DUAL_BASIS_READTYPES = ('wholecounts', 'fiveprime', 'threeprime', 'other', 'total')
+
+#: Readtypes adataBuild only ever populates in the all-reads basis -- pre-tRNA and antisense
+#: categories, which tRAX never counted transcript-specifically. Requesting one under the
+#: unique basis falls back to its all-reads column rather than failing, mirroring how the
+#: non-tRNA panels stay all-reads by structural necessity.
+ALL_READS_ONLY_READTYPES = ('wholeprecounts', 'partialprecounts', 'trailercounts', 'antisense')
+
+#: --covtype default per basis. tRAX's four coverage categories partition 'coverage', so the
+#: all-reads basis is that total and the unique basis is its transcript-specific part.
+COVTYPE_DEFAULTS = {READ_BASIS_UNIQUE: 'uniquecoverage', READ_BASIS_ALL: 'coverage'}
+
+
+def read_basis(allreads: bool) -> str:
+    '''Map the --allreads flag onto a basis token. The default (flag absent) is unique.'''
+    return READ_BASIS_ALL if allreads else READ_BASIS_UNIQUE
+
+
+def resolve_readtype(readtype: str, basis: str, adata: Optional[ad.AnnData] = None) -> str:
+    '''
+    Turn a bare readtype (e.g. 'total') into the obs column for `basis`, e.g.
+    'nreads_total_unique_norm' or 'nreads_total_norm'.
+
+    Rejects a readtype that already names a basis ('total_unique'), because --diffrts and
+    --pcareadtypes deliberately no longer carry that dimension -- honouring it would let one
+    graph type sit on a different denominator than the rest without saying so.
+
+    Falls back to the all-reads column, with a warning, for a readtype that has no unique
+    counterpart at all (see ALL_READS_ONLY_READTYPES). When `adata` is supplied the fallback
+    is decided by what obs actually contains rather than by the static list, so an object
+    built by a future adataBuild that does populate them needs no change here.
+    '''
+    logger = logging.getLogger(__name__)
+    if readtype.startswith('nreads_'):
+        raise ValueError(
+            f"Readtype '{readtype}' is already a full obs column name. Pass a bare readtype "
+            f"(one of {list(DUAL_BASIS_READTYPES)}) and let --allreads choose the basis."
+        )
+    if '_unique' in readtype or readtype.endswith('unique'):
+        raise ValueError(
+            f"Readtype '{readtype}' names a read basis. Basis is set once for the whole "
+            f"`graph` command by --allreads, so pass '{readtype.replace('_unique', '')}' "
+            f"instead of '{readtype}'."
+        )
+    if basis not in (READ_BASIS_UNIQUE, READ_BASIS_ALL):
+        raise ValueError(f"Unknown read basis '{basis}'. Expected one of "
+                         f"{[READ_BASIS_UNIQUE, READ_BASIS_ALL]}.")
+
+    all_reads_column = f'nreads_{readtype}_norm'
+    if basis == READ_BASIS_ALL:
+        return all_reads_column
+
+    unique_column = f'nreads_{readtype}_unique_norm'
+    if adata is not None:
+        available = unique_column in adata.obs.columns
+    else:
+        available = readtype not in ALL_READS_ONLY_READTYPES
+    if available:
+        return unique_column
+    logger.warning(
+        f"Readtype '{readtype}' has no transcript-specific (unique) counts; plotting it from "
+        f"all reads ({all_reads_column}) instead. Pre-tRNA and antisense categories are only "
+        f"ever counted across all reads."
+    )
+    return all_reads_column
+
+
+def resolve_covtype(covtype: Optional[str], basis: str) -> str:
+    '''
+    Resolve --covtype. An explicit value is always honoured -- the four tRAX coverage
+    categories are a partition a user may legitimately want to inspect in either mode -- so
+    the basis only supplies the default when none was given.
+    '''
+    if covtype:
+        return covtype
+    return COVTYPE_DEFAULTS[basis]
+
+
 _VARIANT_LAYER_MAP = {'norm': 'norm', 'raw': 'raw', 'allfeatures': 'norm_allfeatures', 'vst': 'vst'}
 
 # Maps a `uns['size_splits'][tag]` key to the default/full uns key it stands in for

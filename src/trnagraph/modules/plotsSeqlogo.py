@@ -5,6 +5,8 @@ import pandas as pd
 
 import logomaker
 
+from . import toolsTG
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.gridspec as gridspec
@@ -15,7 +17,7 @@ plt.rcParams['ps.fonttype'] = 42
 import time
 
 class visualizer():
-    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output):
+    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output, read_basis=toolsTG.READ_BASIS_UNIQUE):
         self.adata = adata
         # Capture original positions for mapping refseq_full
         self.original_positions = self.adata.var[self.adata.var['coverage'] == 'coverage']['positions'].tolist()
@@ -37,8 +39,10 @@ class visualizer():
         # Drop pseudogenes if specified, by dropping the rows where obs.pseudogene == 'tRX'
         if self.pseudogenes:
             self.adata = self.adata[self.adata.obs['pseudogene'] != 'tRX']
-        # Drop rows with nreads_total_norm < 20:
-        # self.adata = self.adata[self.adata.obs['nreads_total_norm'] >= 20]
+        # Sequence logos weight each tRNA by its mean read count, so the basis matters:
+        # a tRNA that only clears the threshold on multi-mapped reads should not shape the
+        # consensus when unique counts are what was asked for.
+        self.readtype = toolsTG.resolve_readtype('total', read_basis, self.adata)
         # Create a list of the positions from the adata
         adata_pos = self.adata.var[self.adata.var['coverage'] == 'coverage']
         if self.logosize == 'full' or self.logosize == 'noloop':
@@ -63,12 +67,12 @@ class visualizer():
             # For each row in the df check the tRNA against the adata normalized reads and drop if less than 20
             drop_list = []
             for trna in tdf.index:
-                if self.adata[self.adata.obs['trna'] == trna].obs['nreads_total_unique_norm'].mean() < 20:
+                if self.adata[self.adata.obs['trna'] == trna].obs[self.readtype].mean() < 20:
                     drop_list.append(trna)
             tdf = tdf.drop(drop_list).T
             # Get the value counts for each base in each row then map to the seq_df_alt
             for trna in tdf.columns:
-                base_mean = self.adata[self.adata.obs['trna'] == trna].obs['nreads_total_unique_norm'].mean()
+                base_mean = self.adata[self.adata.obs['trna'] == trna].obs[self.readtype].mean()
                 for pos in tdf.index:
                     # multiply the value counts by the base mean then add to the df_seqinfo_alt
                     if tdf.loc[int(pos),trna] != '-':

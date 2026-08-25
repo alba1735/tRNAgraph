@@ -61,7 +61,7 @@ def _collapse_to_corr_group(df_wide, sample_to_group, corr_group):
         return df_wide
     return df_wide.rename(columns=lambda c: sample_to_group.get(str(c), c)).T.groupby(level=0, observed=True).mean().T
 
-def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True):
+def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
     '''
     Generate correlation graphs for each sample in an AnnData object.
 
@@ -73,10 +73,17 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
     same three-way pattern as plotsPca.py.
     '''
 
-    # Create a correlation matrix from reads stored in adata observations
-    df = pd.DataFrame(adata.obs, columns=['trna', corr_group] + [i for i in adata.obs.columns if '_norm' in i])
+    # Previously every '_norm' obs column got a matrix, so each run emitted both bases with
+    # nothing distinguishing them but a filename token. Correlation has no comparative
+    # overview page, so it plots one basis, selected once for the command by --allreads.
+    is_unique_basis = read_basis == toolsTG.READ_BASIS_UNIQUE
+    readtype_columns = [
+        i for i in adata.obs.columns
+        if '_norm' in i and ('_unique_' in i) == is_unique_basis
+    ]
+    df = pd.DataFrame(adata.obs, columns=['trna', corr_group] + readtype_columns)
 
-    for i in df.columns[2:]:
+    for i in readtype_columns:
         df_corr = df.pivot_table(index='trna', columns=corr_group, values=i, observed=True)
         title = i.split('_')[1]
         filename = f'{corr_method}_{corr_group}_{title}_correlation_matrix'

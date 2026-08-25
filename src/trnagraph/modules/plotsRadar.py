@@ -5,6 +5,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from . import toolsTG
+
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
@@ -13,7 +15,7 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 class visualizer:
-    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False):
+    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False, read_basis=toolsTG.READ_BASIS_UNIQUE):
         self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.radargrp = radargrp
@@ -22,10 +24,15 @@ class visualizer:
         self.colormap = colormap
         self.output = output
         self.threaded = threaded
+        # Radar has no comparative overview page -- its outputs are one file per basis, which
+        # is the accidental-mixing case, not the deliberate side-by-side one. It therefore
+        # plots a single basis, chosen once for the whole command by --allreads, instead of
+        # emitting both every run.
+        self.read_basis = read_basis
+        self.readtype = toolsTG.resolve_readtype('total', read_basis, adata)
 
     def isotype_plots(self):
-        for readtype in ['nreads_total_unique_norm', 'nreads_total_norm']:
-            df = self.adata.uns['anticodon_counts'].copy()
+        for readtype in [self.readtype]:
             df = pd.DataFrame(self.adata.obs, columns=['iso', 'amino', self.radargrp, readtype])
             # Drop rows where iso is NNN
             df = df[df['iso']!='NNN']
@@ -119,8 +126,12 @@ class visualizer:
             outname += f'{self.output}all_gt1percent_radar_by_{self.radargrp}'
         if self.radarscaled:
             outname += '_scaled'
-        if readtype == 'nreads_total_unique_norm':
+        # Filenames keep naming the basis even though only one is produced per run: the
+        # directory alone would not say which, and the two are not comparable by eye.
+        if '_unique_' in readtype:
             outname += '_unique'
+        else:
+            outname += '_allreads'
         outname += f'_{self.radarmethod}.pdf'
         if self.threaded:
             self.threaded += f'Plot saved to {outname}\n'

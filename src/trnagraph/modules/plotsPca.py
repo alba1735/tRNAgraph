@@ -119,7 +119,21 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     return threaded
 
 
-def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True, is_full_variant=True):
+# PCA's both-bases comparison used to exist only as a side effect of --pcareadtypes
+# defaulting to ['total_unique', 'total']. Now that the basis has been lifted out of that
+# flag and onto the command-wide --allreads, the comparison is pinned here instead, so it
+# survives whatever --pcareadtypes asks for and whichever basis is active. Same rationale
+# and same constant name as plotsVolcano.OVERVIEW_TRNA_READTYPES: a labelled side-by-side
+# comparison is not the silent cross-plot inconsistency --allreads exists to remove.
+OVERVIEW_TRNA_READTYPES = ('nreads_total_unique_norm', 'nreads_total_norm')
+
+
+def _readtype_label(column):
+    '''obs column name -> the token used in filenames/titles, e.g. 'total_unique'.'''
+    return column.replace('nreads_', '').replace('_norm', '')
+
+
+def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
     '''
     Generate PCA visualizations for each sample in an AnnData object.
 
@@ -134,9 +148,18 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
     #     raise ValueError('Specified pcamarkers not found in AnnData object.')
     # if pcacolors not in adata.obs.columns:
     #     raise ValueError('Specified pcacolor not found in AnnData object.')
-    # Create a list of readtypes to iterate over if 'all' is specified
+    # --pcareadtypes carries bare readtypes; the basis comes from --allreads via read_basis.
+    # 'all' means every readtype that exists in both bases (toolsTG.DUAL_BASIS_READTYPES) --
+    # the previous literal list named 'whole_unique', which is not a column adataBuild has
+    # ever written (it is 'wholecounts_unique'), so that entry silently produced nothing.
     if 'all' in pcareadtypes:
-        pcareadtypes = ['whole_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique', 'wholecounts', 'fiveprime', 'threeprime', 'other', 'total']
+        pcareadtypes = list(toolsTG.DUAL_BASIS_READTYPES)
+    readtype_columns = [toolsTG.resolve_readtype(rt, read_basis, adata) for rt in pcareadtypes]
+    # Guarantee the both-bases comparison, appending only what was not already requested so a
+    # readtype is never plotted twice into the same filename.
+    for overview_column in OVERVIEW_TRNA_READTYPES:
+        if overview_column not in readtype_columns:
+            readtype_columns.append(overview_column)
 
     # Create dictionary of sample and pcamarkers parameter for use in seaborn, and validate the
     # colormap. This only depends on pcamarkers/pcacolors (not on readtype), so it's computed once
@@ -158,9 +181,8 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                 colormap = None
                 break
 
-    for readtype in pcareadtypes:
-        # Rename the readtype column to nreads_{readtype}_norm to match adata.obs
-        rt = f'nreads_{readtype}_norm'
+    for rt in readtype_columns:
+        readtype = _readtype_label(rt)
         # Create a dataframe with trna, pcamarkers parameter, and nreads from adata
         if pcamarkers == pcacolors:
             df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, rt])

@@ -12,7 +12,9 @@ import pandas as pd
 
 from trnagraph.modules.plotsVolcano import visualizer
 
-READTYPES = ['total_unique']
+# plotsVolcano.visualizer() takes fully-resolved obs column names: adataGraph applies the
+# command-wide read basis once, via toolsTG.resolve_readtype(), before calling in.
+READTYPES = ['nreads_total_unique_norm']
 CUTOFF = 5
 
 
