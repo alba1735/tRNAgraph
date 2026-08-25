@@ -1633,7 +1633,8 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
     Merge a VariantContribution (from AnnDataBuilder.compute_variant_contribution()) into
     `target_adata` as a new size-split variant, under the naming scheme documented in
     tRNAgraph/docs/data_structure.md:
-      - layers[f'raw_{tag}'] / layers[f'norm_{tag}'] / layers[f'norm_allfeatures_{tag}'] / layers[f'vst_{tag}']
+      - layers[f'raw_{tag}'] / layers[f'norm_{tag}'] / layers[f'vst_{tag}'] (deliberately no
+        norm_allfeatures_{tag}: all-feature normalization is complete-variant only)
       - obsm[f'size_split_{tag}'] (all numeric per-obs columns, unsuffixed names)
       - uns['size_splits'][tag] (sizefactors, counts, log2FC, build provenance)
     Mutates and returns `target_adata` in place; does not write it to disk -- the caller
