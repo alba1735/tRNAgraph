@@ -4,6 +4,18 @@ name: Release
 # tab (or `gh workflow run release.yml -f branch=dev`) whenever a new tagged version/pre-release
 # should be cut, per the branch selected. `dev` produces pre-releases (e.g. 1.9.0-alpha.1);
 # `main` (once brought in sync with dev and used as the stable branch) produces final releases.
+#
+# `bump` overrides the version increment python-semantic-release would derive from the commit
+# log. It defaults to `minor` because 2.0.0 is reserved for roadmap completion and the
+# accompanying paper release -- a `!`/BREAKING CHANGE commit would otherwise consume that
+# number automatically, since the conventional parser treats it as a major bump. Switch to
+# `auto` once 2.0.0 has been cut and normal semver arithmetic should resume.
+#
+# --as-prerelease is passed whenever the branch is `dev`, and is NOT optional: forcing a bump
+# level bypasses the prerelease determination that [tool.semantic_release.branches.dev] would
+# otherwise apply, so `version --minor` alone yields a bare `1.11.0` off dev rather than
+# `1.11.0-alpha.1`. It is a no-op when `bump` is `auto`. Note this is distinct from
+# --prerelease, which yields the next prerelease of the CURRENT version (1.10.4-alpha.1).
 on:
   workflow_dispatch:
     inputs:
@@ -15,6 +27,16 @@ on:
         options:
           - dev
           - main
+      bump:
+        description: "Version increment (auto = derive from commit log)"
+        required: true
+        default: "minor"
+        type: choice
+        options:
+          - minor
+          - patch
+          - major
+          - auto
 
 permissions:
   contents: write
@@ -44,4 +66,16 @@ jobs:
       - name: Run semantic-release (version bump, changelog, tag, GitHub Release)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: semantic-release version
+          BUMP: ${{ github.event.inputs.bump }}
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$BUMP" != "auto" ]; then
+            args+=("--$BUMP")
+          fi
+          if [ "$BRANCH" = "dev" ]; then
+            args+=("--as-prerelease")
+          fi
+          echo "+ semantic-release version ${args[*]-}"
+          semantic-release version ${args[@]+"${args[@]}"}
