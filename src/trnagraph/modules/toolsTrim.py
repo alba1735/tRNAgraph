@@ -11,6 +11,9 @@ from pydantic import ValidationError
 from . import plotsTrimmingStats, toolsTG
 from .toolsSchemas import ColormapFile
 
+# Where trimmed output lands when a manifest's OutputPrefix carries no directory of its own.
+DEFAULT_TRIM_DIR = 'processed/trimmed'
+
 class FastpTrimmer:
     '''
     Class to handle adapter trimming, merging, and UMI extraction using fastp.
@@ -75,7 +78,15 @@ class FastpTrimmer:
                     output_prefix = parts[0]
                     r1 = parts[1]
                     r2 = parts[2] if len(parts) > 2 else None
-                    
+
+                    # A bare OutputPrefix (no directory component) writes into DEFAULT_TRIM_DIR.
+                    # Resolving that here -- once, before anything is keyed on it -- is what
+                    # keeps self.samples pointing at the real output location. Deriving it
+                    # again downstream is what previously left _generate_summary() hunting for
+                    # fastp's JSON report in the working directory and finding nothing.
+                    if not os.path.dirname(output_prefix):
+                        output_prefix = os.path.join(DEFAULT_TRIM_DIR, output_prefix)
+
                     if not os.path.isfile(r1):
                         raise FileNotFoundError(f"Read 1 file not found: {r1}")
                     if r2 and not os.path.isfile(r2):
@@ -87,6 +98,20 @@ class FastpTrimmer:
             sys.exit(1)
         return samples
 
+    @staticmethod
+    def _primary_output(output_prefix, files):
+        '''
+        The single definition of what fastp's primary output for a sample is called: paired-end
+        input is merged into one file, single-end input is simply trimmed. Both
+        _construct_command() (which tells fastp where to write) and _generate_summary() (which
+        records the path in trim_metadata.tsv) read the rule from here instead of each spelling
+        it out -- the two spellings had drifted, and the metadata template named a
+        `_merged_trimmed.fastq.gz` that fastp never writes.
+        '''
+        if files['r2']:
+            return f"{output_prefix}_merged.fastq.gz"
+        return f"{output_prefix}_trimmed.fastq.gz"
+
     def _construct_command(self, output_prefix, files):
         '''
         Constructs the fastp command line arguments.
@@ -94,15 +119,9 @@ class FastpTrimmer:
         r1 = files['r1']
         r2 = files['r2']
         
-        # Determine output directory and base name
+        # _parse_manifest() has already resolved a bare prefix to DEFAULT_TRIM_DIR, so the
+        # prefix arrives fully qualified here -- only its directory still needs creating.
         output_dir = os.path.dirname(output_prefix)
-        
-        # Default to processed/trimmed if no directory specified
-        if not output_dir:
-            output_dir = "processed/trimmed"
-            output_prefix = os.path.join(output_dir, output_prefix)
-
-        # Ensure output directory exists
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
         
@@ -141,7 +160,7 @@ class FastpTrimmer:
 
             # Merging
             # Output merged file
-            merged_out = f"{output_prefix}_merged.fastq.gz"
+            merged_out = self._primary_output(output_prefix, files)
             cmd.extend(['--merge', '--merged_out', merged_out])
 
             # Unmerged outputs (optional, but good for debug)
@@ -158,7 +177,7 @@ class FastpTrimmer:
 
         else:
             # Single-end output
-            out1 = f"{output_prefix}_trimmed.fastq.gz"
+            out1 = self._primary_output(output_prefix, files)
             cmd.extend(['--out1', out1])
             primary_output = out1
 
@@ -281,6 +300,10 @@ class FastpTrimmer:
         similar to the old logic but more robust.
         '''
         summary_data = []
+        # Prefixes fastp actually produced a report for. A sample whose run failed has no
+        # trimmed output on disk, so it must not appear in the metadata template -- that would
+        # hand `analyze build` a path to a file that isn't there.
+        summarized = []
 
         self.logger.info("Generating summary report...")
         for output_prefix in self.samples:
@@ -324,26 +347,31 @@ class FastpTrimmer:
                     row['Trimmed_Reads'] = row['Clean_Reads']
 
                 summary_data.append(row)
+                summarized.append(output_prefix)
 
         if summary_data:
             df = pd.DataFrame(summary_data)
             
-            # Determine output directory from the first sample
-            first_output_prefix = list(self.samples.keys())[0]
-            output_dir = os.path.dirname(first_output_prefix)
-            
+            # One run produces one summary, placed alongside the first sample that
+            # produced output. Every prefix is directory-qualified by now, so a manifest
+            # writing into several directories still gets a single template -- say which
+            # directory it landed in rather than silently picking the first.
+            output_dirs = list(dict.fromkeys(os.path.dirname(p) for p in summarized))
+            output_dir = output_dirs[0]
+
             # Create manifest update file (Sample -> Final Output)
             manifest_out = os.path.join(output_dir, "trim_metadata.tsv")
+            if len(output_dirs) > 1:
+                self.logger.warning(
+                    f"Manifest writes trimmed output into {len(output_dirs)} directories "
+                    f"({', '.join(output_dirs)}); a single summary covering all of them "
+                    f"is written to {output_dir}, including {manifest_out}."
+                )
             with open(manifest_out, 'w') as f:
                 # write header
                 f.write("fastq\tsample\tgroup\n")
-                for output_prefix in self.samples:
-                    # Logic to determine the 'primary' output file
-                    if self.samples[output_prefix]['r2']:
-                         # If paired, primary for tRNA is usually the merged file
-                         outfile = f"{output_prefix}_merged_trimmed.fastq.gz"
-                    else:
-                         outfile = f"{output_prefix}_trimmed.fastq.gz"
+                for output_prefix in summarized:
+                    outfile = self._primary_output(output_prefix, self.samples[output_prefix])
                     f.write(f"{outfile}\t{os.path.basename(output_prefix)}\t{os.path.basename(output_prefix)}\n")
 
             # Save Stats
