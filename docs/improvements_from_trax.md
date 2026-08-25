@@ -34,6 +34,7 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | Trimming | `cutadapt` / `SeqPrep` | `fastp` | One tool covering adapter and quality trimming instead of two |
 | Size factors | Computed from all features | Computed from tRNAs only. The all-feature set is still written, as `<exp>-allfeature_SizeFactors.txt` | Non-tRNA abundance can shift independently of tRNAs, which distorts tRNA normalisation when both go into the same reference set |
 | Mismatch data | Per-position detail only via an R script | Stored at full per-position granularity in the AnnData object | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary |
+| Read basis in plots | Each plot picked its own — some unique reads, some all reads, with nothing on the figure saying which | Every graph type uses unique (transcript-specific) reads by default; `--allreads` switches the whole command at once | Two plots of one dataset can no longer rest on different denominators without saying so |
 
 ---
 
@@ -42,6 +43,7 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 - **Read-length splits** — `analyze build -c 60` produces `u60`/`o60` variants inside the same `.h5ad`, no separate runs.
 - **Clustering** — `analyze cluster` adds UMAP/HDBSCAN coordinates to the object.
 - **A plotting layer over the object** — coverage, PCA, volcano, heatmap, radar, seqlogo, correlation, count plots from `trnagraph graph`.
+- **Selectable coverage specificity** — `--covtype unique|isodecoder|isotype|notamino|total` picks any of tRAX's four read-assignment categories, each in its own folder, plus a stacked plot of all four at once. tRAX computed the same partition but only ever surfaced it as one figure and a `unique/` folder.
 - **A built-in demo pipeline** — `trnagraph tools test` runs end to end on a bundled dataset.
 
 ---
@@ -59,6 +61,8 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | `--nofrag` | *(removed)* | |
 | `--nosizefactors` | *(removed)* | Was broken |
 | `--maponly` | *(removed)* | From `tools test` |
+| `--diffrts total_unique` | `--diffrts total` + `--allreads` | The read basis moved out of the readtype and onto one command-wide flag, so graph types cannot disagree |
+| `--pcareadtypes total_unique total` | `--pcareadtypes total` | Same change. The PCA and volcano overview pages still show both bases side by side |
 
 `--skip-env-check` and `--skip-update-check` are *global* options — they go before the subcommand (`trnagraph --skip-env-check analyze build ...`).
 

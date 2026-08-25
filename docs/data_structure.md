@@ -235,12 +235,22 @@ The `var` dataframe defines the **dimensions of the coverage tracks**. It repres
 
 The `coverage` column in `var` is critical for filtering `adata.X`. It distinguishes between different biological signals mapped to the same nucleotide position.
 
-- **`uniquecoverage`**: Depth of uniquely mapped reads at this position.
-- **`wholecoverage`**: Depth of reads classified as "Whole tRNAs".
-- **`mismatchedbases`**: Count of reads containing a mismatch at this position (proxy for RNA modifications).
-- **`deletions`**: Count of reads with a deletion at this position.
+**Read specificity.** Every read is binned into exactly one of four categories by how specifically it could be assigned. They are mutually exclusive and sum to `coverage`, so they partition the signal rather than filtering it — plot them together with `graph -g coverage` (see `--covtype` in the [CLI reference](cli_reference.md)).
+
+- **`coverage`**: Total depth at this position — the sum of the four categories below.
+- **`uniquecoverage`**: Reads assigned to exactly one tRNA transcript ("Transcript Specific"). Note this is *transcript* specificity, not genome-level uniqueness; the genome MAPQ filter is applied separately and always.
+- **`multitrnacoverage`**: Reads matching one anticodon but several transcripts ("Isodecoder Specific").
+- **`multianticodoncoverage`**: Reads matching one amino acid but several anticodons ("Isotype Specific").
+- **`multiaminocoverage`**: Reads matching several amino acids ("Not Amino Specific").
+
+**Read ends and modifications.**
+
 - **`readstarts`**: Count of reads beginning at this position (5' end definition).
 - **`readends`**: Count of reads terminating at this position (3' end definition).
+- **`mismatchedbases`**: Count of reads containing a mismatch at this position (proxy for RNA modifications).
+- **`deletedbases`** / **`deletions`**: Counts of reads with a deletion at this position.
+- **`adenines`**, **`thymines`**, **`cytosines`**, **`guanines`**: Per-base counts at this position, used to resolve which substitution a mismatch represents.
+- **`tRNAreadstotal`**: Total reads for the feature, repeated across positions.
 
 ---
 

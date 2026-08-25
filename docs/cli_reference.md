@@ -226,6 +226,10 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--colormap`**: JSON file for custom colors.
 - **`--regen_uns`**: Force regeneration of calculated stats.
 - **`--variant`**: Select which `<norm>:<tag>` variant to plot, e.g. `raw:full`, `norm:u60`, `allfeatures:o60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Plots for a non-default variant are written to a `<norm>_<tag>/` subfolder under each graph type's output directory, so different `--variant` runs into the same `-o` don't overwrite each other.
+- **`--allreads`**: Plot every graph type from all reads instead of unique reads. Default: `False` (unique). "Unique" here means **transcript-specific** — a read that aligned to exactly one mature tRNA transcript — not genome-level uniqueness; the genome MAPQ filter is separate and always applied. This is one option for the whole command, so two plots of the same dataset never rest on different denominators. Plots for every graph type except coverage are written to an `allreads/` subfolder (nested inside the `--variant` folder when both are used); coverage is excluded because `--covtype` already names what was plotted. Readtypes with no transcript-specific counts (`antisense`, and the pre-tRNA categories) fall back to all reads with a warning.
+
+> [!NOTE]
+> The PCA and volcano *combined overview* pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 **Cluster Plot Options:**
 
@@ -237,21 +241,34 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 **Coverage Plot Options:**
 
 - **`--covgrp`**: Grouping variable. Default: `group`.
-- **`--covtype`**: Coverage type (e.g., `uniquecoverage`).
+- **`--covtype`**: Which coverage category to plot. Reads are binned by how specifically they could be assigned, into four mutually exclusive categories that sum to total coverage:
+
+  | Alias | `adata.var` value | Meaning |
+  | --- | --- | --- |
+  | `unique` / `transcript` | `uniquecoverage` | Assigned to exactly one tRNA transcript |
+  | `isodecoder` | `multitrnacoverage` | One anticodon, several transcripts |
+  | `isotype` | `multianticodoncoverage` | One amino acid, several anticodons |
+  | `notamino` | `multiaminocoverage` | Several amino acids |
+  | `total` | `coverage` | The sum of all four |
+
+  Any other `adata.var` coverage value (`readstarts`, `readends`, `mismatchedbases`, `deletions`, …) is also accepted. Default: `unique`, or `total` under `--allreads`; an explicit value is always honored. Each category is written to its own subfolder named for its alias, so separate `--covtype` runs into the same `-o` never overwrite each other.
 - **`--covmethod`**: Combination method (`mean`).
 - **`--combinedpdfonly`**: Skip individual tRNA PDFs. Default: `False`.
+
+> [!NOTE]
+> A stacked overview of all four categories at once is written to the top of the coverage output directory (`combined_<covobs>_specificity_by_<covgrp>_<covmethod>.pdf`), above the per-category subfolders. It shows what fraction of each position's signal is transcript-specific versus only isodecoder-, isotype- or amino-level assignable — reading that from the per-category folders would mean comparing four PDFs by eye. It is the same under `--allreads`, which selects a category rather than changing the partition.
 
 **Heatmap Options:**
 
 - **`--heatgrp`**: Grouping variable. Default: `group`.
-- **`--diffrts`**: Read types for differential analysis (shared with volcano).
+- **`--diffrts`**: Read types for differential analysis (shared with volcano). Bare readtypes only (`total`, `wholecounts`, `fiveprime`, `threeprime`, `other`) — the read basis comes from `--allreads`, so a value carrying a `_unique` suffix is rejected. Default: all five.
 - **`--heatcutoff`**: Read count cutoff. Default: `80`.
 - **`--heatsubplots`**: Also save each individual comparison's heatmap as its own PDF, in an `individual/` subfolder next to the combined multi-page PDFs (which are unaffected). Default: `False`.
 
 **Volcano Options:**
 
 - **`--volgrp`**: Grouping variable used both to define the pairwise group comparisons and to look up per-group colors in `--colormap` (the same `<obs_column>: {<value>: <color>}` shape used by PCA, keyed on `--volgrp`'s value, e.g. `"group"`). Default: `group`.
-- **`--diffrts`**: Read types to generate per-readtype tRNA volcano plots for, shared with heatmap.
+- **`--diffrts`**: Read types to generate per-readtype tRNA volcano plots for, shared with heatmap. See the heatmap entry above for accepted values.
 - **`--volcutoff`**: Read count cutoff. Default: `80`.
 - **`--vollabels`**: Number of top significant markers to label on each plot, ranked by `|log2FC| * -log10(p-value)`. Default: `100` (labeling every significant marker has unbounded cost on large datasets); pass `0` to disable labels entirely, or any other value to label exactly that many.
 
@@ -262,7 +279,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`--pcamarkers`**: Marker style grouping. Default: `sample`.
 - **`--pcacolors`**: Color grouping. Default: `group`.
-- **`--pcareadtypes`**: Read types to generate per-readtype tRNA PCA plots for (`tRNA_<pcamarkers>_by_<pcacolors>_<readtype>_*`). Default: `total_unique`, `total`.
+- **`--pcareadtypes`**: Read types to generate per-readtype tRNA PCA plots for (`tRNA_<pcamarkers>_by_<pcacolors>_<readtype>_*`). Bare readtypes only — the read basis comes from `--allreads`. Default: `total`. Pass `all` for every readtype that exists in both bases. The combined overview always adds both bases of `total` regardless.
 
 > [!NOTE]
 > Two extra plots are generated automatically whenever `adata.uns['nontRNA_counts']` is non-empty (i.e., `--gtf` was used at `analyze build`): a non-tRNA-only plot and a combined tRNA + non-tRNA plot. No additional flags are needed, and both are skipped with a log message if non-tRNA counts are unavailable. These use a different DESeq2 normalization than the per-readtype plots — see [Data Structure: Graphing Notes](data_structure.md#6-graphing-notes).
