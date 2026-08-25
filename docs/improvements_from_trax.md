@@ -21,6 +21,7 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | **Read classification order** | A read overlapping several features was assigned via Python `set` iteration — hash-order dependent, so results varied between runs | Candidates sorted deterministically; same input always gives the same answer |
 | **`avgs.txt` columns** | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast | Real per-group means, one column per group |
 | **`--mincoverage` scope** | Dropped low-count genes from the coverage file, which silently removed them from *every* downstream output | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row |
+| **`aminocounts` / `anticodoncounts`** | Held unique-read counts, duplicating `unique/` — so no all-reads view existed | Main files hold all reads; `unique/` keeps the unique breakdown and still matches tRAX exactly |
 
 ---
 
