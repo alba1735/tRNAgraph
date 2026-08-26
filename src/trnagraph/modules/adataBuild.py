@@ -8,6 +8,7 @@ import subprocess
 import logging
 import numpy as np
 from types import SimpleNamespace
+from typing import Dict, Tuple
 from multiprocessing import cpu_count
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
@@ -763,6 +764,65 @@ def _precompute_default_log2fc(view, threads=None):
         toolsTG.adataLog2FC(view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
 
 
+def _sprinzl_location_maps() -> Tuple[Dict[str, str], Dict[str, str]]:
+    '''
+    Map each Sprinzl position to (a) its structural region and (b) which half of the tRNA it
+    falls in, as written into `adata.var['location']` and `adata.var['half']`.
+
+    Every key must be a `str`: `var['positions']` holds strings, so an int key silently matches
+    nothing and the position comes out NaN. That is exactly how the anticodon stem (27-31,
+    39-43) went unlabeled -- it was the only region built from a bare `range()`.
+    '''
+    loc_dict: Dict[str, str] = {}
+    loc_half_dict: Dict[str, str] = {}
+    # Define the location of acceptor stem
+    loc_dict.update({i: 'fiveprime_acceptorstem' for i in [str(i) for i in range(-1, 8)]})
+    loc_dict.update({i: 'threeprime_acceptorstem' for i in [str(i) for i in range(66, 77)]})
+    loc_half_dict.update({i: 'fiveprime' for i in [str(i) for i in range(-1, 8)]})
+    loc_half_dict.update({i: 'threeprime' for i in [str(i) for i in range(66, 77)]})
+    # Define the location of acceptor stem to d stem
+    loc_a_to_d_internal = ['8', '9']
+    loc_dict.update({i: 'a_to_d_internal' for i in loc_a_to_d_internal})
+    loc_half_dict.update({i: 'fiveprime' for i in loc_a_to_d_internal})
+    # Define the location of d stem and loop
+    loc_dstem = [str(i) for i in range(10, 14)] + [str(i) for i in range(22, 26)]
+    loc_dict.update({i: 'dstem' for i in loc_dstem})
+    loc_half_dict.update({i: 'fiveprime' for i in loc_dstem})
+    loc_dloop = [str(i) for i in range(14, 22)] + ['17a', '20a', '20b']
+    loc_dict.update({i: 'dloop' for i in loc_dloop})
+    loc_half_dict.update({i: 'fiveprime' for i in loc_dloop})
+    # Define the location of d stem to anticodon stem
+    loc_d_to_anticodon_internal = ['26']
+    loc_dict.update({i: 'd_to_anticodon_internal' for i in loc_d_to_anticodon_internal})
+    loc_half_dict.update({i: 'fiveprime' for i in loc_d_to_anticodon_internal})
+    # Define the location of anticodon stem and loop
+    loc_fiveprime_anticodonstem = [str(i) for i in range(27, 32)]
+    loc_threeprime_anticodonstem = [str(i) for i in range(39, 44)]
+    loc_dict.update({i: 'fiveprime_anticodonstem' for i in loc_fiveprime_anticodonstem})
+    loc_dict.update({i: 'threeprime_anticodonstem' for i in loc_threeprime_anticodonstem})
+    loc_half_dict.update({i: 'center' for i in loc_fiveprime_anticodonstem})
+    loc_half_dict.update({i: 'center' for i in loc_threeprime_anticodonstem})
+    loc_anticodonloop = [str(i) for i in range(32, 39)]
+    loc_dict.update({i: 'anticodonloop' for i in loc_anticodonloop})
+    loc_half_dict.update({i: 'center' for i in loc_anticodonloop})
+    # Define the location of anticodon stem to t stem
+    loc_anticodon_to_t_internal = [str(i) for i in range(44, 49)]
+    loc_dict.update({i: 'anticodon_to_t_internal' for i in loc_anticodon_to_t_internal})
+    loc_half_dict.update({i: 'threeprime' for i in loc_anticodon_to_t_internal})
+    # Define the location of extension loop
+    loc_e = ['e' + str(i) for i in range(1, 20)]
+    loc_dict.update({i: 'extensionloop' for i in loc_e})
+    loc_half_dict.update({i: 'threeprime' for i in loc_e})
+    # Define the location of t stem and loop
+    loc_tstem = [str(i) for i in range(49, 54)] + [str(i) for i in range(61, 66)]
+    loc_dict.update({i: 'tstem' for i in loc_tstem})
+    loc_half_dict.update({i: 'threeprime' for i in loc_tstem})
+    loc_tloop = [str(i) for i in range(54, 61)]
+    loc_dict.update({i: 'tloop' for i in loc_tloop})
+    loc_half_dict.update({i: 'threeprime' for i in loc_tloop})
+    return loc_dict, loc_half_dict
+
+
 class AnnDataBuilder():
     '''
     Create h5ad AnnData object
@@ -1413,50 +1473,7 @@ class AnnDataBuilder():
         adata.var['positions'] = positions
         adata.var['coverage'] = coverage
         # Create sprinzl position and fragment type information
-        loc_dict, loc_half_dict = {}, {}
-        # Define the location of acceptor stem
-        loc_dict.update({i:'fiveprime_acceptorstem' for i in [str(i) for i in range(-1,8)]})
-        loc_dict.update({i:'threeprime_acceptorstem' for i in [str(i) for i in range(66,77)]})
-        loc_half_dict.update({i:'fiveprime' for i in [str(i) for i in range(-1,8)]})
-        loc_half_dict.update({i:'threeprime' for i in [str(i) for i in range(66,77)]})
-        # Define the location of acceptor stem to d stem
-        loc_a_to_d_internal = ['8','9']
-        loc_dict.update({i:'a_to_d_internal' for i in loc_a_to_d_internal})
-        loc_half_dict.update({i:'fiveprime' for i in loc_a_to_d_internal})
-        # Define the location of d stem and loop
-        loc_dstem = [str(i) for i in range(10,14)] + [str(i) for i in range(22,26)]
-        loc_dict.update({i:'dstem' for i in loc_dstem})
-        loc_half_dict.update({i:'fiveprime' for i in loc_dstem})
-        loc_dloop = [str(i) for i in range(14,22)] + ['17a','20a','20b']
-        loc_dict.update({i:'dloop' for i in loc_dloop})
-        loc_half_dict.update({i:'fiveprime' for i in loc_dloop})
-        # Define the location of d stem to anticodon stem
-        loc_d_to_anticodon_internal = ['26']
-        loc_dict.update({i:'d_to_anticodon_internal' for i in loc_d_to_anticodon_internal})
-        loc_half_dict.update({i:'fiveprime' for i in loc_d_to_anticodon_internal})
-        # Define the location of anticodon stem and loop
-        loc_dict.update({i:'fiveprime_anticodonstem' for i in range(27,32)})
-        loc_dict.update({i:'threeprime_anticodonstem' for i in range(39,44)})
-        loc_half_dict.update({i:'center' for i in range(27,32)})
-        loc_half_dict.update({i:'center' for i in range(39,44)})
-        loc_anticodonloop = [str(i) for i in range(32,39)]
-        loc_dict.update({i:'anticodonloop' for i in loc_anticodonloop})
-        loc_half_dict.update({i:'center' for i in loc_anticodonloop})
-        # Define the location of anticodon stem to t stem
-        loc_anticodon_to_t_internal = [str(i) for i in range(44,49)]
-        loc_dict.update({i:'anticodon_to_t_internal' for i in loc_anticodon_to_t_internal})
-        loc_half_dict.update({i:'threeprime' for i in loc_anticodon_to_t_internal})
-        # Define the location of extension loop
-        loc_e = ['e' + str(i) for i in range(1,20)]
-        loc_dict.update({i:'extensionloop' for i in loc_e})
-        loc_half_dict.update({i:'threeprime' for i in loc_e})
-        # Define the location of t stem and loop
-        loc_tstem = [str(i) for i in range(49,54)] + [str(i) for i in range(61,66)]
-        loc_dict.update({i:'tstem' for i in loc_tstem})
-        loc_half_dict.update({i:'threeprime' for i in loc_tstem})
-        loc_tloop = [str(i) for i in range(54,61)]
-        loc_dict.update({i:'tloop' for i in loc_tloop})
-        loc_half_dict.update({i:'threeprime' for i in loc_tloop})
+        loc_dict, loc_half_dict = _sprinzl_location_maps()
         # Add the location data to adata object
         adata.var['location'] = adata.var['positions'].map(loc_dict)
         adata.var['half'] = adata.var['positions'].map(loc_half_dict)
