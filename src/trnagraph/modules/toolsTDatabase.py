@@ -8,11 +8,44 @@ import subprocess
 import multiprocessing
 import logging
 from collections import defaultdict
+from typing import Tuple
 
 # Custom external modules (Assuming these exist in the PYTHONPATH)
 from . import toolsGetMaturetRNAs
 from . import toolsAligntRNALocus
 from . import toolsTG
+
+
+def _covariance_models(orgmode: str) -> Tuple[str, str, bool]:
+    '''
+    Infernal covariance models for an organism mode: (mature model, tRNA model, prokaryotic mode).
+
+    Prokaryotic mode is a property of the domain, not a separate switch -- bacteria and archaea
+    lack the eukaryotic 3' CCA addition, so their models pair with prok_mode=True. `--forcecca`
+    overrides that downstream; this function only reports the domain default.
+
+    Model paths come from toolsTG.assets_dir() so they resolve inside the installed package under
+    both `pip install -e .` and a plain `pip install .`.
+    '''
+    models = {
+        'euk': ('trnamature-euk.cm', 'TRNAinf-euk.cm', False),
+        'arch': ('trnamature-arch.cm', 'TRNAinf-arch.cm', True),
+        'mito': ('TRNAMatureMitoinf.cm', 'TRNAinf.cm', False),
+        'bact': ('trnamature-bact.cm', 'TRNAinf-bact.cm', True),
+    }
+    if orgmode not in models:
+        # tRNADatabaseBuilder.__init__ already validates orgmode against POSITION_TABLES, so this
+        # is unreachable in practice. It exists because the if/elif chain this replaced simply
+        # left both model names unbound for an unrecognised mode, turning a typo into an
+        # UnboundLocalError raised well away from its cause.
+        raise ValueError(
+            f"Unknown orgmode {orgmode!r} for covariance model selection. "
+            f"Expected one of: {', '.join(sorted(models))}."
+        )
+    mature_name, trna_name, prok_mode = models[orgmode]
+    cm_dir = os.path.join(toolsTG.assets_dir(), 'cm')
+    return os.path.join(cm_dir, mature_name), os.path.join(cm_dir, trna_name), prok_mode
+
 
 class tRNADatabaseBuilder:
     '''
@@ -236,22 +269,8 @@ class tRNADatabaseBuilder:
             self._run_shell("samtools faidx " + self.genome)
 
         # Determine Covariance Models
-        prok_mode = False
-        if self.orgmode == "euk":
-            mature_model = self.script_dir + 'assets/cm/trnamature-euk.cm'
-            trna_model = self.script_dir + 'assets/cm/TRNAinf-euk.cm'
-        elif self.orgmode == "arch":
-            mature_model = self.script_dir + 'assets/cm/trnamature-arch.cm'
-            trna_model = self.script_dir + 'assets/cm/TRNAinf-arch.cm'
-            prok_mode = True
-        elif self.orgmode == "mito":
-            mature_model = self.script_dir + 'assets/cm/TRNAMatureMitoinf.cm'
-            trna_model = self.script_dir + 'assets/cm/TRNAinf.cm'
-        elif self.orgmode == "bact":
-            mature_model = self.script_dir + 'assets/cm/trnamature-bact.cm'
-            trna_model = self.script_dir + 'assets/cm/TRNAinf-bact.cm'
-            prok_mode = True
-            
+        mature_model, trna_model, prok_mode = _covariance_models(self.orgmode)
+
         if self.forcecca:
             prok_mode = False
 
