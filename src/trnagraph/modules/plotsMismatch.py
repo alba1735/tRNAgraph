@@ -197,8 +197,13 @@ class visualizer():
         return fig
 
     def _plot_per_amino(self, df, label, stem):
+        # The multi-page roll-up belongs at the base alongside the overview, with the
+        # single-amino files under individual/ -- the same split plotsCoverage uses
+        # (combined_*.pdf at the category base, per-obs plots in a subfolder). Naming it
+        # for what it holds, rather than `{stem}_combined`, keeps it from reading as a
+        # duplicate of the top-level `{stem}.pdf` overview.
         logger.info(toolsTG.builder(self.individual_output))
-        with PdfPages(f'{self.individual_output}{stem}_combined.pdf') as pdf:
+        with PdfPages(f'{self.output}combined_{stem}_by_amino.pdf') as pdf:
             for amino in sorted(df['amino'].dropna().unique()):
                 subset = df[df['amino'] == amino]
                 if subset.empty:

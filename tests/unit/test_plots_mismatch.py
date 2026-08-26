@@ -253,7 +253,10 @@ def test_per_amino_plots_render_when_anticodon_is_categorical(tmp_path):
     assert (tmp_path / "positiondeletions.pdf").exists()
     assert (tmp_path / "individual" / "Ala_positionmismatches.pdf").exists()
     assert (tmp_path / "individual" / "Gly_positionmismatches.pdf").exists()
-    assert (tmp_path / "individual" / "positionmismatches_combined.pdf").exists()
+    # The multi-page roll-up sits at the base next to the overview, not in individual/ --
+    # plotsCoverage's convention, and it stops the roll-up reading as a copy of the overview.
+    assert (tmp_path / "combined_positionmismatches_by_amino.pdf").exists()
+    assert not (tmp_path / "individual" / "positionmismatches_combined.pdf").exists()
 
 
 def test_histogram_renders_and_a_user_colormap_is_honoured(tmp_path):
@@ -274,3 +277,26 @@ def test_histogram_renders_and_a_user_colormap_is_honoured(tmp_path):
     plotsMismatch.visualizer(adata, colormap, output, 10, threaded=False).generate_plots()
 
     assert (tmp_path / "mismatchcounts.pdf").exists()
+
+
+def test_combined_roll_up_has_one_page_per_amino(tmp_path):
+    """It looked like 'a copy with only Ala' -- pin the page count so that stays checkable."""
+    import matplotlib
+    matplotlib.use("Agg")
+
+    trnas = ("tRNA-Ala-AGC-1", "tRNA-Gly-GCC-1", "tRNA-Val-CAC-1")
+    adata = _build_adata(trnas=trnas)
+    adata.obs["amino"] = adata.obs["amino"].astype("category")
+    adata.obs["iso"] = adata.obs["iso"].astype("category")
+    for label in adata.obs_names:
+        _set(adata, label, "coverage", "1", 90)
+        _set(adata, label, "mismatchedbases", "1", 30)
+        _passing_bases(adata, label, "1")
+
+    plotsMismatch.visualizer(adata, {}, str(tmp_path) + "/", 10, threaded=False).generate_plots()
+
+    combined = (tmp_path / "combined_positionmismatches_by_amino.pdf").read_bytes()
+    pages = combined.count(b"/Type /Page\n") or combined.count(b"/Type /Page")
+    assert pages >= len(trnas), f"expected one page per amino acid, found {pages}"
+    for amino in ("Ala", "Gly", "Val"):
+        assert (tmp_path / "individual" / f"{amino}_positionmismatches.pdf").exists()
