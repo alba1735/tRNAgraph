@@ -9,7 +9,7 @@ from . import toolsTG
 from .toolsSchemas import GraphFilterConfig, ColormapFile
 from .lazy_imports import (
     plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
-    plotsCoverage, plotsHeatmap, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
+    plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
 )
 
 class anndataGrapher:
@@ -45,7 +45,7 @@ class anndataGrapher:
                           'volcano':self.args.volgrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'pca', 'radar', 'volcano']
+            self.args.graphtypes = ['cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano']
             self.args.clusteroverview = True
         # Load max threads available unless specified
         if self.args.threads == 0:
@@ -224,6 +224,10 @@ class anndataGrapher:
                 return max(1, len([c for c in self.adata.obs.columns if '_norm' in c]))
             if gt == 'count':
                 return 2
+            if gt == 'mismatch':
+                # Two overview pages, the read-level histogram, and one page per amino acid.
+                aminos = int(self.adata.obs['amino'].nunique()) if 'amino' in self.adata.obs.columns else 20
+                return max(1, 3 + aminos)
             if gt == 'logo':
                 if self.args.logogrp in self.adata.obs.columns:
                     return max(1, int(self.adata.obs[self.args.logogrp].nunique()))
@@ -352,6 +356,8 @@ class anndataGrapher:
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis).generate_plots()
+        if gt == 'mismatch':
+            threaded = plotsMismatch.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, self.args.mismatchpseudocount, threaded=threaded).generate_plots()
         if gt == 'pca':
             threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis)
         if gt == 'radar':

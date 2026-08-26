@@ -51,6 +51,71 @@ def cigarrefcoverage(cigar: List[Tuple[int, int]]) -> Generator[int, None, None]
 
 gapchars = set("-._~")
 
+# Significant-mismatch calls. tRNAgraph emits two artifacts here and they descend from
+# two different pieces of tRAX, so they keep two different sets of constants rather than
+# being unified:
+#
+#   <exp>-sigmismatch.bed   -- tRAX/getgenomicmismatches.py:151,:181. Rate is computed
+#                              from RAW (un-normalized) coverage with a +10 pseudocount
+#                              and reported above 0.05, aggregated as the maximum across
+#                              samples. One row per (feature, sequence position).
+#   <exp>-sigmismatch.txt   -- tRAX/newcoverageplots.R:560,:581. A row filter over the
+#                              already size-factor-normalized coverage table, at a +30
+#                              pseudocount and a 0.1 threshold. One row per
+#                              (feature, sample, position), carrying all 19 columns.
+#
+# These are build-time parity artifacts: a run must stay directly diffable against a tRAX
+# run, so the constants are deliberately not configurable. The graph-time equivalent is
+# tunable instead, via `graph --mismatchpseudocount`.
+COVERAGE_COLUMNS = ["Feature", "Sample", "position", "coverage", "readstarts", "readends",
+                    "uniquecoverage", "multitrnacoverage", "multianticodoncoverage",
+                    "multiaminocoverage", "tRNAreadstotal", "actualbase", "mismatchedbases",
+                    "deletedbases", "adenines", "thymines", "cytosines", "guanines", "deletions"]
+
+SIGMISMATCH_BED_THRESHOLD = 0.05
+SIGMISMATCH_BED_PSEUDOCOUNT = 10
+SIGMISMATCH_TABLE_THRESHOLD = 0.1
+SIGMISMATCH_TABLE_PSEUDOCOUNT = 30
+
+
+def significant_mismatch_positions(coverage_by_sample: Dict[str, List[float]],
+                                   mismatches_by_sample: Dict[str, List[float]],
+                                   threshold: float = SIGMISMATCH_BED_THRESHOLD,
+                                   pseudocount: float = SIGMISMATCH_BED_PSEUDOCOUNT
+                                   ) -> Generator[Tuple[int, float], None, None]:
+    """Yield `(sequence position, rate)` for positions whose mismatch rate clears `threshold`.
+
+    Both dictionaries are indexed by **ungapped sequence position**, not by alignment
+    column. That distinction is the whole point of this function existing: the callers'
+    coverage objects can be read either way, and feeding alignment columns to
+    `GenomeRange.getbase()` produces genomic coordinates that run past the end of the
+    feature. The rate is `mismatches / (pseudocount + coverage)`, maximized over samples,
+    matching `tRAX/getgenomicmismatches.py:181`.
+    """
+    if not coverage_by_sample:
+        return
+
+    length = min(len(vals) for vals in coverage_by_sample.values())
+    for pos in range(length):
+        rate = max((0 + 1.0 * mismatches_by_sample[s][pos]) / (pseudocount + coverage_by_sample[s][pos])
+                   for s in coverage_by_sample)
+        if rate > threshold:
+            yield pos, rate
+
+
+def _r_write_table_row(rownum: int, fields: List[str], quoted: Iterable[int]) -> str:
+    """Format one row the way R's `write.table` does, for tRAX-shaped output parity.
+
+    R emits a leading quoted row name, quotes character columns, leaves numerics bare,
+    and separates with a single space. The row name is the 1-based index of the row in
+    the unfiltered coverage table, which is what `coverageall[...]` carries through
+    subsetting in `newcoverageplots.R`.
+    """
+    quoted = set(quoted)
+    cells = [f'"{rownum}"']
+    cells.extend(f'"{v}"' if i in quoted else v for i, v in enumerate(fields))
+    return " ".join(cells)
+
 class ReadCoverage:
     def __init__(self, region: toolsTG.GenomeRange):
         self.region = region
@@ -465,44 +530,32 @@ def getsamplecoverage(currsample: str, sampledata: toolsTG.samplefile, trnalist:
 def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport: Any,
                        trnalist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float],
                        trnastk: toolsTG.RnaAlignment, positionnums: List[str],
-                       skipgaps: bool = True, sigmismatch: Any = None):
+                       skipgaps: bool = True, sigmismatch: Any = None,
+                       sigmismatchtable: Any = None, rowoffset: int = 0) -> int:
+    """Write the coverage table, and optionally the two significant-mismatch artifacts.
+
+    Returns the number of coverage rows written, so that a caller chunking over features
+    can carry `rowoffset` forward and keep the sigmismatch table's R-style row indices
+    continuous across chunks.
+    """
 
     samples = sampledata.getsamples()
-    mismatchthreshold = 0.05
+    rowsdone = rowoffset
 
     for currfeat in trnalist:
         name = currfeat.name
 
-        if sigmismatch:
-            mismatchpos = {}
-            coveragepos = {}
-            trnalen = 0
-            
-            for currsample in samples:
-                sc = samplecoverages[currsample]
-                align = trnastk.aligned_sequences[name]
-                
-                # Use raw counts (sizefactor=1) for percentage calculation
-                covcounts_raw = list(sc.allcoverages[name].coveragealign(align, sizefactor=1))
-                mismatches_raw = list(sc.readmismatches[name].coveragealign(align, sizefactor=1))
-                
-                trnalen = len(mismatches_raw)
-                mismatchpos[currsample] = mismatches_raw
-                coveragepos[currsample] = covcounts_raw
-            
-            for currpos in range(trnalen):
-                if skipgaps and "gap" in str(positionnums[currpos]):
-                    continue
-                
-                maxpercent = max((0 + 1.0 * mismatchpos[s][currpos]) / (10 + coveragepos[s][currpos]) for s in samples)
-                
-                if maxpercent > mismatchthreshold:
-                    try:
-                        # Note: currpos is alignment index. If alignment has gaps, this might be off for genomic position.
-                        # However, tRAX uses the same logic.
-                        print(currfeat.getbase(currpos).bedstring(name = currfeat.name+"_"+str(currpos)+"pos", score = int(maxpercent * 1000)), file=sigmismatch)
-                    except Exception:
-                        pass
+        if sigmismatch is not None:
+            # Indexed by ungapped sequence position, matching getgenomicmismatches.py's
+            # coveragelist(). Reading these through coveragealign() instead would index
+            # alignment columns, and getbase() would then walk off the end of the feature.
+            coverage_by_sample = {s: samplecoverages[s].allcoverages[name].coverage for s in samples}
+            mismatches_by_sample = {s: samplecoverages[s].readmismatches[name].coverage for s in samples}
+
+            for seqpos, rate in significant_mismatch_positions(coverage_by_sample, mismatches_by_sample):
+                print(currfeat.getbase(seqpos).bedstring(name=f"{name}_{seqpos}pos",
+                                                         score=int(rate * 1000)),
+                      file=sigmismatch)
 
         for currsample in samples:
             sf = sizefactor[currsample]
@@ -536,13 +589,23 @@ def transcriptcoverage(samplecoverages: Dict[str, CoverageInfo], mismatchreport:
                     realbase = "T"
                 
                 row = [
-                    name, currsample, str(positionnums[i]), str(covcounts[i]), str(allstarts[i]), 
-                    str(allends[i]), str(uniquecounts[i]), str(multitrna[i]), str(multaccounts[i]), 
-                    str(multaminocounts[i]), str(sc.readcounts[name]/sf), realbase, str(mismatches[i]), 
-                    str(deletions[i]), str(int(adeninecount[i])), str(int(thyminecount[i])), str(int(cytosinecount[i])), 
+                    name, currsample, str(positionnums[i]), str(covcounts[i]), str(allstarts[i]),
+                    str(allends[i]), str(uniquecounts[i]), str(multitrna[i]), str(multaccounts[i]),
+                    str(multaminocounts[i]), str(sc.readcounts[name]/sf), realbase, str(mismatches[i]),
+                    str(deletions[i]), str(int(adeninecount[i])), str(int(thyminecount[i])), str(int(cytosinecount[i])),
                     str(int(guanosinecount[i])), str(int(readskipcount[i]))
                 ]
                 print("\t".join(row), file=mismatchreport)
+                rowsdone += 1
+
+                if sigmismatchtable is not None:
+                    if mismatches[i] / (covcounts[i] + SIGMISMATCH_TABLE_PSEUDOCOUNT) > SIGMISMATCH_TABLE_THRESHOLD:
+                        # Columns 0/1/2 (Feature, Sample, position) and 11 (actualbase) are
+                        # character columns in R and come back quoted; the rest are numeric.
+                        print(_r_write_table_row(rowsdone, row, quoted=(0, 1, 2, 11)),
+                              file=sigmismatchtable)
+
+    return rowsdone - rowoffset
 
 def locuscoverage(locicoverages: Dict[str, LociCoverageInfo], locicoveragetable: Any,
                   locilist: List[toolsTG.GenomeRange], sampledata: toolsTG.samplefile, sizefactor: Dict[str, float],
@@ -588,7 +651,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
          combinereps: bool = False, uniquename: Optional[str] = None,
          uniquegenome: Optional[str] = None, lociedgemargin: int = 30,
          locibed: Optional[List[str]] = None, locistk: Optional[str] = None,
-         sigmismatch: Optional[str] = None):
+         sigmismatchbed: Optional[str] = None, sigmismatchtable: Optional[str] = None):
 
     sampledata = toolsTG.samplefile(samplefile, bamdir=bamdir)
     
@@ -649,10 +712,7 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
     else:
         coveragetable = open(allcoverage, "w")
     
-    print("\t".join(["Feature","Sample","position","coverage","readstarts","readends","uniquecoverage",
-                     "multitrnacoverage","multianticodoncoverage","multiaminocoverage","tRNAreadstotal",
-                     "actualbase","mismatchedbases","deletedbases","adenines","thymines","cytosines",
-                     "guanines","deletions"]), file=coveragetable)
+    print("\t".join(COVERAGE_COLUMNS), file=coveragetable)
 
     locicoveragetable_file = open(locicoverage, "w")
     print("\t".join(["tRNA_name","sample","position","coverage", "total"]), file=locicoveragetable_file)
@@ -666,12 +726,21 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
     print("\t".join(["pos","firsample","secsample","firmismatches","firtotal","secmismatches","sectotal",
                      "firmismatchestrim","firtotaltrim","secmismatchestrim","sectotaltrim"]), file=mismatchcomparetable)
 
-    sigmismatch_file = None
-    if sigmismatch:
-        sigmismatch_file = open(sigmismatch, "w")
+    sigmismatch_bed = open(sigmismatchbed, "w") if sigmismatchbed else None
+
+    sigmismatch_table = None
+    if sigmismatchtable:
+        sigmismatch_table = open(sigmismatchtable, "w")
+        # R's write.table quotes every column name and omits a name for the row-name
+        # column, which is what gives tRAX's file its 19-name header over 20 fields.
+        print(" ".join(f'"{col}"' for col in COVERAGE_COLUMNS), file=sigmismatch_table)
 
     samples = sampledata.getsamples()
-    
+
+    # Running 1-based index into the coverage table, so the sigmismatch table's R-style
+    # row names stay continuous across feature chunks.
+    coveragerows = 0
+
     # Chunking
     trnachunksize = 50
     
@@ -714,8 +783,11 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
                 for i, currsample in enumerate(samples):
                     locicoverages[currsample] = lociresults[i]
 
-        transcriptcoverage(samplecoverages, coveragetable, trnasubset, sampledata, sizefactor_dict,
-                           trnastk, positionnums, sigmismatch=sigmismatch_file)
+        coveragerows += transcriptcoverage(samplecoverages, coveragetable, trnasubset, sampledata,
+                                           sizefactor_dict, trnastk, positionnums,
+                                           sigmismatch=sigmismatch_bed,
+                                           sigmismatchtable=sigmismatch_table,
+                                           rowoffset=coveragerows)
 
         if locistk_obj and locisubset:
             locuscoverage(locicoverages, locicoveragetable_file, locisubset, sampledata, sizefactor_dict,
@@ -729,8 +801,10 @@ def main(samplefile: str, bedfile: List[str], stkfile: str,
         coveragetable.close()
     locicoveragetable_file.close()
     mismatchcomparetable.close()
-    if sigmismatch_file:
-        sigmismatch_file.close()
+    if sigmismatch_bed:
+        sigmismatch_bed.close()
+    if sigmismatch_table:
+        sigmismatch_table.close()
 
 
 

@@ -517,6 +517,7 @@ _VARIANT_UNS_KEY_MAP = {
     'amino_counts': 'amino_counts',
     'anticodon_counts': 'anticodon_counts',
     'nontRNA_counts': 'nontRNA_counts',
+    'mismatch_counts': 'mismatch_counts',
     'log2FC': 'log2FC',
     'cluster_runinfo': 'cluster_runinfo',
     'group_cluster_umap': 'group_cluster_umap',

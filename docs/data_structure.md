@@ -316,6 +316,7 @@ Pre-summed tables useful for bar charts and high-level overviews.
 
 - `amino_counts`: Reads summed by Amino Acid.
 - `anticodon_counts`: Reads summed by Anticodon.
+- `mismatch_counts`: Reads summed by how many mismatches each carried (rows: mismatch count 0-9 x `trna`/`nontrna`; columns: samples). Stored as **raw** counts, unlike the on-disk `<exp>-mismatches.txt`, which is size-factor-normalized. Absent from objects built before this key existed; `graph -g mismatch` skips the read-level histogram with a warning in that case rather than failing. A split variant carries `trna` rows only.
 - `nontRNA_counts`: Reads mapping to features defined in the external GTF (e.g., rRNA, mRNA).
 - `type_counts`: Reads summed by Gene Type.
 
@@ -339,6 +340,7 @@ adata.uns['size_splits']['u60'] = {
     'build_flags': {...},                                        # sanitized snapshot of the args used to compute this variant
     'sizefactors_trna': {...}, 'sizefactors_allfeatures': {...},  # this variant's own independent DESeq2 fit
     'type_counts': DataFrame, 'type_real_counts': DataFrame, 'amino_counts': DataFrame,
+    'mismatch_counts': DataFrame,   # tRNA rows only -- see Split Variants above
     'anticodon_counts': DataFrame, 'nontRNA_counts': DataFrame,
     'log2FC': {...},           # same nested config_name/compare/readtype/cutoff structure as the top-level uns['log2FC']
     # populated only once `analyze cluster --variant norm:u60` has been run:

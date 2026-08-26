@@ -55,6 +55,10 @@ class VariantContribution(BaseModel):
     amino_counts: pd.DataFrame
     anticodon_counts: pd.DataFrame
     nontrna_counts: pd.DataFrame
+    # Read-level mismatch histogram, raw counts. None when the variant's build produced no
+    # mismatch count file. A split variant carries tRNA rows only, since non-tRNA features
+    # are excluded from read-length splits entirely.
+    mismatch_counts: Optional[pd.DataFrame] = None
 
 
 class GraphFilterConfig(BaseModel):

@@ -23,6 +23,7 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | **`combine.txt` trailing columns** | Per-group medians, labelled with bare group names | Same — previously per-group means under the same labels, so a column-aligned diff compared a mean against a median |
 | **`padjs.txt`** | Holds *unadjusted* p-values despite the name — `analyzecounts.R` takes column 5 of each `results()` object, and column 5 of a DESeq2 results table is `pvalue` | Holds genuine Benjamini-Hochberg `padj` |
 | **`--mincoverage` scope** | Dropped low-count genes from the coverage file, which silently removed them from *every* downstream output | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row |
+| **`mismatch/<exp>-sigmismatch.txt`** | Held BED rows from `getgenomicmismatches.py` — a script tRAX never runs — under the name of a different script's output, with genomic coordinates computed from alignment columns, so they ran past the end of the feature | Split in two: `-sigmismatch.txt` is tRAX's own coverage-row filter, `-sigmismatch.bed` is the positions track with coordinates in sequence space |
 | **`aminocounts` / `anticodoncounts`** | Held unique-read counts, duplicating `unique/` — so no all-reads view existed | Main files hold all reads; `unique/` keeps the unique breakdown and still matches tRAX exactly |
 
 ---
@@ -35,7 +36,8 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | Variance stabilisation | `rlog` | VST | DESeq2's own documentation recommends VST over rlog for anything but small sample counts, because rlog costs far more to compute |
 | Trimming | `cutadapt` / `SeqPrep` | `fastp` | One tool covering adapter and quality trimming instead of two |
 | Size factors | Computed from all features | Computed from tRNAs only. The all-feature set is still written, as `<exp>-allfeature_SizeFactors.txt` | Non-tRNA abundance can shift independently of tRNAs, which distorts tRNA normalisation when both go into the same reference set |
-| Mismatch data | Per-position detail only via an R script | Stored at full per-position granularity in the AnnData object | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary |
+| Mismatch data | Per-position detail only via an R script | Stored at full per-position granularity in the AnnData object, and plotted natively by `graph -g mismatch` | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary |
+| Misincorporation rate | `mismatchedbases / (coverage + 10)` computed from size-factor-normalized coverage | Same formula, computed from raw counts; the pseudocount is tunable with `--mismatchpseudocount` | The size factor cancels in `m/c` but not in `m/(c + 10)`, so on normalized values the pseudocount is worth `10 x sizefactor` — a tenfold range across a real dataset — and, since the rate is maximized across samples, that biased the plot toward whichever sample had the smallest size factor |
 | Read basis in plots | Each plot picked its own — some unique reads, some all reads, with nothing on the figure saying which | Every graph type uses unique (transcript-specific) reads by default; `--allreads` switches the whole command at once | Two plots of one dataset can no longer rest on different denominators without saying so |
 
 ---

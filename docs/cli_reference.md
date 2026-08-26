@@ -221,7 +221,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `pca`, `radar`, `volcano`). Default: `all`.
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`.
 - **`--config`**: JSON configuration file for filtering.
 - **`--colormap`**: JSON file for custom colors.
 - **`--regen_uns`**: Force regeneration of calculated stats.
@@ -296,6 +296,10 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--logosize`**: Sequence size preset. Default: `noloop`.
 - **`--ccatail`**: Keep CCA tail. Default: `True`.
 - **`--pseudogenes`**: Keep pseudo-tRNAs. Default: `True`.
+
+**Mismatch Options:**
+
+- **`--mismatchpseudocount`**: Pseudocount added to coverage when computing per-position misincorporation rates, damping positions with almost no reads behind them. Default: `10`. Graph-time only — the build-time `results/mismatch/` outputs keep tRAX's own constants so they stay directly comparable to a tRAX run.
 
 ---
 

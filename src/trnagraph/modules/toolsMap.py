@@ -428,8 +428,7 @@ class expdatabase:
         self.trnalengthplot=graph_path(basename+"-readlengths.pdf")
         
         self.mismatchcountfile=res_path(basename+"-mismatches.txt")
-        self.mismatchcountplot=graph_path(basename+"-mismatches.pdf")
-        
+
         self.trnacoveragefile=res_path(basename+"-coverage.txt")
         self.trnacoverageplot=graph_path(basename+"-coverage.pdf")
         self.trnacombinecoverageplot=graph_path(basename+"-combinecoverage.pdf")
@@ -440,14 +439,12 @@ class expdatabase:
         self.locicoverageplot=graph_path("pretRNAs/"+basename+"-pretRNAcoverage.pdf")
         self.locicombinecoverageplot=graph_path("pretRNAs/"+basename+"-pretRNAcombinecoverage.pdf")
         
-        self.trnamismatchfile = res_path("mismatch/"+basename+"-mismatchcoverage.txt")
+        # Two separate artifacts, deliberately: the table is tRAX's own
+        # `newcoverageplots.R:581` output, the BED is `getgenomicmismatches.py`'s. See
+        # toolsGetCoverage's SIGMISMATCH_* constants for why they don't share thresholds.
         self.sigmismatchfile = res_path("mismatch/"+basename+"-sigmismatch.txt")
-        self.trnamismatchplot = graph_path("mismatch/"+basename+"-mismatchcoverage.pdf")
-        
-        self.trnadeletefile = res_path("mismatch/"+basename+"-deletecoverage.txt")
-        self.trnadeleteplot = graph_path("mismatch/"+basename+"-deletecoverage.pdf")
-        
-        self.trnamismatchreport = res_path("mismatch/"+basename+"-mismatchreport.txt")
+        self.sigmismatchbed = res_path("mismatch/"+basename+"-sigmismatch.bed")
+
         self.trnauniquefile=res_path("unique/"+basename+"-trnauniquecounts.txt")
         self.trnaendfile=res_path(basename+"-trnaendcounts.txt")
         

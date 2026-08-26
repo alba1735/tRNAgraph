@@ -132,6 +132,43 @@ def _filter_rows_by_label(path, keep_label, has_header):
     return removed
 
 
+def _load_mismatch_counts(path, size_factors):
+    '''
+    Load `<exp>-mismatches.txt` back into raw read counts for uns['mismatch_counts'].
+
+    toolsCountReads.printmismatchcounts() writes this histogram -- one row per
+    (mismatch count, tRNA/non-tRNA), one column per sample -- already divided by each
+    sample's size factor. The AnnData object keeps the raw counts instead, so that
+    division is undone here. The mismatch plot draws per-sample proportions, which the
+    size factor cannot move either way; raw is stored because it is what was measured.
+
+    Returns None when the file is absent, which is what a pre-existing object built
+    before this key existed looks like to `graph`.
+    '''
+    if not os.path.isfile(path):
+        return None
+    df = pd.read_csv(path, sep='\t')
+    for column in df.columns:
+        if column in ('count', 'type'):
+            continue
+        factor = size_factors.get(column, 1.0) if hasattr(size_factors, 'get') else 1.0
+        df[column] = (df[column] * factor).round().astype('int64')
+    return df
+
+
+def _trna_only_mismatch_counts(mismatch_counts):
+    '''
+    Drop the non-tRNA rows from a read-level mismatch histogram, for split variants.
+
+    Read-length splits exclude non-tRNA features entirely (their length range is far wider
+    than a tRNA's, so a shared cutoff divides the two pools on different terms), so a split's
+    mismatch histogram must not carry a 'nontrna' series either.
+    '''
+    if mismatch_counts is None:
+        return None
+    return mismatch_counts[mismatch_counts['type'] != 'nontrna'].reset_index(drop=True)
+
+
 def _filter_nontrna_rows_from_type_counts_file(path):
     '''
     Drop non-tRNA rows from a type-indexed count file (typecounts.txt/typerealcounts.txt).
@@ -732,7 +769,8 @@ class AnalysisPipeline:
                              # did by accident, silently changing every coverage file (~1.28x tRAX on
                              # hg38). The unique/multi breakdown survives regardless, in the coverage
                              # table's own columns and in obs's nreads_*_unique_* vs nreads_* pairs.
-                             uniqueonly=True, sigmismatch=self.expinfo.sigmismatchfile)
+                             uniqueonly=True, sigmismatchbed=self.expinfo.sigmismatchbed,
+                             sigmismatchtable=self.expinfo.sigmismatchfile)
 
     def createtrackhub(self):
         hub_builder = toolsTrackHub.TrackHubBuilder(
@@ -1022,6 +1060,8 @@ class AnnDataBuilder():
         # For adding amino acid counts to coverage file
         aminoacidcounts = self.expinfo.trnaaminofile
         self.amino_counts = pd.read_csv(aminoacidcounts, sep='\t')
+        # Read-level mismatch histogram, stored raw -- see _load_mismatch_counts()
+        self.mismatch_counts = _load_mismatch_counts(self.expinfo.mismatchcountfile, self.size_factors)
         # Create list of reference sequences from actualbase column of coverage file - skips gap positions
         self.seqs = self._seq_build_()
         self.seqs_full = self._seq_build_(gap=True)
@@ -1343,6 +1383,7 @@ class AnnDataBuilder():
             obsm_counts=obsm_counts, sizefactors_trna=self.size_factors, sizefactors_allfeatures=self.size_factors_allfeatures,
             type_counts=self.type_counts, type_real_counts=self.type_real_counts, amino_counts=self.amino_counts,
             anticodon_counts=self.anticodon_counts, nontrna_counts=self.non_trna_read_counts,
+            mismatch_counts=self.mismatch_counts,
         )
 
     def _apply_readlength_split_(self, adata):
@@ -1573,6 +1614,9 @@ class AnnDataBuilder():
         # Add type counts as uns
         adata.uns['type_counts'] = self.type_counts
         adata.uns['type_real_counts'] = self.type_real_counts
+        # Add the read-level mismatch histogram as uns (absent if the count file wasn't written)
+        if self.mismatch_counts is not None:
+            adata.uns['mismatch_counts'] = self.mismatch_counts
         # Add non tRNA counts as uns
         adata.uns['nontRNA_counts'] = self.non_trna_read_counts
         # Add runinfo as uns
@@ -1772,6 +1816,10 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
         'amino_counts': contribution.amino_counts,
         'anticodon_counts': contribution.anticodon_counts,
         'nontRNA_counts': _empty_split_nontrna_counts(target_adata),
+        # tRNA rows only: a split variant has its non-tRNA features excluded, so keeping the
+        # 'nontrna' rows here would let the mismatch plot draw a series nothing else in the
+        # variant reports.
+        'mismatch_counts': _trna_only_mismatch_counts(contribution.mismatch_counts),
     }
 
     # Precompute default log2FC for common cutoffs, mirroring _adata_build_'s equivalent block
