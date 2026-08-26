@@ -36,11 +36,28 @@ except ImportError:
     from tRNAgraph import __version__
 
 
+DEFAULT_VARIANT = 'norm:full'
+
+
 def _adata_basename(anndata_path: str) -> str:
     """Basename of an .h5ad path, extension stripped -- used to disambiguate log filenames for
     commands centered on a single anndata object, since multiple .h5ad files commonly live in
     the same directory."""
     return os.path.splitext(os.path.basename(anndata_path))[0]
+
+
+def _log_suffix(anndata_path: str, variant: Optional[str] = None) -> str:
+    """Log filename suffix for a command centered on one anndata object.
+
+    `graph`, `cluster` and `tools log2fc` all take `--variant`, so running any of them in a
+    loop over variants used to produce logs distinguishable only by timestamp. The variant
+    is part of what the run was, so it goes in the name -- except the `norm:full` default,
+    which would otherwise add a constant to every ordinary run's filename.
+    """
+    suffix = _adata_basename(anndata_path)
+    if variant and variant != DEFAULT_VARIANT:
+        suffix += '_' + variant.replace(':', '_')
+    return suffix
 
 
 class _Tee:
@@ -415,7 +432,7 @@ def cluster(
 ):
     output_path = os.path.abspath(output)
     output_dir = os.path.dirname(output_path)
-    with handle_output(quiet, tool="cluster", destination=output_dir or ".", name_suffix=_adata_basename(anndata)):
+    with handle_output(quiet, tool="cluster", destination=output_dir or ".", name_suffix=_log_suffix(anndata, variant)):
         if not os.path.isfile(anndata):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -488,7 +505,7 @@ def graph(
     vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many"),
 ):
     output_path = os.path.abspath(output)
-    with handle_output(quiet, tool="graph", destination=output_path, name_suffix=_adata_basename(anndata)):
+    with handle_output(quiet, tool="graph", destination=output_path, name_suffix=_log_suffix(anndata, variant)):
         # Set matplotlib backend to Agg to avoid display issues
         matplotlib.use('Agg')
 
@@ -542,7 +559,7 @@ def log2fc(
     # log2fc always writes back into its own input file in place -- that file's directory is
     # the destination.
     destination = os.path.dirname(os.path.abspath(anndata_path))
-    with handle_output(quiet, tool="log2fc", destination=destination, name_suffix=_adata_basename(anndata_path)):
+    with handle_output(quiet, tool="log2fc", destination=destination, name_suffix=_log_suffix(anndata_path, variant)):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
 

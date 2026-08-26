@@ -23,6 +23,10 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
+# Figure-fraction gap between the top of the subplot grid and the specificity overview's
+# legend -- just enough to clear the top row's axis titles without reopening a dead band.
+LEGEND_TITLE_CLEARANCE = 0.018
+
 class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
@@ -203,8 +207,15 @@ class visualizer():
                 handles = [mpatches.Patch(color=c, label=l) for c, l in zip(palette, labels)]
                 # One legend per page rather than per subplot: the categories are identical
                 # in all sixteen, so repeating it sixteen times only costs plot area.
-                fig.legend(handles=handles[::-1], loc='upper right', frameon=False,
-                           bbox_to_anchor=(0.995, 0.995))
+                # Anchored to the subplot grid rather than to the figure corner: the 4x4 grid
+                # stops well short of the canvas top, so anchoring at (0.995, 0.995) left the
+                # legend stranded in a tall empty band that `bbox_inches='tight'` then kept.
+                # Sitting just above the top row's titles, laid out in one horizontal row,
+                # puts it beside the plots it labels instead of floating above them.
+                fig.legend(handles=handles[::-1], loc='lower right', frameon=False,
+                           ncol=len(labels),
+                           bbox_to_anchor=(fig.subplotpars.right,
+                                           fig.subplotpars.top + LEGEND_TITLE_CLEARANCE))
                 pdf.savefig(fig, bbox_inches='tight')
                 plt.close(fig)
         logger.info(f'Coverage specificity overview saved to {self.output}{outend}')
