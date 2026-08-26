@@ -8,6 +8,9 @@ import logging
 import contextlib
 import zipfile
 import argparse
+from typing import Optional
+
+from . import toolsTG
 
 
 class _LiveBoxHandler(logging.Handler):
@@ -98,6 +101,25 @@ def _friendly_variant_title(label: str):
     return f'Building {direction.lower()} {cutoff}bp split ({kind})...'
 
 
+def _resolve_work_dir(directory: Optional[str]) -> str:
+    '''
+    Absolute path of the workspace the demo pipeline runs in.
+
+    Explicit `-d`/`--directory` wins, anchored to the invocation cwd if relative (the suite
+    chdir()s into the result, so a relative path must be pinned down first). Otherwise the
+    default is `test_vibrChol1/` under the directory the command was actually run from -- which
+    is what docs/testSuite.md advertises.
+
+    Deliberately independent of `__file__`. The previous default was `test_vibrChol1/` beneath a
+    repo root guessed by walking four directories up from this module, which silently ignored the
+    invocation cwd and, under a non-editable `pip install .`, resolved to a directory inside the
+    Python installation itself -- one that `--all` then recursively deletes.
+    '''
+    if directory:
+        return os.path.abspath(directory)
+    return os.path.join(os.getcwd(), "test_vibrChol1")
+
+
 class demoPipeline:
     """
     A pipeline class to run the tRNAgraph test suite.
@@ -114,17 +136,12 @@ class demoPipeline:
             args (argparse.Namespace): Parsed command-line arguments.
         """
         self.args = args
-        self.repo_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
         self.trnagraph_path = "trnagraph"
-        
-        # Set up working directory
-        if self.args.directory:
-             work_dir = os.path.abspath(self.args.directory)
-        else:
-             work_dir = os.path.join(self.repo_root, "test_vibrChol1")
 
-        os.makedirs(work_dir, exist_ok=True)
-        os.chdir(work_dir)
+        # Set up working directory
+        self.work_dir = _resolve_work_dir(self.args.directory)
+        os.makedirs(self.work_dir, exist_ok=True)
+        os.chdir(self.work_dir)
 
         # Configure logging. Deliberately self-contained (its own handlers, not
         # logging.basicConfig() on the root logger) with propagate=False: this logger's name
@@ -156,12 +173,15 @@ class demoPipeline:
             self.console_handler.setFormatter(logging.Formatter('%(message)s'))
             self.logger.addHandler(self.console_handler)
 
+        self.logger.info(f"Test workspace: {self.work_dir}")
+
         # Clean up if requested
         if self.args.all:
             self._cleanup_workspace()
 
-        # Copy assets
-        self.assets_dir = os.path.join(self.repo_root, "src/trnagraph/assets")
+        # Copy assets. Resolved from the installed package (see toolsTG.assets_dir), so this
+        # works identically under `pip install -e .` and a plain `pip install .`.
+        self.assets_dir = toolsTG.assets_dir()
         os.makedirs("config", exist_ok=True)
         with self._live_box("Copying assets..."):
             self._run_command(f"cp --update {self.assets_dir}/*.txt config/.")
@@ -297,11 +317,13 @@ class demoPipeline:
     def _cleanup_workspace(self) -> None:
         """Removes generated files to ensure a clean run, keeping only the log file."""
         with self._live_box("Cleaning up workspace..."):
-            # Remove all files and directories in the current working directory (the test
-            # directory) except for the log file.
+            # Remove everything in the workspace except the log file. The message names the
+            # resolved directory rather than an anonymous "test directory": this is an
+            # unconditional recursive delete, so the path it landed on must be visible to the
+            # user before it runs (see docs/roadmap.md).
             self._run_command(
                 'find . -maxdepth 1 -mindepth 1 -not -name "toolsTestSuite.log" -exec rm -rf {} +',
-                "Removing all contents from test directory except log file..."
+                f"Removing all contents of {self.work_dir} except the log file..."
             )
             self.logger.info("Workspace cleaned.")
 

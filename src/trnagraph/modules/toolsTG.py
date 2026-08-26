@@ -5,6 +5,7 @@ import pandas as pd
 import anndata as ad
 from scipy import stats
 import contextlib
+import importlib.resources
 import itertools
 import os
 import sys
@@ -29,6 +30,24 @@ from rich.console import Group, Console
 from rich.text import Text
 
 logger = logging.getLogger(__name__)
+
+
+def assets_dir() -> str:
+    '''
+    Absolute path to the package's bundled `assets/` directory -- the Sprinzl covariance models
+    under `cm/`, the vibrChol1 demo manifest/metadata/pair files, and the default colormap.
+
+    Resolved through importlib.resources rather than by counting directories up from `__file__`,
+    because `assets/` is a *package* subdirectory shipped by [tool.setuptools.package-data], not
+    a source-tree sibling. The directory walk this replaces assumed a src-layout checkout and so
+    landed on `<venv>/lib/pythonX.Y` under a non-editable `pip install .`, where nothing exists.
+
+    Returns a plain `str`: callers interpolate it into shell commands (toolsTestSuite's
+    `cp {assets_dir}/*.txt config/.`), and importlib.resources yields a real filesystem path for
+    any non-zip install -- which this package is by construction, since it shells out to
+    bowtie2/samtools/infernal against real files on disk.
+    '''
+    return os.fspath(importlib.resources.files('trnagraph') / 'assets')
 
 
 def builder(directory: Union[str, Path]) -> str:

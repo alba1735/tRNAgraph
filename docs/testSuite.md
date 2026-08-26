@@ -26,7 +26,7 @@ python trnagraph.py tools test [options]
 - `--all`: Run the complete pipeline including split analysis (cleans existing test data first, forcing a full redownload).
 - `--skip-download`: Skip the metadata/FASTQ/tRNA/genome download steps and run everything else. Downloads are already skipped by default when their target files are present (the slowest step to redundantly repeat); this forces the skip regardless.
 - `--cleanrun`: Clean up all generated files after the run completes.
-- `--directory`: Specify a custom working directory (Default: `test_vibrChol1/`).
+- `--directory`: Specify a custom working directory. A relative path is resolved against the directory the command is run from. (Default: `test_vibrChol1/` under the current working directory.)
 
 **Step-specific flags:**
 
