@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v2.0.1 (2026-08-26)
+
+### Bug Fixes
+
+- **build**: Guard the second all-feature read for split variants
+  ([`9bea8f6`](https://github.com/alba1735/tRNAgraph/commit/9bea8f6b3bad4af25694f46d8f42c87224d3d224))
+
+- **build**: Preserve on-disk count file format when filtering splits
+  ([`46fa1ad`](https://github.com/alba1735/tRNAgraph/commit/46fa1adf53237be23f51b327bfb4d9a5de248f5b))
+
+### Continuous Integration
+
+- **release**: Pin semantic-release and gitpython
+  ([`57597b1`](https://github.com/alba1735/tRNAgraph/commit/57597b1f9dec6cbf88cbc7afa76198c3959ac893))
+
+### Documentation
+
+- **build**: Drop the stale norm_allfeatures layer from the merge docstring
+  ([`5b74b14`](https://github.com/alba1735/tRNAgraph/commit/5b74b14bfc959dab76d91e478f1e5f1718762540))
+
+- **roadmap**: Log the tools test delete footgun and console parity
+  ([`1390925`](https://github.com/alba1735/tRNAgraph/commit/1390925d2f712f5dbe559ce907276bb1543a8c8f))
+
+- **roadmap**: Various ideas added
+  ([`a6e3a13`](https://github.com/alba1735/tRNAgraph/commit/a6e3a138a3a310a6028687cbb74bccb752eae879))
+
+
 ## v2.0.0 (2026-08-25)
 
 ### Bug Fixes
