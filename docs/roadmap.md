@@ -25,6 +25,7 @@ This document tracks planned work for tRNAgraph — bugs to fix and features to 
 - **reconcile use of the term full, complete and total**: These each have specific definitions in the use of tRNAs (mature/full-length), total reads, complete vs split. Vetting terminiology throughtout the document for consistancy would be ideal making sure it matches best practice for terms via Lowe Lab documentation. A terminology section on data structures would also be helpful for this as well.
 - **`--allreads` produces a duplicate PCA output directory at default settings.** `plotsPca.OVERVIEW_TRNA_READTYPES` pins the both-bases comparison so it survives whatever `--pcareadtypes` asks for, which means that with the default `--pcareadtypes total` a default run and an `--allreads` run emit exactly the same two files — one into `pca/`, the other into `pca/allreads/`. They only diverge once `--pcareadtypes` names something beyond `total`. This is at odds with the output-layout convention that a directory names what was plotted rather than which flags were typed (which is why coverage has no `allreads/` segment at all). Options are to make the basis segment conditional on the resolved readtype sets actually differing, or to accept the duplication as the cost of guaranteeing the comparison. Low priority because PCA is cheap to regenerate, unlike coverage, where the same duplication would have been expensive enough to matter.
 - **runtimeWarning and UserWarning on Various plots**: plotSeqLogo error about ylims, maybe other plots. Most likely not a bug but should be vetted incase future pandas updates cause issue.
+- **vet combined_trna_specificty plot**: This plot should mimic tRAX style coverage, right now the legend needs to be lower as it is to high up in the right but making sure the plots match trax manually should also be performed.
 
 ## Features / Enhancements
 
@@ -56,6 +57,8 @@ This document tracks planned work for tRNAgraph — bugs to fix and features to 
 - **Google Colab notebook / tutorial.** For new users to run through the pipeline without installing anything locally. An existing tRAX Colab notebook can be used as a guideline, updated for tRNAgraph's CLI and features.
 - **Reporter Discord/Slack/Other Bot.** A bot that can report on the status of a run, or alert when a run is complete, or when a run fails. Could be useful for long-running jobs on a cluster or cloud environment.
 - **GUI.** A GUI for tRNAgraph would be a long-term goal, but not a priority at this time. It would require significant development and design work, and is not necessary for the core functionality of the pipeline.
+- **Default colors should be impoved**: All plots should have more consitant color schemes that accessible.
+- **Lite Graph Flag**: Option to quickly generate combined plots rather than all plots this can increase time dramatically with coverage and some other options for a quick output.
 
 ## Notes for Contributors
 
