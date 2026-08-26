@@ -10,21 +10,56 @@ from typing import Dict, Optional, Tuple
 
 from .. import __version__
 
-def get_project_root() -> str:
+def _is_trnagraph_source_root(path: str) -> bool:
     """
-    Locate the project root (containing requirements.yaml/pyproject.toml/.git) relative to
-    this file. Assumes this file is in src/trnagraph/modules/.
+    True only if `path` is *this project's* source checkout: it must contain both the package
+    source (`src/trnagraph/__init__.py`) and a `pyproject.toml` naming tRNAgraph.
+
+    Checking for a `.git` directory would not do. Callers pass the result to git as a working
+    directory, and git searches upward from there, so any path nested inside an unrelated
+    repository looks like a valid checkout to it -- which is exactly the failure this guards.
+    """
+    if not os.path.isfile(os.path.join(path, 'src', 'trnagraph', '__init__.py')):
+        return False
+    pyproject = os.path.join(path, 'pyproject.toml')
+    if not os.path.isfile(pyproject):
+        return False
+    try:
+        import tomllib
+        with open(pyproject, 'rb') as f:
+            name = tomllib.load(f).get('project', {}).get('name', '')
+    except Exception:
+        # An unreadable or malformed pyproject.toml is not evidence of anything; treat it the
+        # same as an absent one rather than guessing.
+        return False
+    return name.lower() == 'trnagraph'
+
+def get_project_root() -> Optional[str]:
+    """
+    Absolute path of the tRNAgraph source checkout this package was installed from, or None when
+    there isn't one.
+
+    The path is derived from this file's location (assumed to be `src/trnagraph/modules/`) and
+    then positively identified via _is_trnagraph_source_root(). The identification step is the
+    point: under a non-editable `pip install .` the same walk lands on `<venv>/lib/pythonX.Y`,
+    and returning that unchecked let `trnagraph update` run git commands whose working directory
+    resolved to whatever repository happened to enclose the install location.
+
+    None means "installed as a distribution, no source tree available" -- requirements.yaml,
+    the git history and the branch/tag are all absent, and every caller must say what it does
+    without them rather than proceeding against a path that merely exists.
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    candidate = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    return candidate if _is_trnagraph_source_root(candidate) else None
 
-def get_requirements_path() -> str:
+def get_requirements_path() -> Optional[str]:
     """
-    Locate requirements.yaml relative to this file.
-    Assumes this file is in src/trnagraph/modules/
-    and requirements.yaml is in the project root.
+    Path to requirements.yaml in the source checkout, or None when there is no checkout.
+    requirements.yaml is not part of the built distribution, so it exists only alongside source.
     """
-    return os.path.join(get_project_root(), 'requirements.yaml')
+    project_root = get_project_root()
+    return os.path.join(project_root, 'requirements.yaml') if project_root else None
 
 def parse_requirements(req_path: str) -> Dict[str, Tuple[str, str]]:
     """
@@ -228,11 +263,10 @@ def validate_environment():
     Validates that the environment matches requirements.yaml.
     """
     req_path = get_requirements_path()
-    if not os.path.exists(req_path):
-        # If we can't find requirements.yaml, we can't validate against it.
-        # This might happen in installed package context if file not included.
-        # We'll skip validation or print a warning.
-        # print(f"Warning: Could not find requirements.yaml at {req_path}")
+    if req_path is None or not os.path.exists(req_path):
+        # requirements.yaml ships with the source, not with the built distribution, so a
+        # non-editable install has nothing to validate against. Skip silently rather than
+        # warning: the environment may well be correct, we simply cannot confirm it here.
         return
 
     requirements = parse_requirements(req_path)
@@ -376,7 +410,7 @@ def _get_short_hash(project_root: str) -> Optional[str]:
     return result.stdout.strip() or None
 
 
-def get_version_channel(project_root: str) -> str:
+def get_version_channel(project_root: Optional[str]) -> str:
     """
     Short label describing where this checkout's code is actually coming from, since
     __version__ alone doesn't distinguish 'the official main-branch release' from 'a stale/ahead
@@ -389,7 +423,13 @@ def get_version_channel(project_root: str) -> str:
         known release channels, so the hash is the only precise identifier)
       - detached HEAD (e.g. from `trnagraph update --tag`) exactly at a release tag -> that tag
       - detached HEAD not at a tag -> 'nightly @ <short-hash>', same reasoning as other branches
+      - no source checkout at all (a non-editable install) -> 'installed'
     """
+    if project_root is None:
+        # A built distribution carries no git history, so there is no branch, tag or hash to
+        # report. 'stable' would be a lie -- a wheel built from a dirty dev branch would claim
+        # it -- and 'nightly' implies a hash we do not have.
+        return 'installed'
     branch = get_current_branch(project_root)
     if branch == 'main':
         return 'stable'
@@ -498,6 +538,10 @@ def check_for_updates() -> None:
                 return
 
         project_root = get_project_root()
+        if project_root is None:
+            # No checkout means no configured remote to ask, so there is nothing to check
+            # against. Return before touching the network at all.
+            return
         remote_name = get_tracking_remote_name(project_root)
         if not remote_name:
             return

@@ -14,6 +14,7 @@ from typing import Tuple
 from . import toolsGetMaturetRNAs
 from . import toolsAligntRNALocus
 from . import toolsTG
+from . import env_check
 
 
 def _covariance_models(orgmode: str) -> Tuple[str, str, bool]:
@@ -81,10 +82,7 @@ class tRNADatabaseBuilder:
                 + ", ".join(sorted(toolsGetCoverage.POSITION_TABLES))
             )
         self.threads = args.threads
-        
-        # Point to the package root (src/trnagraph) instead of modules/
-        self.script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "/"
-        
+
         # Initialize Sprinzl positions
         self._init_positions()
 
@@ -143,13 +141,15 @@ class tRNADatabaseBuilder:
         except Exception:
             pass
 
-        # Try to get git info
+        # Try to get git info. The source root comes from env_check's validated lookup rather
+        # than a local __file__ walk: there is no git history to read from an installed
+        # distribution, and a path that merely exists is not a checkout (see
+        # env_check._is_trnagraph_source_root).
         try:
-            # Assuming script_dir is src/trnagraph/, repo root is two levels up
-            repo_root = os.path.dirname(os.path.dirname(self.script_dir.rstrip('/')))
-            git_dir = os.path.join(repo_root, '.git')
-            
-            if os.path.exists(git_dir):
+            repo_root = env_check.get_project_root()
+            git_dir = os.path.join(repo_root, '.git') if repo_root else None
+
+            if git_dir and os.path.exists(git_dir):
                 # Get hash
                 hash_str = subprocess.check_output(['git', '--git-dir='+git_dir, 'rev-parse', 'HEAD'], text=True).strip()
                 

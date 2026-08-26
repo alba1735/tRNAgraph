@@ -31,6 +31,22 @@ class UpdateManager:
         self.args = args
         self.logger = logging.getLogger(__name__)
         self.project_root = env_check.get_project_root()
+        if self.project_root is None:
+            # Raised here, not in run(), because project_root is the `cwd` of every git command
+            # this class issues -- the object has no meaning without it. Failing at construction
+            # guarantees no git command runs at all, which matters: git searches upward from its
+            # working directory, so under a non-editable install (where the guessed root sits
+            # inside the Python installation) `git status`/`fetch`/`checkout`/`pull` would
+            # resolve against whatever repository happens to enclose it -- commonly the user's
+            # own project, with a `python -m venv .venv` layout.
+            raise ValueError(
+                "`trnagraph update` requires a source checkout: it updates the working tree with "
+                "git and re-syncs the conda environment from requirements.yaml, neither of which "
+                "exists in an installed distribution. This looks like a non-editable install "
+                f"(the package is at {os.path.dirname(os.path.dirname(os.path.abspath(__file__)))}). "
+                "Clone the repository and `pip install -e .` from it to use this command, or "
+                "upgrade with pip directly."
+            )
 
     def run(self) -> None:
         self._check_git_available()
@@ -226,8 +242,10 @@ class UpdateManager:
         # with conda. Falls back to conda when mamba isn't installed rather than requiring it.
         if shutil.which(env_tool) is None:
             raise ValueError(f"Error: '{env_tool}' is not installed or not in PATH.")
+        # Cannot be None in practice -- the constructor refuses to build without a source
+        # checkout -- but get_requirements_path() is Optional, so handle it as one path.
         req_path = env_check.get_requirements_path()
-        if not os.path.exists(req_path):
+        if req_path is None or not os.path.exists(req_path):
             raise ValueError(f'Error: requirements.yaml not found at {req_path}.')
         # Streamed rather than self._run()'s buffered subprocess.run(capture_output=True): a
         # conda/mamba solve can legitimately take a long time, and with output fully buffered

@@ -395,6 +395,8 @@ trnagraph tools test [options]
 
 Updates this git checkout to the latest source and re-syncs the local environment. Refuses to run if the checkout has uncommitted local changes to tracked files, so nothing is at risk of being lost or silently merged over.
 
+Requires an editable (`pip install -e .`) install: the command updates a working tree with git and re-syncs conda from `requirements.yaml`, and neither exists in a built distribution. From a non-editable install it stops immediately with an explanatory error, before running any git command -- it will not act on a directory that merely happens to sit inside some other repository.
+
 **Usage:**
 
 ```bash

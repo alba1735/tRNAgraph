@@ -97,6 +97,11 @@ conda activate trnagraph
 pip install -e .
 ```
 
+> [!NOTE]
+> The editable (`-e`) install is the supported mode. A plain `pip install .` gives you a working
+> CLI, but `trnagraph update` and the `requirements.yaml` environment check both need the source
+> checkout and will report that it is unavailable rather than acting on a guessed location.
+
 ## Quick Start
 
 ### 1. Prepare Inputs
