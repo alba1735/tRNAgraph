@@ -8,7 +8,7 @@ import subprocess
 import logging
 import numpy as np
 from types import SimpleNamespace
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 from multiprocessing import cpu_count
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
@@ -764,63 +764,86 @@ def _precompute_default_log2fc(view, threads=None):
         toolsTG.adataLog2FC(view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
 
 
-def _sprinzl_location_maps() -> Tuple[Dict[str, str], Dict[str, str]]:
+# The acceptor-stem regions the obs['fragment'] heuristic averages coverage over. Named
+# explicitly, rather than tracking whatever `location` happens to call them, because splitting
+# 73-76 out into 'threeprime_end' would otherwise drop the discriminator base and CCA tail from
+# the 3' mean -- and the CCA tail is exactly where 3' fragments pile up, so fragment calls would
+# shift as a side effect of a renaming. These tuples preserve the pre-rename membership; whether
+# the heuristic *should* exclude the tail is a separate question, deliberately not settled here.
+FRAGMENT_FIVEPRIME_REGIONS = ('fiveprime_extra', 'fiveprime_acceptorstem')
+FRAGMENT_THREEPRIME_REGIONS = ('threeprime_acceptorstem', 'threeprime_end')
+
+
+def _sprinzl_location_maps() -> Tuple[Dict[str, str], Dict[str, str], Dict[str, Optional[str]]]:
     '''
-    Map each Sprinzl position to (a) its structural region and (b) which half of the tRNA it
-    falls in, as written into `adata.var['location']` and `adata.var['half']`.
+    Map each Sprinzl position to its structural region, the half of the tRNA it falls in, and
+    the region's short code -- written into `adata.var['location']`, `['half']` and
+    `['location_code']` respectively.
+
+    The region definitions are ported from tRNAscan-SE's SprinzlPos.pm `ss_pos` table (Patricia
+    Chan, UCSC), the same source the Lowe Lab's own tooling uses, so tRNAgraph's annotation
+    agrees with tRNAscan-SE, tRAX and tDRnamer rather than with a parallel invention. Short
+    codes are that table's own (5P1/3P1/L1/... ); the descriptive names it pairs them with are
+    "5p Acceptor Stem", "Acceptor-D-arm-linker", "Variable Stem" and so on.
+
+    Notable consequences relative to what tRNAgraph used to emit:
+      - The acceptor stem is 1-7 paired with 66-72, symmetric. It previously ran -1..7 against
+        66..76, folding the discriminator base and the CCA tail into a seven-base-pair stem.
+      - 73-76 become their own region ('threeprime_end', L7): 73 is the discriminator base and
+        74-76 the CCA tail, neither of which is part of the stem.
+      - The 5' extra base (-1, e.g. the G-1 of tRNA-His) gets its own region rather than being
+        counted as a stem position. It is absent from bacterial position tables entirely, so
+        this region simply has no rows under `--orgmode bact`.
+      - 44-48 are the variable LOOP and the e-series positions the variable STEM -- the reverse
+        of the old 'anticodon_to_t_internal'/'extensionloop' naming.
+      - The D- and T-stems are split into 5'/3' halves, matching how the acceptor and anticodon
+        stems were already handled.
 
     Every key must be a `str`: `var['positions']` holds strings, so an int key silently matches
-    nothing and the position comes out NaN. That is exactly how the anticodon stem (27-31,
-    39-43) went unlabeled -- it was the only region built from a bare `range()`.
+    nothing and the position comes out NaN.
     '''
     loc_dict: Dict[str, str] = {}
     loc_half_dict: Dict[str, str] = {}
-    # Define the location of acceptor stem
-    loc_dict.update({i: 'fiveprime_acceptorstem' for i in [str(i) for i in range(-1, 8)]})
-    loc_dict.update({i: 'threeprime_acceptorstem' for i in [str(i) for i in range(66, 77)]})
-    loc_half_dict.update({i: 'fiveprime' for i in [str(i) for i in range(-1, 8)]})
-    loc_half_dict.update({i: 'threeprime' for i in [str(i) for i in range(66, 77)]})
-    # Define the location of acceptor stem to d stem
-    loc_a_to_d_internal = ['8', '9']
-    loc_dict.update({i: 'a_to_d_internal' for i in loc_a_to_d_internal})
-    loc_half_dict.update({i: 'fiveprime' for i in loc_a_to_d_internal})
-    # Define the location of d stem and loop
-    loc_dstem = [str(i) for i in range(10, 14)] + [str(i) for i in range(22, 26)]
-    loc_dict.update({i: 'dstem' for i in loc_dstem})
-    loc_half_dict.update({i: 'fiveprime' for i in loc_dstem})
-    loc_dloop = [str(i) for i in range(14, 22)] + ['17a', '20a', '20b']
-    loc_dict.update({i: 'dloop' for i in loc_dloop})
-    loc_half_dict.update({i: 'fiveprime' for i in loc_dloop})
-    # Define the location of d stem to anticodon stem
-    loc_d_to_anticodon_internal = ['26']
-    loc_dict.update({i: 'd_to_anticodon_internal' for i in loc_d_to_anticodon_internal})
-    loc_half_dict.update({i: 'fiveprime' for i in loc_d_to_anticodon_internal})
-    # Define the location of anticodon stem and loop
-    loc_fiveprime_anticodonstem = [str(i) for i in range(27, 32)]
-    loc_threeprime_anticodonstem = [str(i) for i in range(39, 44)]
-    loc_dict.update({i: 'fiveprime_anticodonstem' for i in loc_fiveprime_anticodonstem})
-    loc_dict.update({i: 'threeprime_anticodonstem' for i in loc_threeprime_anticodonstem})
-    loc_half_dict.update({i: 'center' for i in loc_fiveprime_anticodonstem})
-    loc_half_dict.update({i: 'center' for i in loc_threeprime_anticodonstem})
-    loc_anticodonloop = [str(i) for i in range(32, 39)]
-    loc_dict.update({i: 'anticodonloop' for i in loc_anticodonloop})
-    loc_half_dict.update({i: 'center' for i in loc_anticodonloop})
-    # Define the location of anticodon stem to t stem
-    loc_anticodon_to_t_internal = [str(i) for i in range(44, 49)]
-    loc_dict.update({i: 'anticodon_to_t_internal' for i in loc_anticodon_to_t_internal})
-    loc_half_dict.update({i: 'threeprime' for i in loc_anticodon_to_t_internal})
-    # Define the location of extension loop
-    loc_e = ['e' + str(i) for i in range(1, 20)]
-    loc_dict.update({i: 'extensionloop' for i in loc_e})
-    loc_half_dict.update({i: 'threeprime' for i in loc_e})
-    # Define the location of t stem and loop
-    loc_tstem = [str(i) for i in range(49, 54)] + [str(i) for i in range(61, 66)]
-    loc_dict.update({i: 'tstem' for i in loc_tstem})
-    loc_half_dict.update({i: 'threeprime' for i in loc_tstem})
-    loc_tloop = [str(i) for i in range(54, 61)]
-    loc_dict.update({i: 'tloop' for i in loc_tloop})
-    loc_half_dict.update({i: 'threeprime' for i in loc_tloop})
-    return loc_dict, loc_half_dict
+    loc_code_dict: Dict[str, Optional[str]] = {}
+
+    def assign(positions, region, half, code):
+        for position in positions:
+            loc_dict[position] = region
+            loc_half_dict[position] = half
+            loc_code_dict[position] = code
+
+    def rng(start, stop):
+        return [str(i) for i in range(start, stop)]
+
+    # 5' extra base. SprinzlPos.pm's position list starts at 1, so there is no canonical code
+    # for it; inventing one would misrepresent the scheme, so it is left unset.
+    assign(['-1'], 'fiveprime_extra', 'fiveprime', None)
+    # Acceptor stem: 1-7 pairs with 66-72 (1:72, 2:71, ... 7:66).
+    assign(rng(1, 8), 'fiveprime_acceptorstem', 'fiveprime', '5P1')
+    assign(rng(66, 73), 'threeprime_acceptorstem', 'threeprime', '3P1')
+    # Discriminator base (73) and CCA tail (74-76).
+    assign(rng(73, 77), 'threeprime_end', 'threeprime', 'L7')
+    # Acceptor stem to D-arm linker.
+    assign(['8', '9'], 'a_to_d_internal', 'fiveprime', 'L1')
+    # D-arm: stem 10-13 pairs with 22-25, loop between them.
+    assign(rng(10, 14), 'fiveprime_dstem', 'fiveprime', '5P2')
+    assign(rng(22, 26), 'threeprime_dstem', 'fiveprime', '3P2')
+    assign(rng(14, 22) + ['17a', '20a', '20b'], 'dloop', 'fiveprime', 'L2')
+    # D-arm to anticodon-arm linker.
+    assign(['26'], 'd_to_anticodon_internal', 'fiveprime', 'L3')
+    # Anticodon arm: stem 27-31 pairs with 39-43, loop 32-38 between them.
+    assign(rng(27, 32), 'fiveprime_anticodonstem', 'center', '5P3')
+    assign(rng(39, 44), 'threeprime_anticodonstem', 'center', '3P3')
+    assign(rng(32, 39), 'anticodonloop', 'center', 'L4')
+    # Variable arm: 44-48 are the loop, the e-series positions the stem.
+    assign(rng(44, 49), 'variableloop', 'threeprime', 'L5')
+    assign(['e' + str(i) for i in range(1, 20)], 'variablestem', 'threeprime', 'P4')
+    # T-arm: stem 49-53 pairs with 61-65, T-Psi-C loop 54-60 between them.
+    assign(rng(49, 54), 'fiveprime_tstem', 'threeprime', '5P5')
+    assign(rng(61, 66), 'threeprime_tstem', 'threeprime', '3P5')
+    assign(rng(54, 61), 'tloop', 'threeprime', 'L6')
+
+    return loc_dict, loc_half_dict, loc_code_dict
 
 
 class AnnDataBuilder():
@@ -1473,10 +1496,12 @@ class AnnDataBuilder():
         adata.var['positions'] = positions
         adata.var['coverage'] = coverage
         # Create sprinzl position and fragment type information
-        loc_dict, loc_half_dict = _sprinzl_location_maps()
+        loc_dict, loc_half_dict, loc_code_dict = _sprinzl_location_maps()
         # Add the location data to adata object
         adata.var['location'] = adata.var['positions'].map(loc_dict)
         adata.var['half'] = adata.var['positions'].map(loc_half_dict)
+        # Short region codes from SprinzlPos.pm, alongside the descriptive names.
+        adata.var['location_code'] = adata.var['positions'].map(loc_code_dict)
         # Add metadata dataframe
         adata.obs['dataset'] = os.path.basename(self.output) # Name of the dataset output file - Usefull for combining multiple datasets if the merge function is used
         adata.obs['trna'] = obs_df['trna'].values
@@ -1518,20 +1543,20 @@ class AnnDataBuilder():
             if totalreads <= 20:
                 fragtype.append('low_coverage')
             elif fiveprimereadends > np.abs(threeprimereadends + 2*totalstd):
-                if np.abs(centermean - adata.X[i][adata.var['location']=='fiveprime_acceptorstem'].mean()) < fiveprimestd:
+                if np.abs(centermean - adata.X[i][adata.var['location'].isin(FRAGMENT_FIVEPRIME_REGIONS)].mean()) < fiveprimestd:
                     fragtype.append('fiveprime_half')
                 else:
                     fragtype.append('fiveprime_fragment')
             elif threeprimereadends > np.abs(fiveprimereadends + 2*totalstd):
-                if np.abs(centermean - adata.X[i][adata.var['location']=='threeprime_acceptorstem'].mean()) < threeprimestd:
+                if np.abs(centermean - adata.X[i][adata.var['location'].isin(FRAGMENT_THREEPRIME_REGIONS)].mean()) < threeprimestd:
                     fragtype.append('threeprime_half')
                 else:
                     fragtype.append('threeprime_fragment')
             else:
                 if np.abs(fiveprimemean - threeprimemean) > totalstd:
                     fragtype.append('other_fragment')
-                elif np.abs(adata.X[i][adata.var['location']=='fiveprime_acceptorstem'].mean() - \
-                            adata.X[i][adata.var['location']=='threeprime_acceptorstem'].mean()) > centermean + centerstd:
+                elif np.abs(adata.X[i][adata.var['location'].isin(FRAGMENT_FIVEPRIME_REGIONS)].mean() - \
+                            adata.X[i][adata.var['location'].isin(FRAGMENT_THREEPRIME_REGIONS)].mean()) > centermean + centerstd:
                     fragtype.append('multiple_fragment')
                 else:
                     fragtype.append('whole')

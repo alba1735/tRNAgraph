@@ -37,6 +37,7 @@ classDiagram
         +coverage : category
         +gap : boolean
         +location : category
+        +location_code : category
         +half : category
     }
 
@@ -232,8 +233,35 @@ The `var` dataframe defines the **dimensions of the coverage tracks**. It repres
 | `positions` | Int      | Canonical [Sprinzl Coordinates](http://trna.ucsc.edu/tRNAscan-SE/Sprinzl.html) (Standardized 1-76 numbering).               |
 | `gap`       | Boolean  | `True` if the position is a gap in the standard alignment (e.g., variable loop region in a short tRNA). Used to mask plots. |
 | `coverage`  | Category | The specific data track type (see below).                                                                                   |
-| `half`      | Category | Region assignment: `5prime_half`, `3prime_half`, or `center`.                                                               |
-| `location`  | Category | Structural annotation: `acceptorstem`, `dloop`, `anticodonstem`, `anticodonloop`, `variableloop`, `tloop`, `tstem`.         |
+| `half`      | Category | Which half of the tRNA the position falls in: `fiveprime`, `center`, or `threeprime`.                                        |
+| `location`  | Category | Structural region (see [Structural Regions](#structural-regions) below).                                                    |
+| `location_code` | Category | The region's short code from the same scheme, e.g. `5P1`, `L4`, `P4`. Unset only for position `-1`.                     |
+
+### Structural Regions
+
+`location` and `location_code` follow tRNAscan-SE's own region definitions, so tRNAgraph's annotation agrees with tRNAscan-SE, tRAX and tDRnamer rather than using a parallel vocabulary. The acceptor stem is positions 1-7 paired with 66-72; the discriminator base and CCA tail are a separate region, not part of the stem.
+
+| `location` | `location_code` | Positions | Region |
+| --- | --- | --- | --- |
+| `fiveprime_extra` | *(unset)* | -1 | 5' extra base (e.g. the G-1 of tRNA-His). Absent from bacterial position tables. |
+| `fiveprime_acceptorstem` | `5P1` | 1-7 | 5' acceptor stem |
+| `a_to_d_internal` | `L1` | 8-9 | Acceptor-arm to D-arm linker |
+| `fiveprime_dstem` | `5P2` | 10-13 | 5' D-arm |
+| `dloop` | `L2` | 14-21, 17a, 20a, 20b | D-loop |
+| `threeprime_dstem` | `3P2` | 22-25 | 3' D-arm |
+| `d_to_anticodon_internal` | `L3` | 26 | D-arm to anticodon-arm linker |
+| `fiveprime_anticodonstem` | `5P3` | 27-31 | 5' anticodon stem |
+| `anticodonloop` | `L4` | 32-38 | Anticodon loop |
+| `threeprime_anticodonstem` | `3P3` | 39-43 | 3' anticodon stem |
+| `variableloop` | `L5` | 44-48 | Variable loop |
+| `variablestem` | `P4` | e-series | Variable stem |
+| `fiveprime_tstem` | `5P5` | 49-53 | 5' T-arm |
+| `tloop` | `L6` | 54-60 | T-psi-C loop |
+| `threeprime_tstem` | `3P5` | 61-65 | 3' T-arm |
+| `threeprime_acceptorstem` | `3P1` | 66-72 | 3' acceptor stem |
+| `threeprime_end` | `L7` | 73-76 | Discriminator base (73) and CCA tail (74-76) |
+
+Which regions actually appear depends on `--orgmode`: bacterial position tables have no `-1`, and the number of variable-stem positions differs per domain.
 
 ### Coverage Types
 

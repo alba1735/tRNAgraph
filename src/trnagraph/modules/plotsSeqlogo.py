@@ -129,11 +129,11 @@ class visualizer():
         # Remove the extension loop from the df if specified
         if self.logosize == 'noloop':
             # Subset the adata to the extension loop
-            seq_adata = seq_adata[:,seq_adata.var['location'] != 'extensionloop']
+            seq_adata = seq_adata[:,seq_adata.var['location'] != 'variablestem']
             # Subset the seq_df to the extension loop
-            seq_df['extensionloop'] = self.adata.var[self.adata.var['coverage'] == 'coverage']['location'].isin(['extensionloop']).tolist()
-            seq_df = seq_df[seq_df['extensionloop'] == False]
-            seq_df = seq_df.drop(['extensionloop'], axis=1)
+            seq_df['variablestem'] = self.adata.var[self.adata.var['coverage'] == 'coverage']['location'].isin(['variablestem']).tolist()
+            seq_df = seq_df[seq_df['variablestem'] == False]
+            seq_df = seq_df.drop(['variablestem'], axis=1)
             seq_df = seq_df.reset_index(drop=True)
         if self.logosize == 'sprinzl':
             seq_adata = seq_adata[:,seq_adata.var['gap'] == False]
