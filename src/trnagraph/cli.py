@@ -682,7 +682,12 @@ def test(
         split_build=split_build, cluster=cluster, merge=merge, graph=graph, split_graph=split_graph,
         all=all, skip_download=skip_download, cleanrun=cleanrun, directory=directory, log=log, quiet=quiet
     )
-    toolsTestSuite.demoPipeline(args).main()
+    try:
+        toolsTestSuite.demoPipeline(args).main()
+    except toolsTestSuite.WorkspaceNotOwnedError as refusal:
+        # A safety refusal, not a crash -- the user needs the sentence, not a traceback.
+        typer.secho(f"ERROR: {refusal}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
     print('Done!\n')
 
 if __name__ == '__main__':

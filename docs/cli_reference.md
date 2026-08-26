@@ -368,7 +368,7 @@ trnagraph tools test [options]
 
 **General Options:**
 
-- **`--all`**: Run all tests including split analysis, forcing a clean workspace and full redownload.
+- **`--all`**: Run all tests including split analysis, forcing a clean workspace and full redownload. Refuses to run if the workspace contains files the suite did not create, naming them -- `--all` recursively deletes the workspace's contents, so it only runs in a directory the suite owns. There is no override; move the files or point `-d` elsewhere.
 - **`--skip-download`**: Skip the metadata/fastq/tRNA/genome download steps and run everything else. Downloads are already skipped by default when the target files are already present; this forces the skip regardless.
 - **`--cleanrun`**: Clean up test files after completion.
 - **`-d`, `--directory`**: Directory to run tests in.

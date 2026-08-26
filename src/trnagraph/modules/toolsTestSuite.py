@@ -8,7 +8,7 @@ import logging
 import contextlib
 import zipfile
 import argparse
-from typing import Optional
+from typing import List, Optional
 
 from . import toolsTG
 
@@ -99,6 +99,56 @@ def _friendly_variant_title(label: str):
     direction, cutoff = match.group(1), match.group(2)
     kind = 'Fragments' if direction == 'Under' else 'Full-length'
     return f'Building {direction.lower()} {cutoff}bp split ({kind})...'
+
+
+# Every top-level entry `tools test` itself puts in its workspace. `--all` recursively
+# deletes the workspace's contents, so this doubles as the definition of what it is allowed
+# to delete: anything here that the suite did not create means the directory belongs to
+# someone else, and the wipe refuses.
+WORKSPACE_ENTRIES = frozenset({
+    '.log',                 # per-command logs from the trnagraph invocations the suite makes
+    'config',               # metadata/manifest/colormap assets copied out of the package
+    'raw',                  # SRA downloads
+    'references',           # genome, annotations, tRNA database
+    'processed',            # trim/map output
+    'vibrChol1',            # the demo experiment's own output directory (`analyze build -o`)
+    'toolsTestSuite.log',   # the suite's own log, which the wipe already preserves
+})
+
+
+class WorkspaceNotOwnedError(Exception):
+    """Raised when `--all` is asked to wipe a directory the suite does not own."""
+
+
+def unexpected_workspace_entries(work_dir: str) -> List[str]:
+    """Top-level entries in `work_dir` that `tools test` did not create, sorted.
+
+    Includes dotfiles: the wipe is `find . -mindepth 1`, which removes them too, so a check
+    that skipped them would pass a directory the delete would still damage. A missing or
+    empty directory yields nothing -- a first run has nothing to protect.
+    """
+    if not os.path.isdir(work_dir):
+        return []
+    return sorted(name for name in os.listdir(work_dir) if name not in WORKSPACE_ENTRIES)
+
+
+def verify_workspace_is_ours(work_dir: str) -> None:
+    """Raise unless `work_dir` holds only files `tools test` created.
+
+    Deliberately offers no override. `--all` is a recursive delete, and a flag that skips
+    this check would end up in a shell history and be reused without thought, which is the
+    situation the check exists to prevent. The remedy is to move the unexpected files or
+    point `-d` somewhere else, so the message names them.
+    """
+    unexpected = unexpected_workspace_entries(work_dir)
+    if unexpected:
+        listed = ', '.join(unexpected)
+        raise WorkspaceNotOwnedError(
+            f"Refusing to clear {work_dir}: it contains files this test suite did not "
+            f"create ({listed}). --all recursively deletes everything in the workspace, so "
+            f"it only runs in a directory the suite owns. Move those files elsewhere, or "
+            f"point -d at a different directory."
+        )
 
 
 def _resolve_work_dir(directory: Optional[str]) -> str:
@@ -316,6 +366,9 @@ class demoPipeline:
 
     def _cleanup_workspace(self) -> None:
         """Removes generated files to ensure a clean run, keeping only the log file."""
+        # Guard before the delete, not at the call sites: both --all and --cleanrun reach
+        # this method, and a future third caller would otherwise be unprotected by default.
+        verify_workspace_is_ours(self.work_dir)
         with self._live_box("Cleaning up workspace..."):
             # Remove everything in the workspace except the log file. The message names the
             # resolved directory rather than an anonymous "test directory": this is an
