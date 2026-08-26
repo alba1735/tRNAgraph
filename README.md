@@ -4,6 +4,8 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![DOI](https://zenodo.org/badge/590619343.svg)](https://doi.org/10.5281/zenodo.14669314)
+[![Build Status](https://github.com/alba1735/tRNAgraph/actions/workflows/release.yml/badge.svg)](https://github.com/alba1735/tRNAgraph/actions)
+![Python](https://img.shields.io/badge/python-3.12-blue.svg)
 
 tRNAgraph is a comprehensive toolkit for analyzing tRNA-seq data. Built upon the foundation of [tRAX](https://github.com/UCSC-LoweLab/tRAX), it generates [AnnData](https://anndata.readthedocs.io/en/latest/index.html) objects, allowing for high-dimensional visualization, clustering, and differential expression analysis.
 
