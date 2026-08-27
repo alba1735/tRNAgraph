@@ -49,6 +49,7 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 - **A plotting layer over the object** — coverage, PCA, volcano, heatmap, radar, seqlogo, correlation, count plots from `trnagraph graph`.
 - **Selectable coverage specificity** — `--covtype unique|isodecoder|isotype|notamino|total` picks any of tRAX's four read-assignment categories, each in its own folder, plus a stacked plot of all four at once. tRAX computed the same partition but only ever surfaced it as one figure and a `unique/` folder.
 - **A built-in demo pipeline** — `trnagraph tools test` runs end to end on a bundled dataset.
+- **UMI deduplication** — `preprocess map --dedup` runs `umi_tools dedup` over the mapped BAMs as a phase of mapping. In tRAX this was a manual step outside the pipeline (dedup the BAMs by hand, then re-run with `--lazyremap`). Refuses to run when the reads carry no UMI, since `umi_tools` would otherwise collapse by alignment position and delete genuine tRNA reads.
 
 ---
 
@@ -67,6 +68,9 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 | `--maponly` | *(removed)* | From `tools test` |
 | `--diffrts total_unique` | `--diffrts total` + `--allreads` | The read basis moved out of the readtype and onto one command-wide flag, so graph types cannot disagree |
 | `--pcareadtypes total_unique total` | `--pcareadtypes total` | Same change. The PCA and volcano overview pages still show both bases side by side |
+| manual `umi_tools dedup` + `--lazyremap` | `preprocess map --dedup` | Deduplication is now a phase of mapping rather than a step outside the pipeline |
+
+**Read names carry UMIs with an underscore.** `preprocess trim -u N` now pins fastp's UMI delimiter to `_` (fastp's own default is `:`), matching what `umi_tools` produces on the `--umi3` path and what `umi_tools dedup` expects. FASTQs trimmed by an earlier version keep their colons and still deduplicate — the separator is detected from the BAM — but read names differ between versions, so do not mix trimmed output from both in one experiment.
 
 `--skip-env-check` and `--skip-update-check` are *global* options — they go before the subcommand (`trnagraph --skip-env-check analyze build ...`).
 

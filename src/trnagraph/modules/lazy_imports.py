@@ -50,6 +50,7 @@ matplotlib = ExternalLazyLoader('matplotlib')
 
 # Tools modules
 toolsMap = LazyLoader('toolsMap')
+toolsDedup = LazyLoader('toolsDedup')
 toolsTDatabase = LazyLoader('toolsTDatabase')
 toolsTrim = LazyLoader('toolsTrim')
 toolsTG = LazyLoader('toolsTG')

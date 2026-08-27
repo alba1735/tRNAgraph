@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import pysam
 
 from . import toolsTG
+from . import toolsDedup
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +398,7 @@ class expdatabase:
         self.trnamapplot = graph_path(basename+"-trnamapinfo.pdf")
         
         self.maplog = res_path(basename+"-mapstats.txt")
+        self.dedupinfo = res_path(basename+"-dedupinfo.txt")
         self.genetypes = res_path(basename+"-genetypes.txt")
         self.genecounts = res_path(basename+"-readcounts.txt")
         self.trnacounts = res_path(basename+"-trnacounts.txt")
@@ -474,6 +476,12 @@ class MapSamples:
         self.local = args.local
         self.skipfqcheck = args.skipcheck
         self.quiet = getattr(args, 'quiet', False)
+        # Opt-in: deduplication changes counts and cannot be reversed without remapping, and on
+        # a dataset without UMIs it would remove genuine reads. Read defensively because several
+        # callers (the test suite, addsplit) build this namespace by hand.
+        self.dedup = getattr(args, 'dedup', False)
+        self.keep_prededup = getattr(args, 'keep_prededup', False)
+        self.dedup_method = getattr(args, 'dedup_method', toolsDedup.DEFAULT_DEDUP_METHOD)
 
         self.trnainfo = trnadatabase(self.dbname)
         self.expinfo = expdatabase(self.expname)
@@ -496,6 +504,56 @@ class MapSamples:
         # Mapping Reads
         self.logger.info("Mapping Reads")
         self.mapsamples()
+
+        # Deduplication is a separate phase rather than part of mapsamples() because it operates
+        # on the finished, sorted bams -- including any that mapsamples() skipped as already
+        # present -- and because umi_tools is memory-hungry enough that it should not share the
+        # mapping pool.
+        if self.dedup:
+            self.dedupsamples()
+
+    def dedupsamples(self):
+        sampledata = toolsTG.samplefile(self.samplefilename)
+        samples = sampledata.getsamples()
+
+        self.logger.info(f"Deduplicating {len(samples)} samples by UMI (method={self.dedup_method})")
+        records = []
+        for samplename in toolsTG.progress_iterator(
+            samples, total=len(samples), desc="Deduplicating samples",
+            logger=self.logger, quiet=self.quiet,
+        ):
+            bamfile = os.path.join(self.bamdir, samplename + ".bam")
+            if not os.path.isfile(bamfile):
+                self.logger.warning(f"No bam file found for {samplename}, skipping deduplication")
+                continue
+            separator = toolsDedup.detect_umi_separator(bamfile)
+            toolsDedup.dedup_sample(
+                bamfile, method=self.dedup_method, keep_prededup=self.keep_prededup,
+            )
+            records.append((samplename, bamfile, separator))
+
+        self.write_dedupinfo(records)
+
+    def write_dedupinfo(self, records):
+        '''
+        Records that deduplication happened, and how.
+
+        `map` writes no runinfo of its own -- that is an `analyze build` artifact -- so without
+        this a deduplicated bam directory is indistinguishable from a non-deduplicated one, even
+        though every downstream count differs. Per-sample read totals are deliberately not
+        recomputed here: they are in umi_tools' own per-sample log next to each bam, and
+        recovering them at this level would mean a second full pass over every file.
+        '''
+        version = toolsDedup.umi_tools_version()
+        os.makedirs(self.expinfo.resultsdir, exist_ok=True)
+        with open(self.expinfo.dedupinfo, 'w') as info:
+            print(f"umi_tools_version\t{version}", file=info)
+            print(f"method\t{self.dedup_method}", file=info)
+            print(f"keep_prededup\t{self.keep_prededup}", file=info)
+            print("sample\tbam\tumi_separator\tumi_tools_log", file=info)
+            for samplename, bamfile, separator in records:
+                logpath = bamfile[:-len('.bam')] + '_dedup.log'
+                print(f"{samplename}\t{bamfile}\t{separator}\t{logpath}", file=info)
 
     def mapsamples(self):
         # Calculate resource allocation

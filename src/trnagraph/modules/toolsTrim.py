@@ -149,6 +149,11 @@ class FastpTrimmer:
             cmd.extend(['--umi_len', str(self.args.umilength)])
             # Default is 5' end of read1
             cmd.extend(['--umi_loc', 'read1'])
+            # fastp's own default delimiter is ':', but `umi_tools` (both the --umi3 extraction
+            # path below and `preprocess map --dedup`) uses '_', and a colon is ambiguous anyway
+            # because Illumina read names are already colon-delimited. Pinning it here keeps one
+            # read-name shape across both of tRNAgraph's UMI paths.
+            cmd.extend(['--umi_delim', '_'])
 
         # Paired-end specific settings
         if r2:

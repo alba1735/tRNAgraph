@@ -58,8 +58,8 @@ trnagraph preprocess trim -i <manifest> [options]
 - **`-a1`, `--adapter1`**: Adapter sequence for R1 (Auto-detect if omitted).
 - **`-a2`, `--adapter2`**: Adapter sequence for R2 (for paired-end data, Auto-detect if omitted).
 - **`-l`, `--length`**: Minimum sequence length allowed after trimming. Reads shorter than this will be discarded. Default: `15`.
-- **`-u`, `--umilength`**: Length of the Unique Molecular Identifier (UMI) in base pairs. Set to `0` to disable UMI extraction. Default: `0`.
-- **`--umi3`**: Specifies that the UMI is located at the 3' end of the read. If not set, it is assumed to be at the 5' end. Default: `False` (5' end).
+- **`-u`, `--umilength`**: Length of the Unique Molecular Identifier (UMI) in base pairs. Set to `0` to disable UMI extraction. Default: `0`. The UMI is moved into the read name, separated by an underscore (`@READ_AAAACAC`) — the same shape `umi_tools` produces, so a dataset trimmed here can be deduplicated later with [`preprocess map --dedup`](#map) whichever UMI path it took.
+- **`--umi3`**: Specifies that the UMI is located at the 3' end of the read. If not set, it is assumed to be at the 5' end. Default: `False` (5' end). fastp has no tail-anchored UMI option, so this case runs fastp with no UMI flags and applies `umi_tools extract --3prime` to its output afterward.
 - **`-n`, `--threads`**: Number of threads to use for fastp. Default: max_cores.
 - **`--style`**: Path to a JSON style file. Only its `colors.trimtype` block is read here (see [Style Files](advanced_usage.md#style-files---style)), but it is the same file `analyze graph` takes, so one file can style the whole pipeline. Falls back to the default palette if omitted or if the file has no `trimtype` key. Recognized bar categories: `Merged`/`Unmerged` (paired-end samples only -- fastp's merge step doesn't run on single-end input), `Trimmed` (single-end samples' filter-passing reads), `Discarded` (either type).
 
@@ -86,7 +86,19 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 - **`--local`**: Use Bowtie2 local alignment mode instead of end-to-end. Default: `False`.
 - **`--minnontrnasize`**: Minimum read length required for a read to be assigned to a non-tRNA feature. Default: `20`
 - **`--skipcheck`**: Skips the validation check that ensures FASTQ read names match BAM headers. Use with caution. Default: `False`
+- **`--dedup`**: Deduplicate mapped reads by UMI using `umi_tools dedup`, as a separate phase after mapping completes. The deduplicated reads take over the sample's ordinary `<sample>.bam` name, so `analyze build`/`--bamdir` need no knowledge that it happened. Default: `False`.
+- **`--keep-prededup`**: Keep the pre-deduplication BAM as `<sample>.prededup.bam` instead of discarding it. Useful for comparing deduplicated against non-deduplicated output without paying for a second mapping run. Default: `False`.
+- **`--dedup-method`**: `umi_tools dedup --method` to use: `unique`, `percentile`, `cluster`, `adjacency` or `directional`. Default: `directional`.
 - **`-n`, `--threads`**: Number of threads to use for Bowtie2 mapping. Default: `8`
+
+> [!IMPORTANT]
+> `--dedup` **refuses to run** if it cannot find a UMI in the BAM's read names, rather than warning and continuing. Given UMI-less reads, `umi_tools dedup` does not fail — it falls back to collapsing reads that share an alignment position, and for short, deeply-covered tRNA transcripts those reads are overwhelmingly genuine molecules rather than PCR duplicates. That would delete real signal and leave nothing in the output to show it had happened. Extract UMIs at trimming time with [`preprocess trim -u/--umilength`](#trim) first.
+
+> [!NOTE]
+> The separator between the read name and its UMI is detected from the BAM rather than assumed, because `umi_tools dedup` defaults to `_` and would silently mis-parse anything else. tRNAgraph's own trimming produces `_` on both UMI paths, but externally-trimmed BAMs vary.
+
+> [!NOTE]
+> These flags are a convenience wrapper, not a replacement for `umi_tools`. It is already installed in the project's conda environment, so for a protocol this wrapper does not cover — paired UMIs, a cell barcode, a non-standard read-name layout, or any other `umi_tools dedup` option — run `umi_tools` directly against the BAM directory and then continue with `analyze build` as normal. A per-sample `umi_tools` log is written next to each BAM, and `results/<exp>-dedupinfo.txt` records the method, the detected separator and the `umi_tools` version used.
 
 > [!IMPORTANT]
 > The number of threads used for mapping is highly system dependent. Bowtie2 can be memory intensive, and using too many threads can cause the system to run out of memory or lose performance because of overhead. It is recommended to use a number of threads that is appropriate for your system's available memory and CPU cores although between 8-10 has been commonly used on high performance machines as an optimal range and starting point.

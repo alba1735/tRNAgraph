@@ -15,7 +15,7 @@ from types import SimpleNamespace
 # These objects are proxies that only import the actual module when an attribute is accessed
 try:
     from .modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG,
+        toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
         toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
@@ -28,7 +28,7 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     from tRNAgraph.modules.lazy_imports import (
-        toolsMap, toolsTDatabase, toolsTrim, toolsTG,
+        toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
         toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
@@ -299,6 +299,9 @@ def map_cmd(
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use with Bowtie2 (default: 8)"),
     skipcheck: bool = typer.Option(False, "--skipcheck", help="Skips the check that the fq files match bam files"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
+    dedup: bool = typer.Option(False, "--dedup", help="Deduplicate mapped reads by UMI using umi_tools. Requires UMIs in the read names (see 'preprocess trim -u'); refuses to run without them"),
+    keep_prededup: bool = typer.Option(False, "--keep-prededup", help="Keep the pre-deduplication bam as <sample>.prededup.bam instead of discarding it (for comparing deduplicated against non-deduplicated output without remapping)"),
+    dedup_method: str = typer.Option("directional", "--dedup-method", help="umi_tools dedup --method to use: unique, percentile, cluster, adjacency or directional"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # -o is an "experiment name", not itself a directory map writes to -- the actual mapped BAM
@@ -308,11 +311,17 @@ def map_cmd(
         args = SimpleNamespace(
             mode='map', output=output, database=database, input=input,
             force_remap=force_remap, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
-            bamdir=bamdir, quiet=quiet
+            bamdir=bamdir, quiet=quiet,
+            dedup=dedup, keep_prededup=keep_prededup, dedup_method=dedup_method,
         )
 
         print('Mapping samples...')
-        toolsMap.MapSamples(args).main()
+        try:
+            toolsMap.MapSamples(args).main()
+        except toolsDedup.MissingUMIError as refusal:
+            # A safety refusal, not a crash -- the user needs the sentence, not a traceback.
+            typer.secho(f"ERROR: {refusal}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
         print('Done!\n')
 
 @analyze_app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
