@@ -54,7 +54,7 @@ trnagraph preprocess trim -i <manifest> [options]
 
 **Flags:**
 
-- **`-i`, `--manifest`** (Required): Tab-delimited file (`OutputPrefix <tab> R1 <tab> R2`). `OutputPrefix` doubles as the sample name and where trimmed output is written — a bare name writes to `processed/trimmed/<name>_trimmed.fastq.gz` (or `_merged.fastq.gz` for paired-end); a name containing a directory writes there instead.
+- **`-i`, `--input`** (Required): Tab-delimited manifest file (`OutputPrefix <tab> R1 <tab> R2`). `OutputPrefix` doubles as the sample name and where trimmed output is written — a bare name writes to `processed/trimmed/<name>_trimmed.fastq.gz` (or `_merged.fastq.gz` for paired-end); a name containing a directory writes there instead.
 - **`-a1`, `--adapter1`**: Adapter sequence for R1 (Auto-detect if omitted).
 - **`-a2`, `--adapter2`**: Adapter sequence for R2 (for paired-end data, Auto-detect if omitted).
 - **`-l`, `--length`**: Minimum sequence length allowed after trimming. Reads shorter than this will be discarded. Default: `15`.
@@ -201,17 +201,24 @@ trnagraph analyze cluster -i <input.h5ad> [options]
 - **`-t`, `--readcutoff`**: Minimum read count for a tRNA to be included in clustering. Default: `20`
 - **`--coveragetype`**: List of coverage features to use for clustering. Default: `['uniquecoverage', 'readstarts', 'readends', 'mismatchedbases', 'deletions']`
 - **`--variant`**: Select which `<norm>:<tag>` variant to cluster, e.g. `norm:u60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Cluster results for a split variant are stored namespaced under that variant (`adata.uns['size_splits'][tag]`/`adata.obsm['size_split_<tag>']`) so they never overwrite another variant's results.
+- **`-e`, `--variancethreshold`**: Variance threshold used for feature selection before clustering — features varying less than this across the dataset are dropped. Default: `0.1`.
+- **`--clusterobsexperimental`**: **Experimental.** Names `adata.obs` columns to copy into `adata.var`/`adata.X` so they participate in clustering alongside the coverage features. Repeatable. Default: none.
+- **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores). Always passed to HDBSCAN's `core_dist_n_jobs`, and to UMAP's `n_jobs` only when no `--randomstate` seed is set — UMAP forces `n_jobs` to 1 when seeded, for reproducibility.
 - **UMAP Parameters:**
   - **`-c1`, `--ncomponentsmp`**: Components for sample clustering (Default: 2).
   - **`-c2`, `--ncomponentgrp`**: Components for group clustering (Default: 2).
   - **`-l1`, `--neighborclusmp`**: Neighbors for sample clustering (Default: 150).
   - **`-l2`, `--neighborclusgrp`**: Neighbors for group clustering (Default: 40).
+  - **`-n1`, `--neighborstdsmp`**: Neighbors used for the UMAP projection _plot_ of samples, separate from `-l1`, which governs the clustering itself (Default: 75).
+  - **`-n2`, `--neighborstdgrp`**: Neighbors used for the UMAP projection _plot_ of groups, separate from `-l2` (Default: 20).
   - **`-m`, `--mindist`**: Minimum distance for UMAP (Default: 0.1).
+  - **`-us`, `--umapstatsmetrics`**: Distance metric for UMAP (Default: `euclidean`).
 - **HDBSCAN Parameters:**
   - **`-d1`, `--hdbscanminsampsmp`**: Min samples for sample clustering (Default: 6).
   - **`-d2`, `--hdbscanminsampgrp`**: Min samples for group clustering (Default: 3).
   - **`-b1`, `--hdbscanminclusmp`**: Min cluster size for sample clustering (Default: 30).
   - **`-b2`, `--hdbscanminclugrp`**: Min cluster size for group clustering (Default: 10).
+  - **`-uh`, `--hdbstatsmetrics`**: Distance metric for HDBSCAN (Default: `euclidean`).
 
 > [!IMPORTANT]
 > Clustering is performed across the `uniquecoverage`, `readstarts`, `readends`, `mismatchedbases`, and `deletions` categories of the AnnData object. When performing clustering, verifying that it is reproducible and that the results reflect the data is important. This can be done by running the clustering multiple times and comparing the results. The clustering is also performed on `sample` and `group` observations. In the case of samples, every set of reads for every single tRNA is used for clustering. In the case of groups, the mean of the reads is taken for each tRNA across the read categories and then used for clustering. This is done to reduce the number of samples used for clustering and to reduce the noise in the clustering. The results will be saved in the `obs` attribute of the database object as `sample_cluster\umap1\umap2` and `group_cluster\umap1\umap2`, respectively. Clusters annotated as `-1` are considered noise and are not included in the clustering. Plotting of the clustering is done as well for convenience.
@@ -233,7 +240,8 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`.
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
+- **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
 - **`--config`**: JSON configuration file for filtering.
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
 - **`--format`**: Output image format for every plot: `pdf`, `svg` or `png`. Overrides a `format` set in `--style`. Multi-page combined outputs stay PDF. Default: `pdf`.
@@ -244,12 +252,31 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > [!NOTE]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
+> [!NOTE]
+> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two *different* `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would emit a skip warning on every ordinary run. See **Compare Options** below.
+
 **Cluster Plot Options:**
 
 - **`--clustergrp`**: Grouping variable. Default: `amino`.
 - **`--clusterlabels`**: Custom labels for clusters.
-- **`--clusteroverview`**: Generate overview plot. Default: `False`.
+- **`--clusteroverview`**: Generate overview plot. Default: `False`. Forced on when `-g all` is used.
 - **`--clustermask`**: Mask unclustered points. Default: `False`.
+- **`--clusternumeric`**: Treat the `--clustergrp` category as numeric rather than categorical, which changes how it is coloured and ordered. Default: `False`.
+
+**Compare Options:**
+
+Only used by `-g compare`, which `all` does not include.
+
+- **`--comparegrp1`**: AnnData `obs` column used as the main comparative group. Default: `group`.
+- **`--comparegrp2`**: AnnData `obs` column to group by within each `--comparegrp1` value. Default: `group`.
+
+> [!NOTE]
+> The two must name different columns to produce anything. A comparison needs a `--comparegrp2` value shared across every value of `--comparegrp1`; where none exists — always the case when `--comparegrp1` is a per-observation-unique column such as `sample` — the plot is skipped with a warning rather than failing.
+
+**Correlation Options:**
+
+- **`--corrmethod`**: Correlation method. Default: `pearson`.
+- **`--corrgroup`**: Grouping variable to generate correlation matrices for. Default: `sample`.
 
 **Coverage Plot Options:**
 
@@ -267,6 +294,8 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
   Any other `adata.var` coverage value (`readstarts`, `readends`, `mismatchedbases`, `deletions`, …) is also accepted. Default: `unique`, or `total` under `--allreads`; an explicit value is always honored. Each category is written to its own subfolder named for its alias, so separate `--covtype` runs into the same `-o` never overwrite each other.
 
 - **`--covmethod`**: Combination method (`mean`).
+- **`--covobs`**: The basis each individual coverage plot is drawn for — i.e. what one plot represents. Default: `trna` (one plot per tRNA transcript).
+- **`--covgap`**: Include alignment gap positions in coverage plots. Default: `False`, since gap columns carry no reads and stretch the x-axis.
 - **`--combinedpdfonly`**: Skip individual tRNA PDFs. Default: `False`.
 
 > [!NOTE]
@@ -277,6 +306,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--heatgrp`**: Grouping variable. Default: `group`.
 - **`--diffrts`**: Read types for differential analysis (shared with volcano). Bare readtypes only (`total`, `wholecounts`, `fiveprime`, `threeprime`, `other`) — the read basis comes from `--allreads`, so a value carrying a `_unique` suffix is rejected. Default: all five.
 - **`--heatcutoff`**: Read count cutoff. Default: `80`.
+- **`--heatbound`**: How many features to show from each end of the ranking — the heatmap is bounded to the top and bottom N counts rather than rendering every feature. Default: `25`.
 - **`--heatsubplots`**: Also save each individual comparison's heatmap as its own PDF, in an `individual/` subfolder next to the combined multi-page PDFs (which are unaffected). Default: `False`.
 
 **Volcano Options:**
@@ -307,6 +337,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`--radargrp`**: Grouping variable. Default: `group`.
 - **`--radarscaled`**: Scale axes to 100%. Default: `False`.
+- **`--radarmethod`**: Aggregation method(s) used to combine samples within a group. Repeatable; pass `all` for every available method. Default: `mean`.
 
 **SeqLogo Options:**
 
@@ -315,6 +346,9 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--logosize`**: Sequence size preset. Default: `noloop`.
 - **`--ccatail`**: Keep CCA tail. Default: `True`.
 - **`--pseudogenes`**: Keep pseudo-tRNAs. Default: `True`.
+- **`--logomanualgrp`**: An explicit list of tRNAs to build one seqlogo from, instead of grouping by the `--logogrp` `obs` column. Repeatable. Default: unset (group by `--logogrp`).
+- **`--logomanualname`**: Output filename for the `--logomanualgrp` logo. Default: unset, in which case the file is timestamped. Ignored unless `--logomanualgrp` is given.
+- **`--logornamode`**: Render the logo as RNA (U) rather than DNA (T). Default: `False`.
 
 **Mismatch Options:**
 
@@ -391,6 +425,7 @@ trnagraph tools test [options]
 - **`--skip-download`**: Skip the metadata/fastq/tRNA/genome download steps and run everything else. Downloads are already skipped by default when the target files are already present; this forces the skip regardless.
 - **`--cleanrun`**: Clean up test files after completion.
 - **`-d`, `--directory`**: Directory to run tests in.
+- **`--log`**: Disables the live progress panel, so the run prints plain sequential lines instead. Use it when the panel's redrawing is unhelpful — under `nohup`, in CI, or when piping to a file. It takes no value: the suite always writes its own fixed `toolsTestSuite.log`, and each `trnagraph` invocation it makes writes a timestamped log under `.log/` regardless of this flag.
 
 **Step Flags (run specific steps):**
 
@@ -408,6 +443,7 @@ trnagraph tools test [options]
 | `--cluster`     | Run clustering algorithms                                      |
 | `--graph`       | Generate visualization plots (main h5ad only)                  |
 | `--split-graph` | Generate plots for split h5ad files                            |
+| `--merge`       | Exercise `tools merge` on the objects the suite built          |
 | `--hubonly`     | Generate UCSC track hubs only                                  |
 
 ---

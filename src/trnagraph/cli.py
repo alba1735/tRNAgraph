@@ -681,7 +681,7 @@ def test(
     skip_download: bool = typer.Option(False, "--skip-download", help="Skip metadata/fastq/tRNA/genome download steps and run everything else (downloads are already skipped by default when the target files are present; this forces it regardless)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
     directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Specify directory to run tests in"),
-    log: Optional[str] = typer.Option(None, "--log", help="Log output to file"),
+    log: bool = typer.Option(False, "--log", help="Disable the live progress panel and print plain sequential output instead (useful under nohup or in CI). The suite's own toolsTestSuite.log and the per-command .log/ entries are written regardless"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # Deliberately NOT wrapped in handle_output(): tools test keeps its own independent,
