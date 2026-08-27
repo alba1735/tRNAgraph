@@ -367,6 +367,123 @@ from .toolsSchemas import VariantTag
 # '_unique' component: accepting one would let a caller reintroduce, per graph type, exactly
 # the silent cross-plot inconsistency --allreads exists to remove.
 
+def load_style_file(path, logger=None):
+    '''
+    Read and validate a `--style` JSON file, returning a StyleFile.
+
+    Shared by `analyze graph` and `preprocess trim` so both accept the same file format --
+    trim only reads the colors block, but there is no reason for it to need a different file.
+    A file in the old `--colormap` shape is accepted unchanged; see StyleFile.
+    '''
+    import json
+    from pydantic import ValidationError
+    from .toolsSchemas import StyleFile
+
+    if logger is not None:
+        logger.info(f'Loading style file: {path}')
+    with open(path, 'r') as handle:
+        raw = json.load(handle)
+    try:
+        return StyleFile.model_validate(raw)
+    except ValidationError as exc:
+        raise ValueError(f'Invalid style file {path}:\n{exc}') from exc
+
+
+# Built-in presentation defaults, used when a --style file does not set a key. dpi/fonttype
+# were previously set as module-level rcParams in each plots*.py file independently.
+PLOT_STYLE_DEFAULTS = {
+    'format': 'pdf',
+    'dpi': 300,
+    'alpha': None,          # None = each plot keeps its own tuned opacity
+    'rasterize_over': None, # None = never rasterize
+}
+
+
+def resolve_plot_style(style, graph_type, **overrides):
+    '''
+    Presentation settings for one graph type: built-in defaults, then the style file's
+    `defaults`, then that graph type's block, then any CLI flag passed in `overrides`.
+
+    A CLI flag always wins over the file -- passing None for an override means "not
+    specified", so a flag left at its default never masks the file.
+    '''
+    resolved = dict(PLOT_STYLE_DEFAULTS)
+    if style is not None:
+        resolved.update(style.resolve(graph_type))
+    resolved.update({k: v for k, v in overrides.items() if v is not None})
+    return resolved
+
+
+@contextlib.contextmanager
+def style_context(settings):
+    '''
+    Apply the rcParam-expressible style settings for the duration of one graph type's run.
+
+    font_size and figsize have to be in force while a figure is *created*, not when it is
+    saved, so they go through rcParams here rather than through save_current(). figsize is
+    applied as the default figure size, which individual plots pick up; combined/multi-page
+    pages call plt.subplots/figure with an explicit size computed from their panel count and
+    so are unaffected, which is the intended split.
+    '''
+    import matplotlib.pyplot as plt
+
+    settings = settings or {}
+    overrides = {}
+    if settings.get('font_size'):
+        overrides['font.size'] = settings['font_size']
+    if settings.get('figsize'):
+        overrides['figure.figsize'] = list(settings['figsize'])
+    if settings.get('dpi'):
+        overrides['savefig.dpi'] = settings['dpi']
+    if not overrides:
+        yield
+        return
+    with plt.rc_context(overrides):
+        yield
+
+
+def save_current(path, settings=None, **savefig_kwargs):
+    '''
+    Save the current matplotlib figure to `path`, swapping its extension for the configured
+    output format and applying the configured dpi. Returns the path actually written.
+
+    Individual plots go through here so `--format svg` reaches all of them. Multi-page
+    combined outputs deliberately do NOT: they are built with PdfPages, and neither SVG nor
+    PNG has a multi-page concept, so those stay PDF whatever the format setting says.
+    '''
+    import matplotlib.pyplot as plt
+
+    settings = settings or PLOT_STYLE_DEFAULTS
+    fmt = settings.get('format') or 'pdf'
+    root, _ = os.path.splitext(path)
+    out = f'{root}.{fmt}'
+    kwargs = {'bbox_inches': 'tight'}
+    kwargs.update(savefig_kwargs)
+    if settings.get('dpi'):
+        kwargs['dpi'] = settings['dpi']
+    plt.savefig(out, **kwargs)
+    return out
+
+
+def save_figure(fig, path_without_extension, settings=None, **savefig_kwargs):
+    '''
+    Write `fig` in the configured format, returning the path written.
+
+    Centralises what 35 call sites used to hardcode as '.pdf'. Format and dpi come from the
+    resolved style settings, so `--format svg` reaches every plot without each module
+    knowing about the flag.
+    '''
+    settings = settings or PLOT_STYLE_DEFAULTS
+    fmt = settings.get('format') or 'pdf'
+    path = f'{path_without_extension}.{fmt}'
+    kwargs = {'bbox_inches': 'tight'}
+    kwargs.update(savefig_kwargs)
+    if settings.get('dpi'):
+        kwargs['dpi'] = settings['dpi']
+    fig.savefig(path, **kwargs)
+    return path
+
+
 READ_BASIS_UNIQUE = 'unique'
 READ_BASIS_ALL = 'allreads'
 
@@ -621,7 +738,7 @@ def scatter_subset_graph_to_full(subset_graph, subset_index, full_index):
 
 
 class adataLog2FC:
-    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1):
+    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, lfc_shrink: bool = True):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
@@ -637,6 +754,12 @@ class adataLog2FC:
         # caller that KNOWS it isn't running inside a pool (e.g. adataBuild.py's or
         # adataGraph.py's own pre-pool precompute step) should ever pass something else.
         self.n_cpus = n_cpus
+        # apeGLM shrinkage of the log2 fold changes (Zhu, Ibrahim & Love 2019,
+        # doi:10.1093/bioinformatics/bty895). On by default: tRAX shrinks its own LFCs via
+        # DESeq2's betaPrior=TRUE (analyzecounts.R:104), so unshrunken MLEs were a silent
+        # divergence from the reference pipeline as well as noisier effect sizes. Costs one
+        # DESeq2 fit per distinct baseline level instead of one overall -- see log2fc_df().
+        self.lfc_shrink = lfc_shrink
         self.log2fc_dict: Dict[str, Any] = {}
         # Set by main(): whether THIS call actually computed a fresh fit (cache miss) rather than
         # reusing a cached df (cache hit). Callers that precompute several combos and want to
@@ -659,11 +782,19 @@ class adataLog2FC:
                         .setdefault(self.readtype, {}) \
                         .setdefault(self.readcount_cutoff, {})
 
-        df = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff].get('df', pd.DataFrame())
+        entry = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]
+        df = entry.get('df', pd.DataFrame())
+        # Shrinkage state is part of what a cached fold change IS, so it belongs in the cache
+        # key. An entry written before this key existed reads as False, which correctly misses
+        # against the shrunk default and recomputes -- otherwise every object built before
+        # apeGLM landed would keep serving unshrunken values under a run that asked for shrunk.
+        if entry.get('lfc_shrink', False) != self.lfc_shrink:
+            df = pd.DataFrame()
 
         if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
-            self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]['df'] = df
+            entry['df'] = df
+            entry['lfc_shrink'] = self.lfc_shrink
             self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
             self.adata.uns['log2FC'] = self.log2fc_dict
             self.computed_fresh = True
@@ -739,20 +870,50 @@ class adataLog2FC:
         # hung 24+ hours later with orphaned loky resource-tracker children attached). joblib's
         # n_jobs=1 is the one setting that skips creating a nested pool entirely rather than just
         # shrinking it, so this must stay pinned at 1 even though DESeq2 could otherwise parallelize.
-        dds = DeseqDataSet(counts=counts_df, metadata=meta_df, design_factors='condition', size_factors_fit_type='poscounts', quiet=True, n_cpus=self.n_cpus)
-        dds.deseq2()
+        def fit(reference=None):
+            meta = meta_df
+            if reference is not None:
+                # apeGLM shrinks a design-matrix COEFFICIENT, not an arbitrary contrast, and
+                # the coefficients a fit exposes are all relative to its reference level. So a
+                # pair can only be shrunk from a fit whose reference is that pair's own
+                # baseline. Ordering the condition categories puts the wanted level first;
+                # PyDESeq2's ref_level argument is deprecated.
+                levels = [reference] + [lv for lv in sorted(set(meta_df['condition'])) if lv != reference]
+                meta = meta_df.assign(condition=pd.Categorical(meta_df['condition'], categories=levels))
+            model = DeseqDataSet(counts=counts_df, metadata=meta, design_factors='condition',
+                                 size_factors_fit_type='poscounts', quiet=True, n_cpus=self.n_cpus)
+            model.deseq2()
+            return model
 
-        for pair in pairs:
-            col_name = f'{pair[0]}-{pair[1]}'
-            # contrast=[factor, test_level, ref_level] -> log2FoldChange = log2(test/ref);
-            # test=pair[1], ref=pair[0] matches the previous log2(mean(pair[1])/mean(pair[0])) convention.
-            stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True)
-            stat_res.summary()
-            res = stat_res.results_df
-            df_pairs[f'log2_{col_name}'] = res['log2FoldChange'].reindex(keep_trnas)
-            # BH-adjusted p-value (padj), not the raw per-comparison p-value -- the old t-test
-            # never applied any multiple-testing correction.
-            df_pairs[f'pval_{col_name}'] = res['padj'].reindex(keep_trnas)
+        # Group pairs by the level acting as their baseline, so each distinct reference costs
+        # one fit rather than each pair costing one. Without shrinkage a single fit serves
+        # every contrast, which is why this is opt-outable.
+        if self.lfc_shrink:
+            by_reference = defaultdict(list)
+            for pair in pairs:
+                by_reference[pair[0]].append(pair)
+            fits = {reference: fit(reference) for reference in by_reference}
+        else:
+            by_reference = {None: list(pairs)}
+            fits = {None: fit()}
+
+        for reference, reference_pairs in by_reference.items():
+            dds = fits[reference]
+            for pair in reference_pairs:
+                col_name = f'{pair[0]}-{pair[1]}'
+                # contrast=[factor, test_level, ref_level] -> log2FoldChange = log2(test/ref);
+                # test=pair[1], ref=pair[0] matches the previous log2(mean(pair[1])/mean(pair[0])) convention.
+                stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True)
+                stat_res.summary()
+                if self.lfc_shrink:
+                    # Leaves p-values untouched by construction -- shrinkage moves the effect
+                    # size, not the significance call.
+                    stat_res.lfc_shrink(coeff=f'condition[T.{pair[1]}]')
+                res = stat_res.results_df
+                df_pairs[f'log2_{col_name}'] = res['log2FoldChange'].reindex(keep_trnas)
+                # BH-adjusted p-value (padj), not the raw per-comparison p-value -- the old
+                # t-test never applied any multiple-testing correction.
+                df_pairs[f'pval_{col_name}'] = res['padj'].reindex(keep_trnas)
 
         # sort the columns alphabetically so log2FC are followed by pvals
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)

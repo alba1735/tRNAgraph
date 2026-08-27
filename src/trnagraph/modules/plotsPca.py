@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -19,7 +20,7 @@ plt.rcParams['ps.fonttype'] = 42
 logger = logging.getLogger(__name__)
 
 
-def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename, title_suffix, threaded):
+def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename, title_suffix, threaded, settings=None):
     '''
     Fit PCA on a wide (feature x sample) dataframe and generate the explained
     variance ratio barplot, PCA scatter plot, and pairplot. `basename` controls
@@ -49,7 +50,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
 
     # Plot the explained variance ratio
     plt.figure(figsize=(6, 6))
-    ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=sns.husl_palette(len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
+    ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=plotsPalette.categorical_palette(len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
     # Set the x and y labels and title
     ax.set_xlabel('Principal Component')
     ax.set_ylabel('Explained Variance Ratio')
@@ -57,7 +58,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     # Set the box aspect ratio to 1 so the plot is square
     plt.gca().set_box_aspect(1)
     # Save the plot
-    plt.savefig(f'{output}{basename}_evr.pdf', bbox_inches='tight')
+    toolsTG.save_current(f'{output}{basename}_evr.pdf', settings)
     if threaded:
         threaded += f'Explained variance ratio graph saved to {output}{basename}_evr.pdf\n'
     else:
@@ -65,11 +66,13 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     plt.close()
 
     # Plot the data with seaborn
+    settings = settings or {}
+    marker_size = settings.get('marker_size') or 100
     plt.figure(figsize=(8, 8))
     if colormap:
-        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=colormap, hue=hue_dict, legend='full')
+        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=colormap, hue=hue_dict, legend='full')
     else:
-        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=100, palette=sns.husl_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
+        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=plotsPalette.categorical_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
     ax.set_xlabel('PC1 ({:.2f}%)'.format(evr[0]*100))
     ax.set_ylabel('PC2 ({:.2f}%)'.format(evr[1]*100))
     # Capatilize the legend and move the legend outside the plot and remove the border around it
@@ -85,7 +88,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     # Set the box aspect ratio to 1 so the plot is square
     plt.gca().set_box_aspect(1)
     # Save the plot
-    plt.savefig(f'{output}{basename}_pca.pdf', bbox_inches='tight')
+    toolsTG.save_current(f'{output}{basename}_pca.pdf', settings)
     if threaded:
         threaded += f'PCA graph saved to {output}{basename}_pca.pdf\n'
     else:
@@ -101,7 +104,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if colormap:
         ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=colormap, hue_order=sorted(set(hue_dict.values())))
     else:
-        ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=sns.husl_palette(len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
+        ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=plotsPalette.categorical_palette(len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
     # Remove the ticks and tick labels
     ax.tick_params(axis='both', which='both', bottom=False, top=False,
                    left=False, right=False, labelbottom=False, labelleft=False)
@@ -109,7 +112,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     ax.fig.suptitle(f'PCA Pairplot of {pcamarkers} colored by {pcacolors}' + suffix, y=1.02)
     # Set the box aspect ratio to 1 so the plot is square
     plt.gca().set_box_aspect(1)
-    plt.savefig(f'{output}{basename}_pairplot.pdf', bbox_inches='tight')
+    toolsTG.save_current(f'{output}{basename}_pairplot.pdf', settings)
     if threaded:
         threaded += f'Pairplot graph saved to {output}{basename}_pairplot.pdf\n'
     else:
@@ -133,7 +136,7 @@ def _readtype_label(column):
     return column.replace('nreads_', '').replace('_norm', '')
 
 
-def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
+def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
     '''
     Generate PCA visualizations for each sample in an AnnData object.
 
@@ -190,7 +193,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
             df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, rt, pcacolors])
         # Pivot the dataframe to have trna as the index, sample as the columns, and nreads as the values for dimensionality reduction
         df = df.pivot_table(index='trna', columns='sample', values=rt, observed=True)
-        threaded = _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'tRNA_{pcamarkers}_by_{pcacolors}_{readtype}', title_suffix=readtype.replace('_', ' ').title(), threaded=threaded)
+        threaded = _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'tRNA_{pcamarkers}_by_{pcacolors}_{readtype}', title_suffix=readtype.replace('_', ' ').title(), threaded=threaded, settings=settings)
 
     # Non-tRNA and combined tRNA + non-tRNA PCA plots. These run automatically alongside the
     # per-readtype plots above (no separate flag), but only when non-tRNA feature counts are
@@ -206,7 +209,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
         # Non-tRNA-only PCA. adata.uns['nontRNA_counts'] is normalized against the
         # all-feature-controlled DESeq2 size factors (see adataBuild.py), which is the
         # statistically appropriate normalization for non-tRNA feature counts.
-        threaded = _generate_pca_plots(nontrna_df.copy(), hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'nontRNA_{pcamarkers}_by_{pcacolors}', title_suffix='Non-tRNA RNAs', threaded=threaded)
+        threaded = _generate_pca_plots(nontrna_df.copy(), hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'nontRNA_{pcamarkers}_by_{pcacolors}', title_suffix='Non-tRNA RNAs', threaded=threaded, settings=settings)
 
         # Combined PCA: all tRNA reads (total, not unique-only) + non-tRNA RNAs, both normalized
         # against the all-feature-controlled size factors so the two feature sets are on the
@@ -257,7 +260,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
                     logger.warning(msg)
             else:
                 combined_df = pd.concat([total_df[shared_cols], nontrna_df[shared_cols]], axis=0)
-                threaded = _generate_pca_plots(combined_df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'allRNA_{pcamarkers}_by_{pcacolors}', title_suffix='All tRNA + Non-tRNA RNAs', threaded=threaded)
+                threaded = _generate_pca_plots(combined_df, hue_dict, colormap, pcamarkers, pcacolors, output, basename=f'allRNA_{pcamarkers}_by_{pcacolors}', title_suffix='All tRNA + Non-tRNA RNAs', threaded=threaded, settings=settings)
 
     if threaded:
         return threaded

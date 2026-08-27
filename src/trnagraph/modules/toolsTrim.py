@@ -9,7 +9,6 @@ import pandas as pd
 import multiprocessing
 from pydantic import ValidationError
 from . import plotsTrimmingStats, toolsTG
-from .toolsSchemas import ColormapFile
 
 # Where trimmed output lands when a manifest's OutputPrefix carries no directory of its own.
 DEFAULT_TRIM_DIR = 'processed/trimmed'
@@ -31,17 +30,14 @@ class FastpTrimmer:
         # leak a logger (and any handler it held) for the life of the process.
         self.logger = logging.getLogger(__name__)
 
-        # Load the colormap if specified (same JSON convention as `analyze graph`'s --colormap,
-        # namespaced under a 'trimtype' top-level key since there's no adata/obs column here)
+        # Load the style file if specified. Only the colors block is used here, namespaced
+        # under 'trimtype' since there is no adata/obs column at trim time -- but it is the
+        # same file `analyze graph` takes, so one file styles the whole pipeline.
         self.colormap = None
-        if getattr(args, 'colormap', None):
-            self.logger.info('Loading colormap file: ' + args.colormap)
-            with open(args.colormap, 'r') as f:
-                raw_colormap = json.load(f)
-            try:
-                self.colormap = ColormapFile.model_validate(raw_colormap).root.get('trimtype', None)
-            except ValidationError as e:
-                raise ValueError(f'Invalid colormap file {args.colormap}:\n{e}') from e
+        self.style = None
+        if getattr(args, 'style', None):
+            self.style = toolsTG.load_style_file(args.style, self.logger)
+            self.colormap = self.style.colors_for('trimtype')
 
         # Parse Manifest
         self.samples = self._parse_manifest()
@@ -383,7 +379,7 @@ class FastpTrimmer:
             # Generate Plot
             plot_out = os.path.join(output_dir, "trim_feature_types.pdf")
             self.logger.info("Generating feature types plot...")
-            plotsTrimmingStats.visualizer(stats_out, plot_out, colormap=self.colormap).plot()
+            plotsTrimmingStats.visualizer(stats_out, plot_out, colormap=self.colormap, settings=toolsTG.resolve_plot_style(self.style, 'trimming')).plot()
         else:
             self.logger.warning("No JSON reports found to summarize.")
 

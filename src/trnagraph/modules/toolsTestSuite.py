@@ -107,7 +107,7 @@ def _friendly_variant_title(label: str):
 # someone else, and the wipe refuses.
 WORKSPACE_ENTRIES = frozenset({
     '.log',                 # per-command logs from the trnagraph invocations the suite makes
-    'config',               # metadata/manifest/colormap assets copied out of the package
+    'config',               # metadata/manifest/style assets copied out of the package
     'raw',                  # SRA downloads
     'references',           # genome, annotations, tRNA database
     'processed',            # trim/map output
@@ -524,7 +524,7 @@ class demoPipeline:
 
             cmd = (
                 f"{self.trnagraph_path} preprocess trim "
-                "-i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC --colormap config/colormap.json"
+                "-i config/vibrChol1.manifest.txt -a1 ACTGTAGGCACCATCAATC --style config/style.json"
             )
             self._run_command(cmd, "Running trim command...")
 
@@ -634,7 +634,7 @@ class demoPipeline:
             graphs_dir = "vibrChol1/graphs/complete" if has_split else "vibrChol1/graphs"
             cmd = (
                 f"{self.trnagraph_path} graph "
-                f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} --colormap config/colormap.json"
+                f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} --style config/style.json"
             )
             self._run_command(cmd, "Running graph command...")
 
@@ -646,13 +646,13 @@ class demoPipeline:
         with self._live_box("Generating graphs for split variants..."):
             cmd = (
                 f"{self.trnagraph_path} graph "
-                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/u60 --variant norm:u60 --colormap config/colormap.json"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/u60 --variant norm:u60 --style config/style.json"
             )
             self._run_command(cmd, "Running graph command for under split...")
 
             cmd = (
                 f"{self.trnagraph_path} graph "
-                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/o60 --variant norm:o60 --colormap config/colormap.json"
+                "-i vibrChol1/vibrChol1.h5ad -o vibrChol1/graphs/o60 --variant norm:o60 --style config/style.json"
             )
             self._run_command(cmd, "Running graph command for over split...")
 

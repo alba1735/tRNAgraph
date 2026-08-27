@@ -6,7 +6,7 @@ import json
 import logging
 from pydantic import ValidationError
 from . import toolsTG
-from .toolsSchemas import GraphFilterConfig, ColormapFile
+from .toolsSchemas import GraphFilterConfig, OUTPUT_FORMATS
 from .lazy_imports import (
     plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
     plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
@@ -102,16 +102,19 @@ class anndataGrapher:
 
         else:
             self.args.config = {}
-        # Load the colormap if specified
-        if self.args.colormap:
-            self.logger.info('Loading colormap file: ' + self.args.colormap)
-            with open(self.args.colormap, 'r') as f:
-                raw_colormap = json.load(f)
-            try:
-                self.args.colormap = ColormapFile.model_validate(raw_colormap).root
-            except ValidationError as e:
-                raise ValueError(f'Invalid colormap file {self.args.colormap}:\n{e}') from e
-            self.logger.info('Colormap loaded.\n')
+        # Load the style file if specified. It carries both the palette and the presentation
+        # settings, so `self.style` is consulted for per-graph-type figure settings while
+        # `self.args.colormap` keeps its existing meaning (the colors block) for every plot
+        # module that already takes a colormap argument.
+        fmt = getattr(self.args, 'format', None)
+        if fmt is not None and fmt not in OUTPUT_FORMATS:
+            raise ValueError(f"--format must be one of {list(OUTPUT_FORMATS)}, got '{fmt}'.")
+        self.style = None
+        self.args.colormap = None
+        if getattr(self.args, 'style', None):
+            self.style = toolsTG.load_style_file(self.args.style, self.logger)
+            self.args.colormap = self.style.colors or None
+            self.logger.info('Style loaded.\n')
         # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
         # This is done now to prevent saving issues later if multiprocessing is used
         self._precompute_and_persist_log2fc()
@@ -143,14 +146,14 @@ class anndataGrapher:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
                 for readtype in self.resolved_diffrts():
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
-                        log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
+                        log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, lfc_shrink=getattr(self.args, 'lfcshrink', True))
                         log2fc.main()
                         any_computed = any_computed or log2fc.computed_fresh
         if 'volcano' in self.args.graphtypes:
             # The volcano combined overview page always uses these two read types (mirroring
             # PCA's default --pcareadtypes), regardless of what --diffrts requests.
             for readtype in plotsVolcano.OVERVIEW_TRNA_READTYPES:
-                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads)
+                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, lfc_shrink=getattr(self.args, 'lfcshrink', True))
                 log2fc.main()
                 any_computed = any_computed or log2fc.computed_fresh
         if any_computed or self.args.regen_uns:
@@ -292,12 +295,25 @@ class anndataGrapher:
                 with self.phase_tracker.phase():
                     self.plot(gt)
 
+    def style_for(self, gt):
+        '''Resolved presentation settings for one graph type, CLI flags already applied.'''
+        return toolsTG.resolve_plot_style(getattr(self, 'style', None), gt,
+                                          format=getattr(self.args, 'format', None))
+
     def plot(self, gt, threaded=None):
+        # rcParam-expressible style settings (font size, default figure size) have to be in
+        # force while the figures are CREATED, not when they are saved, so the whole dispatch
+        # runs inside the context rather than each module handling it.
+        with toolsTG.style_context(self.style_for(gt)):
+            return self.dispatch_plot(gt, threaded)
+
+    def dispatch_plot(self, gt, threaded=None):
         if threaded:
             threaded = f'Generating {gt} plots...\n'
         else:
             self.logger.info(f'Generating {gt} plots...')
         adata_c = self.adata.copy()
+        settings = self.style_for(gt)
         # Define the colormap to use for the graph type
         colormap = None
         cmapgrp = gt
@@ -332,15 +348,15 @@ class anndataGrapher:
                 else:
                     self.logger.warning('No cluster run information found in AnnData object. Please run the cluster command first.\n')
             else:
-                threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded, read_basis=self.read_basis).generate_plots()
+                threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings).generate_plots()
         if gt == 'compare':
-            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded, read_basis=self.read_basis)
+            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings)
         if gt == 'correlation':
-            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis)
+            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis, settings=settings)
         if gt == 'count':
-            threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded)
+            threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded, settings=settings)
         if gt == 'coverage':
-            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output, phase_tracker=self.phase_tracker, quiet=self.quiet)
+            pcV = plotsCoverage.visualizer(adata_c, self.args.threads, self.args.covgrp, self.args.covobs, self.args.covtype, self.args.covgap, self.args.covmethod, colormap, output, phase_tracker=self.phase_tracker, quiet=self.quiet, settings=settings)
             # plotsCoverage owns its own layout below `output`: per-category plots under
             # <covtype-alias>/, the specificity overview at the base.
             pcV.build_output_dirs()
@@ -353,21 +369,21 @@ class anndataGrapher:
             self.logger.info('Generating coverage specificity overview pdf...')
             pcV.generate_partition_overview()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns)
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings)
         if gt == 'logo':
-            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis).generate_plots()
+            plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis, settings=settings).generate_plots()
         if gt == 'mismatch':
-            threaded = plotsMismatch.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, self.args.mismatchpseudocount, threaded=threaded).generate_plots()
+            threaded = plotsMismatch.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, self.args.mismatchpseudocount, threaded=threaded, settings=settings).generate_plots()
         if gt == 'pca':
-            threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis)
+            threaded = plotsPca.visualizer(adata_c, self.args.pcamarkers, self.args.pcacolors, self.args.pcareadtypes, colormap, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis, settings=settings)
         if gt == 'radar':
             if 'all' in self.args.radarmethod:
                 self.args.radarmethod = ['mean', 'median', 'max', 'sum']
             for radarmethod in self.args.radarmethod:
-                pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded, read_basis=self.read_basis)
+                pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings)
                 threaded = pRd.isotype_plots()
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full')
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'

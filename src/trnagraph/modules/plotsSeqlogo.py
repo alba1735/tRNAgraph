@@ -6,6 +6,7 @@ import pandas as pd
 import logomaker
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,7 +18,7 @@ plt.rcParams['ps.fonttype'] = 42
 import time
 
 class visualizer():
-    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output, read_basis=toolsTG.READ_BASIS_UNIQUE):
+    def __init__(self, adata, grp, manual_grp, manual_name, pseudocount, logosize, ccatail, pseudogenes, rnamode, output, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
         self.adata = adata
         # Capture original positions for mapping refseq_full
         self.original_positions = self.adata.var[self.adata.var['coverage'] == 'coverage']['positions'].tolist()
@@ -31,7 +32,7 @@ class visualizer():
         self.ccatail = ccatail
         self.pseudogenes = pseudogenes
         self.rnamode = rnamode
-        self.pal_dict = {'T':'#ea4335', 'U':'#ea4335', 'A':'#34a853', 'C':'#4285f4', 'G':'#fbbc05', '-':'#ffffff'}
+        self.pal_dict = dict(plotsPalette.NUCLEOTIDE_COLORS)
         # Drop CCA tail if specified
         if self.ccatail:
             for i in ['74','75','76']:
@@ -204,7 +205,7 @@ class visualizer():
         # Create a heatmap in the lower subplot
         # scores_df = pd.DataFrame([df_consensus['actual_score'], df_consensus['ref_score'], df_consensus['mismatchedbases']])
         scores_df = pd.DataFrame([df_consensus['actual_score'], df_consensus['ref_score']])
-        sns.heatmap(scores_df, cmap='Blues', cbar=False, square=True, linewidths=0, linecolor='black', ax=ax2)
+        sns.heatmap(scores_df, cmap=plotsPalette.SEQUENTIAL_SCORE, cbar=False, square=True, linewidths=0, linecolor='black', ax=ax2)
         # Print the consensus horizontally aligned with the heatmap below it
         for i in df_consensus.iterrows():
             ascore_color, rscore_color, fweight = 'black', 'black', 'normal'
@@ -226,7 +227,7 @@ class visualizer():
         ax2.get_yaxis().set_label_coords(-0.1,0.5)
         ax2.set_xticks([])
         # Create a legend in the right subplot for the heatmap
-        ax4.imshow(np.linspace(0, 100, 101).reshape(-1, 1)[::-1], cmap='Blues', aspect='auto', interpolation='nearest')
+        ax4.imshow(np.linspace(0, 100, 101).reshape(-1, 1)[::-1], cmap=plotsPalette.SEQUENTIAL_SCORE, aspect='auto', interpolation='nearest')
         ax4.set_xticks([])
         ax4.set_yticks([0, 100])
         ax4.set_yticklabels(['100%', '0%'])
@@ -237,24 +238,24 @@ class visualizer():
         ax3.axhspan(-0.125, 0.125, color='black', zorder=-3)
         # Plot the tRNA scheme
         plotposition = (self.position_swap(df_consensus, '10'), self.position_swap(df_consensus, '26'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='#ff9999', zorder=-2) # D-Arm/Loop Outer
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_DLOOP, zorder=-2) # D-Arm/Loop Outer
         plotposition = (self.position_swap(df_consensus, '14'), self.position_swap(df_consensus, '22'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='white', alpha=0.8, zorder=-1) # D-Arm/Loop Inner
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_INNER_WASH, alpha=plotsPalette.ARM_INNER_WASH_ALPHA, zorder=-1) # D-Arm/Loop Inner
         plotposition = (self.position_swap(df_consensus, '27'), self.position_swap(df_consensus, '44'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='#99ff99', zorder=-2) # A-Arm/Loop Outter
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_ANTICODON, zorder=-2) # A-Arm/Loop Outter
         plotposition = (self.position_swap(df_consensus, '32'), self.position_swap(df_consensus, '39'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='white', alpha=0.8, zorder=-1) # A-Arm/Loop Inner
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_INNER_WASH, alpha=plotsPalette.ARM_INNER_WASH_ALPHA, zorder=-1) # A-Arm/Loop Inner
         plotposition = (self.position_swap(df_consensus, '49'), self.position_swap(df_consensus, '66'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='#99ffff', zorder=-2) # T-Arm/Loop Outter
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_TLOOP, zorder=-2) # T-Arm/Loop Outter
         plotposition = (self.position_swap(df_consensus, '54'), self.position_swap(df_consensus, '61'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='white', alpha=0.8, zorder=-1) # T-Arm/Loop Inner
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_INNER_WASH, alpha=plotsPalette.ARM_INNER_WASH_ALPHA, zorder=-1) # T-Arm/Loop Inner
         plotposition = (ax3.get_xlim()[0], self.position_swap(df_consensus, '8'))
-        ax3.axvspan(plotposition[0], plotposition[1], color='#98c0c0', zorder=-2) # Stem 1
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_STEM, zorder=-2) # Stem 1
         if not self.ccatail:
             plotposition = (self.position_swap(df_consensus, '66'), ax3.get_xlim()[1]-3)
         else:
             plotposition = (self.position_swap(df_consensus, '66'), ax3.get_xlim()[1])
-        ax3.axvspan(plotposition[0], plotposition[1], color='#98c0c0', zorder=-2) # Stem 2
+        ax3.axvspan(plotposition[0], plotposition[1], color=plotsPalette.ARM_STEM, zorder=-2) # Stem 2
         # Plot the tRNA scheme text
         ax3.text(self.position_swap(df_consensus, '18'), 0, 'D-Arm/Loop', fontsize=10, verticalalignment='center', horizontalalignment='center', color='k')
         ax3.text(self.position_swap(df_consensus, '35'), 0, 'A-Arm/Loop', fontsize=10, verticalalignment='center', horizontalalignment='center', color='k')
@@ -292,7 +293,7 @@ class visualizer():
         fig = plt.figure(figsize=(18,len(trna_list)))
 
         seq_hm = np.zeros((len(trna_list), len(seq_df)))
-        sns.heatmap(seq_hm, cmap='Greys', cbar=False, square=True, linewidths=0, linecolor='black')
+        sns.heatmap(seq_hm, cmap=plotsPalette.SEQUENTIAL_SEQUENCE, cbar=False, square=True, linewidths=0, linecolor='black')
         # Populate the heatmap boxes with the sequence matching the color from the self.pal_dict or gray if match is True
         tick_pos, tick_names = [],[]
 

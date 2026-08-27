@@ -114,7 +114,7 @@ def test_visualizer_exposes_the_overview_and_owns_its_layout():
     # adataGraph must delegate directory creation rather than building the coverage tree
     # itself, so the per-category layout has exactly one owner.
     from trnagraph.modules import adataGraph
-    source = inspect.getsource(adataGraph.anndataGrapher.plot)
+    source = inspect.getsource(adataGraph.anndataGrapher.dispatch_plot)
     assert "pcV.build_output_dirs()" in source
     assert "pcV.generate_partition_overview()" in source
     assert f"{'{output}'}{'{self.args.covobs}'}/" not in source, (

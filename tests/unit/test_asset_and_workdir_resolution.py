@@ -34,7 +34,7 @@ def test_assets_dir_contains_the_files_its_consumers_ask_for():
     out of this directory and makedb reads its covariance models from `cm/`, so a path that
     merely exists is not enough."""
     resolved = Path(toolsTG.assets_dir())
-    for relative in ("vibrChol1.manifest.txt", "colormap.json", "cm/TRNAinf-bact.cm"):
+    for relative in ("vibrChol1.manifest.txt", "style.json", "cm/TRNAinf-bact.cm"):
         assert (resolved / relative).is_file(), f"missing packaged asset: {relative}"
 
 

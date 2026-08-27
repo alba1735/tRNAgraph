@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplcolors
@@ -15,7 +16,7 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 class visualizer:
-    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False, read_basis=toolsTG.READ_BASIS_UNIQUE):
+    def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
         self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.radargrp = radargrp
@@ -29,6 +30,7 @@ class visualizer:
         # plots a single basis, chosen once for the whole command by --allreads, instead of
         # emitting both every run.
         self.read_basis = read_basis
+        self.settings = settings
         self.readtype = toolsTG.resolve_readtype('total', read_basis, adata)
 
     def isotype_plots(self):
@@ -77,8 +79,8 @@ class visualizer:
         ax.set_theta_zero_location('N')
         ax.set_theta_direction(-1)
         # Set plot parameters
-        plt.xticks(angles, list(tdf.T), color='black', size=12)
-        plt.yticks(color='dimgrey', size=8)
+        plt.xticks(angles, list(tdf.T), color=plotsPalette.AXIS_TEXT, size=12)
+        plt.yticks(color=plotsPalette.AXIS_TEXT_MUTED, size=8)
         ax.set_rlabel_position(0)
         ax.xaxis.grid(False)
         # Set the maximum value for the y-axis to 100
@@ -105,7 +107,7 @@ class visualizer:
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=self.colormap[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=self.colormap[i])
             else:
-                pal = dict(zip(tdf.columns, sns.color_palette('husl', len(tdf.columns))))
+                pal = dict(zip(tdf.columns, plotsPalette.categorical_palette(len(tdf.columns))))
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=pal[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=pal[i])
         # Capatilize the legend and move the legend outside the plot and remove the border around it
@@ -137,7 +139,7 @@ class visualizer:
             self.threaded += f'Plot saved to {outname}\n'
         else:   
             self.logger.info(f'Plot saved to {outname}')
-        plt.savefig(outname, bbox_inches='tight')
+        toolsTG.save_current(outname, self.settings)
         plt.close()
         if self.threaded:
             return self.threaded

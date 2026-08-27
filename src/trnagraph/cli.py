@@ -256,7 +256,7 @@ def trim(
     umilength: int = typer.Option(0, "-u", "--umilength", help="Length of UMI (0 to disable)"),
     umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
-    colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the trim stats plot (top-level 'trimtype' key)"),
+    style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file. Only its colors block is read here (the 'trimtype' key), but it is the same file `analyze graph` takes, so one file can style the whole pipeline"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
@@ -280,7 +280,7 @@ def trim(
 
         args = SimpleNamespace(
             mode='trim', input=input, adapter1=adapter1, adapter2=adapter2,
-            length=length, umilength=umilength, umi3=umi3, threads=threads, colormap=colormap,
+            length=length, umilength=umilength, umi3=umi3, threads=threads, style=style,
             quiet=quiet, verbose=verbose
         )
 
@@ -458,7 +458,8 @@ def graph(
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
     graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
-    colormap: Optional[str] = typer.Option(None, "--colormap", help="Specify a json file containing colormaps for the graphs"),
+    style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file carrying both the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). Structure: a 'colors' block (grouping column -> value -> color), a 'defaults' block applying to every graph, and optional per-graph-type blocks overriding it. A CLI flag always wins over the file. A file in the old --colormap shape is still accepted and read as its colors block"),
+    format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60', 'allfeatures:o60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag (e.g. 'u60'). Default 'norm:full' is today's default behavior"),
     allreads: bool = typer.Option(False, "--allreads", help="Plot every graph type from all reads instead of unique (transcript-specific) reads. Applies to the whole command at once -- graphs use unique counts by default so that two plots of one dataset never rest on different denominators. Deliberately comparative overview pages (PCA, volcano) always show both bases and are unaffected"),
@@ -502,6 +503,8 @@ def graph(
     mismatchpseudocount: int = typer.Option(10, "--mismatchpseudocount", help="Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots, damping near-zero-coverage positions (default: 10, matching tRAX). Applies at graph time only -- the build-time sigmismatch outputs keep tRAX's own constants so they stay directly comparable to a tRAX run"),
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
+    lfcshrink: bool = typer.Option(True, "--lfcshrink/--no-lfcshrink", help="Shrink log2 fold changes with an apeGLM prior (Zhu, Ibrahim & Love 2019). On by default: it matches tRAX, which shrinks via DESeq2 betaPrior, and gives better effect-size estimates and ranking for low-count features. p-values are unaffected. Costs one DESeq2 fit per distinct baseline group instead of one overall, so --no-lfcshrink is available for faster iteration"),
+    volxlim: Optional[float] = typer.Option(None, "--volxlim", help="Force the volcano x-axis half-width to this log2 fold change instead of deriving it. By default the axis is capped at the 95th percentile of |log2FC| whenever the largest value exceeds 1.5x that percentile, with out-of-range points drawn as triangles at the boundary -- so one extreme feature cannot compress every other one. Nothing is ever dropped, only pinned to the edge"),
     vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many"),
 ):
     output_path = os.path.abspath(output)
@@ -515,7 +518,7 @@ def graph(
         print(toolsTG.builder(output_path))
 
         args = SimpleNamespace(
-            mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, colormap=colormap,
+            mode='graph', anndata=anndata, output=output_path, graphtypes=graphtypes, config=config, style=style, format=format,
             regen_uns=regen_uns, variant=variant, allreads=allreads, threads=threads, quiet=quiet, verbose=verbose, clustergrp=clustergrp, clusterlabels=clusterlabels,
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, covgrp=covgrp, covobs=covobs, covtype=covtype,
@@ -524,7 +527,7 @@ def graph(
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
             ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, mismatchpseudocount=mismatchpseudocount,
-            volgrp=volgrp, volcutoff=volcutoff, vollabels=vollabels
+            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, lfcshrink=lfcshrink
         )
         
         print('Graphing data from database object...\n')

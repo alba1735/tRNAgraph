@@ -12,6 +12,7 @@ from matplotlib.lines import Line2D
 from adjustText import adjust_text
 
 from . import toolsTG
+from . import plotsPalette
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,56 @@ PVAL_SIG_LINE = 1.3
 PVAL_STRONG_LINE = 3
 SIG_ALPHA = 0.9
 NONSIG_ALPHA = 0.25
-DEFAULT_UP_COLOR = '#d62728'
-DEFAULT_DOWN_COLOR = '#1f77b4'
-NONSIG_COLOR = '#7f7f7f'
+DEFAULT_UP_COLOR = plotsPalette.DE_UP
+DEFAULT_DOWN_COLOR = plotsPalette.DE_DOWN
+NONSIG_COLOR = plotsPalette.DE_NONSIGNIFICANT
 MARKER_SHAPES = {'tRNA': 'o', 'nonTRNA': 's'}
+
+# X-axis capping. The axis used to run to 1.1 x the single largest |log2FC|, so one extreme
+# feature set the scale for every other. Measured on the hg38 object, 27 of 36
+# comparison/readtype combinations left the median |log2FC| occupying under 20% of the
+# half-axis; the worst had a median of 1.12 against a max of 8.78 (11.6%).
+#
+# p95 rather than p99: on that worst case p95 caps at 4.55 and takes the bulk's share to
+# 24.6%, while p99 lands near the max and changes almost nothing.
+VOLCANO_CAP_PERCENTILE = 95
+# Only cap when there is a real tail. A distribution whose max is within this multiple of its
+# percentile keeps the old max-based axis, so a tame plot doesn't gain a pointless edge
+# marker (vibrChol1's worst comparison maxes at 3.13 against a p95 near 2).
+VOLCANO_CAP_ENGAGE_RATIO = 1.5
+# Floor, preserving the previous behaviour of squaring small plots up to +-3.
+VOLCANO_MIN_HALF_WIDTH = 3.0
+# Breathing room so a boundary marker is drawn inside the axes rather than clipped in half.
+VOLCANO_AXIS_MARGIN = 1.08
+# Off-scale points are pinned to the boundary as triangles pointing the way they ran off.
+OFFSCALE_MARKERS = {'right': '>', 'left': '<'}
+
+
+def resolve_x_limit(values, explicit=None, percentile=VOLCANO_CAP_PERCENTILE,
+                    minimum=VOLCANO_MIN_HALF_WIDTH, engage_ratio=VOLCANO_CAP_ENGAGE_RATIO):
+    '''
+    Half-width of the volcano x-axis, and whether anything falls outside it.
+
+    Returns `(cap, capped)`. `capped` is True when at least one point lies beyond `cap` and
+    must therefore be drawn at the boundary rather than at its own position. Nothing is ever
+    dropped -- capping changes where a point is drawn, never whether it is.
+    '''
+    if explicit is not None:
+        if explicit <= 0:
+            raise ValueError(f'--volxlim must be a positive log2 fold change, got {explicit}.')
+        magnitudes = pd.Series(values).abs().dropna()
+        return float(explicit), bool((magnitudes > explicit).any())
+
+    magnitudes = pd.Series(values).abs().dropna()
+    if magnitudes.empty:
+        return float(minimum), False
+
+    largest = float(magnitudes.max())
+    candidate = max(float(minimum), float(np.percentile(magnitudes, percentile)))
+    if largest <= candidate * engage_ratio:
+        # No meaningful tail: keep the historical max-based axis.
+        return max(float(minimum), largest), False
+    return candidate, True
 
 # The combined overview page always shows BOTH read bases side by side, regardless of
 # --diffrts and regardless of --allreads. That is deliberate and is not the inconsistency
@@ -57,7 +104,8 @@ def _resolve_pair_colors(colormap, pair):
     return up_color, down_color
 
 
-def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, show_legend=True):
+def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, show_legend=True,
+                  xlim=None, settings=None):
     '''
     Draw a single volcano comparison onto a provided axes. Shared by the standalone individual
     plots and the combined overview page so both use identical styling. `feature_types`, when
@@ -77,6 +125,14 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
     x = log2fc[finite_mask]
     y = -np.log10(pval[finite_mask].clip(lower=np.nextafter(0, 1)))
 
+    settings = settings or {}
+    marker_size = settings.get('marker_size') or 40
+    # Rasterize only the point layer past the configured threshold: a vector PDF carrying
+    # tens of thousands of markers is slow to open and is often rejected on submission,
+    # while text and axes stay vector so the figure remains editable.
+    threshold = settings.get('rasterize_over')
+    rasterized = bool(threshold) and len(df_pairs) > threshold
+
     up_color, down_color = _resolve_pair_colors(colormap, pair)
 
     up_mask = (x > LOG2FC_THRESHOLD) & (y > PVAL_SIG_LINE)
@@ -87,26 +143,43 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
     colors[up_mask] = pd.Series([mplcolors.to_rgba(up_color, alpha=SIG_ALPHA)] * int(up_mask.sum()), index=x.index[up_mask])
     colors[down_mask] = pd.Series([mplcolors.to_rgba(down_color, alpha=SIG_ALPHA)] * int(down_mask.sum()), index=x.index[down_mask])
 
+    # Cap the axis before drawing, and pin anything beyond it to the boundary. A point that
+    # ran off the scale is drawn as a triangle pointing the way it went, so it is visibly an
+    # out-of-range marker rather than a real value sitting on the edge.
+    cap, capped = resolve_x_limit(x, explicit=xlim)
+    x_plot = x.clip(-cap, cap)
+    offscale = x.abs() > cap
+
     if feature_types is not None:
         for ftype, marker in MARKER_SHAPES.items():
             idx = feature_types[feature_types == ftype].index.intersection(x.index)
+            idx = idx.difference(x.index[offscale])
             if len(idx) == 0:
                 continue
-            ax.scatter(x.loc[idx], y.loc[idx], c=list(colors.loc[idx]), marker=marker, s=40, linewidths=0)
+            ax.scatter(x_plot.loc[idx], y.loc[idx], c=list(colors.loc[idx]), marker=marker, s=marker_size, linewidths=0, rasterized=rasterized)
     else:
-        ax.scatter(x, y, c=list(colors), marker='o', s=40, linewidths=0)
+        keep = x.index[~offscale]
+        ax.scatter(x_plot.loc[keep], y.loc[keep], c=list(colors.loc[keep]), marker='o', s=marker_size, linewidths=0, rasterized=rasterized)
+
+    if capped:
+        for side, marker in OFFSCALE_MARKERS.items():
+            side_mask = offscale & ((x > 0) if side == 'right' else (x < 0))
+            idx = x.index[side_mask]
+            if len(idx) == 0:
+                continue
+            ax.scatter(x_plot.loc[idx], y.loc[idx], c=list(colors.loc[idx]), marker=marker,
+                       s=marker_size * 1.4, linewidths=0, rasterized=rasterized)
 
     # Add a line at log2FC = 1.5 and -1.5 and pval = 0.05 and 0.001
-    ax.axvline(x=-LOG2FC_THRESHOLD, color='black', linestyle='--')
-    ax.axvline(x=LOG2FC_THRESHOLD, color='black', linestyle='--')
-    ax.axhline(y=PVAL_SIG_LINE, color='black', linestyle='--')
-    ax.axhline(y=PVAL_STRONG_LINE, color='black', linestyle='--')
+    ax.axvline(x=-LOG2FC_THRESHOLD, color=plotsPalette.REFERENCE_LINE, linestyle='--')
+    ax.axvline(x=LOG2FC_THRESHOLD, color=plotsPalette.REFERENCE_LINE, linestyle='--')
+    ax.axhline(y=PVAL_SIG_LINE, color=plotsPalette.REFERENCE_LINE, linestyle='--')
+    ax.axhline(y=PVAL_STRONG_LINE, color=plotsPalette.REFERENCE_LINE, linestyle='--')
 
-    # Set axis limits so that the plot is square
-    if ax.get_xlim()[1] < 3 and ax.get_xlim()[0] > -3:
-        ax.set_xlim(-3, 3)
-    else:
-        ax.set_xlim(-1.1 * max(abs(x)), 1.1 * max(abs(x)))
+    # Set axis limits so that the plot is square. The half-width comes from resolve_x_limit()
+    # above rather than from max(abs(x)), so one extreme feature no longer sets the scale for
+    # every other one.
+    ax.set_xlim(-cap * VOLCANO_AXIS_MARGIN, cap * VOLCANO_AXIS_MARGIN)
     if ax.get_ylim()[1] < 10:
         ax.set_ylim(0, 10)
 
@@ -117,10 +190,13 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
         score = (x.abs() * y)[sig_mask].sort_values(ascending=False)
         label_idx = score.index if toplabels is None else score.index[:toplabels]
         if len(label_idx) > 0:
-            texts = [ax.text(x[name], y[name], str(name), fontsize=6) for name in label_idx]
+            # Labels follow the drawn (clipped) position, not the raw one -- otherwise a
+            # capped feature's label is placed off-canvas and adjust_text drags a connector
+            # line out of the axes chasing it.
+            texts = [ax.text(x_plot[name], y[name], str(name), fontsize=6) for name in label_idx]
             # Repel labels from every point (not just labeled ones) and from each other; only
             # draws a connector line back to its point if the label actually had to move.
-            adjust_text(texts, x=x.values, y=y.values, ax=ax, arrowprops={'arrowstyle': '-', 'color': 'black', 'lw': 0.5})
+            adjust_text(texts, x=x_plot.values, y=y.values, ax=ax, arrowprops={'arrowstyle': '-', 'color': 'black', 'lw': 0.5})
 
     ax.set_xlabel('log2(fold change)')
     ax.set_ylabel('-log10(p-value)')
@@ -135,13 +211,13 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
         ]
         if feature_types is not None:
             legend_elements += [
-                Line2D([0], [0], marker='o', linestyle='None', markerfacecolor='grey', markeredgecolor='none', markersize=8, label='tRNA'),
-                Line2D([0], [0], marker='s', linestyle='None', markerfacecolor='grey', markeredgecolor='none', markersize=8, label='Non-tRNA'),
+                Line2D([0], [0], marker='o', linestyle='None', markerfacecolor=plotsPalette.LEGEND_SHAPE_SWATCH, markeredgecolor='none', markersize=8, label='tRNA'),
+                Line2D([0], [0], marker='s', linestyle='None', markerfacecolor=plotsPalette.LEGEND_SHAPE_SWATCH, markeredgecolor='none', markersize=8, label='Non-tRNA'),
             ]
         ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
 
 
-def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output, basename, variant_label, feature_types, threaded):
+def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output, basename, variant_label, feature_types, threaded, xlim=None, settings=None):
     '''
     Draw and save one comparison as its own standalone PDF in the individual/ subfolder.
     '''
@@ -150,7 +226,7 @@ def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output
 
     fig = plt.figure(figsize=(8, 8))
     ax = fig.gca()
-    _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title)
+    _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, xlim=xlim, settings=settings)
 
     filename = f'{output}{basename}_{pair_name}_{cutoff}_volcano.pdf'
     if threaded:
@@ -162,7 +238,7 @@ def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output
     return threaded
 
 
-def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots):
+def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots, xlim=None, settings=None):
     '''
     Draw one page of the combined overview PDF for a single comparison pair. `slots` is a list
     of (variant_label, df_pairs, feature_types) tuples: 2 slots (tRNA total_unique + total) are
@@ -176,7 +252,7 @@ def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots):
     axs = axs.flatten()
 
     for ax, (variant_label, df_pairs, feature_types) in zip(axs, slots):
-        _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title=variant_label, show_legend=True)
+        _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title=variant_label, show_legend=True, xlim=xlim, settings=settings)
     for ax in axs[n:]:
         ax.set_visible(False)
     fig.subplots_adjust(wspace=0.5, hspace=0.3)
@@ -186,7 +262,7 @@ def _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots):
     plt.close(fig)
 
 
-def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=100, threaded=True, config_name='default', overwrite=False, is_full_variant=True):
+def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=100, threaded=True, config_name='default', overwrite=False, is_full_variant=True, xlim=None, settings=None):
     '''
     Generate volcano visualizations for each pairwise group comparison in an AnnData object.
 
@@ -220,7 +296,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=1
         trna_dfs[rt] = df
         pairs = log2fc_dict[config_name][grp]['pairs']
         for pair in pairs:
-            threaded = _save_individual_volcano(df, pair, cutoff, colormap, toplabels, individual_output, basename=f'tRNA_{rt}', variant_label=_prettify_readtype(rt), feature_types=None, threaded=threaded)
+            threaded = _save_individual_volcano(df, pair, cutoff, colormap, toplabels, individual_output, basename=f'tRNA_{rt}', variant_label=_prettify_readtype(rt), feature_types=None, threaded=threaded, xlim=xlim, settings=settings)
 
     # The combined overview always shows total_unique + total for tRNA, regardless of --diffrts.
     for rt in OVERVIEW_TRNA_READTYPES:
@@ -251,7 +327,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=1
         # statistically appropriate normalization for non-tRNA feature counts.
         nontrna_pairs_df, nontrna_pairs = toolsTG.log2fc_from_wide_df(nontrna_df, sample_group_map, readcount_cutoff=cutoff)
         for pair in nontrna_pairs:
-            threaded = _save_individual_volcano(nontrna_pairs_df, pair, cutoff, colormap, toplabels, individual_output, basename='nontRNA', variant_label='Non-tRNA RNAs', feature_types=None, threaded=threaded)
+            threaded = _save_individual_volcano(nontrna_pairs_df, pair, cutoff, colormap, toplabels, individual_output, basename='nontRNA', variant_label='Non-tRNA RNAs', feature_types=None, threaded=threaded, xlim=xlim, settings=settings)
 
         # Combined volcano: all tRNA reads (total, not unique-only) + non-tRNA RNAs, both normalized
         # against the all-feature-controlled size factors so the two feature sets are on the same
@@ -308,7 +384,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=1
                 )
                 combined_pairs_df, combined_pairs = toolsTG.log2fc_from_wide_df(combined_df, sample_group_map, readcount_cutoff=cutoff)
                 for pair in combined_pairs:
-                    threaded = _save_individual_volcano(combined_pairs_df, pair, cutoff, colormap, toplabels, individual_output, basename='allRNA', variant_label='All tRNA + Non-tRNA RNAs', feature_types=combined_feature_types, threaded=threaded)
+                    threaded = _save_individual_volcano(combined_pairs_df, pair, cutoff, colormap, toplabels, individual_output, basename='allRNA', variant_label='All tRNA + Non-tRNA RNAs', feature_types=combined_feature_types, threaded=threaded, xlim=xlim, settings=settings)
 
     # Combined overview: one PDF, one page per comparison pair.
     if pairs:
@@ -323,7 +399,7 @@ def visualizer(adata, grp, readtypes, cutoff, output, colormap=None, toplabels=1
                     slots.append(('Other RNA', nontrna_pairs_df, None))
                 if combined_pairs_df is not None:
                     slots.append(('All RNA', combined_pairs_df, combined_feature_types))
-                _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots)
+                _save_combined_volcano_page(pdf, pair, colormap, toplabels, slots, xlim=xlim, settings=settings)
         if threaded:
             threaded += f'Saving combined volcano overview: {overview_path}\n'
         else:

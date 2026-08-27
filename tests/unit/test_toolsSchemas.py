@@ -3,7 +3,7 @@ input files (roadmap.md Phase 2: "Pydantic validation across input files")."""
 import pytest
 from pydantic import ValidationError
 
-from trnagraph.modules.toolsSchemas import GraphFilterConfig, ColormapFile, MetadataFile, PairsFile
+from trnagraph.modules.toolsSchemas import GraphFilterConfig, StyleFile, MetadataFile, PairsFile
 
 
 def test_graph_filter_config_accepts_minimal_valid_dict():
@@ -40,14 +40,15 @@ def test_graph_filter_config_rejects_unknown_keys():
         GraphFilterConfig.model_validate({"name": "x", "typo_key": {"a": [1]}})
 
 
-def test_colormap_file_accepts_valid_nested_dict():
-    cmap = ColormapFile.model_validate({"group": {"VC_24h": "#FFAE49", "VC_log": "#44B7C2"}})
-    assert cmap.root["group"]["VC_24h"] == "#FFAE49"
+def test_style_file_accepts_a_legacy_colormap_shaped_file():
+    """ColormapFile was folded into StyleFile; the old file shape must still load."""
+    style = StyleFile.model_validate({"group": {"VC_24h": "#FFAE49", "VC_log": "#44B7C2"}})
+    assert style.colors_for("group")["VC_24h"] == "#FFAE49"
 
 
-def test_colormap_file_rejects_non_string_color_value():
+def test_style_file_rejects_non_string_color_value():
     with pytest.raises(ValidationError):
-        ColormapFile.model_validate({"group": {"VC_24h": 12345}})
+        StyleFile.model_validate({"colors": {"group": {"VC_24h": 12345}}})
 
 
 def test_metadata_file_accepts_valid_rows():

@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -14,7 +15,7 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 class visualizer():
-    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
+    def __init__(self, adata, clustgrp, clustover, clusternumeric, clusterlabels, masking, colormap, output, threaded=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
         self.logger = logging.getLogger(__name__)
         self.adata = adata
         self.output = output
@@ -25,8 +26,9 @@ class visualizer():
         self.clusterlabels = clusterlabels
         self.masking = masking
         self.colormap = colormap
-        self.numericcolormap =  'mako_r' # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
-        self.point_size = 20
+        self.numericcolormap = plotsPalette.SEQUENTIAL_ORDERED # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
+        # --style's marker_size when set, otherwise the tuned default.
+        self.point_size = (settings or {}).get('marker_size') or 20
         # --allreads can only change how an EXISTING embedding is coloured: the UMAP
         # coordinates and HDBSCAN labels were computed by `analyze cluster` and written into
         # obs long before `graph` ran, so no graph-time flag can alter the projection itself.

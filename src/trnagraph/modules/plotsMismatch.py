@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import contextlib
 import logging
 
 import numpy as np
@@ -12,6 +13,7 @@ import matplotlib.ticker as mticker
 from matplotlib.backends.backend_pdf import PdfPages
 
 from . import toolsTG
+from . import plotsPalette
 
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
@@ -29,6 +31,22 @@ MIN_BASE_COMPOSITION = 50
 REFERENCE_RATE = 0.1
 
 BASE_COVERAGE_TYPES = ('adenines', 'thymines', 'cytosines', 'guanines')
+
+# seaborn's stripplot jitter draws from numpy's global RNG, so an unseeded run produced a
+# visibly different figure every time the same data was plotted -- fine for a glance, wrong
+# for a figure that goes into a paper and may be regenerated during review. Seeded here, with
+# the caller's RNG state restored afterwards so this never perturbs anything else.
+JITTER_SEED = 0
+
+
+@contextlib.contextmanager
+def _seeded_jitter(seed=JITTER_SEED):
+    state = np.random.get_state()
+    np.random.seed(seed)
+    try:
+        yield
+    finally:
+        np.random.set_state(state)
 
 
 def position_mismatch_rates(adata, pseudocount, numerator='mismatchedbases',
@@ -109,7 +127,7 @@ def _palette(values, colormap, key):
                 for k, v in supplied.items()}
     missing = [v for v in values if v not in supplied]
     if missing:
-        generated = sns.husl_palette(len(missing))
+        generated = plotsPalette.categorical_palette(len(missing))
         supplied.update(dict(zip(missing, generated)))
     return supplied
 
@@ -123,13 +141,14 @@ class visualizer():
     boxplotmismatches.R also draws are deliberately not reproduced: plotsCoverage already
     renders readstarts/readends from the same object.
     '''
-    def __init__(self, adata, colormap, output, pseudocount, threaded=True):
+    def __init__(self, adata, colormap, output, pseudocount, threaded=True, settings=None):
         self.adata = adata
         self.colormap = colormap or {}
         self.output = output
         self.pseudocount = pseudocount
         self.threaded = threaded
         self.individual_output = f'{output}individual/'
+        self.settings = settings
 
     def generate_plots(self):
         messages = []
@@ -179,10 +198,18 @@ class visualizer():
             levels = sorted(df[hue].dropna().unique())
 
         palette = _palette(levels, self.colormap, palette_key)
+        settings = self.settings or {}
+        # stripplot's `size` is a diameter in points where scatter's `s` is an area, so the
+        # shared marker_size is square-rooted to keep one number meaning the same visual
+        # weight across plot types.
+        marker_size = (settings['marker_size'] ** 0.5) if settings.get('marker_size') else 2
+        rasterize = bool(settings.get('rasterize_over')) and len(df) > settings['rasterize_over']
         fig, ax = plt.subplots(figsize=(20, 7))
-        sns.stripplot(data=df, x='position', y='rate', hue=hue, palette=palette,
-                      size=2, jitter=0.25, ax=ax, legend='brief')
-        ax.axhline(REFERENCE_RATE, linestyle='--', linewidth=1, color='black')
+        with _seeded_jitter():
+            sns.stripplot(data=df, x='position', y='rate', hue=hue, palette=palette,
+                          size=marker_size, jitter=0.25, ax=ax, legend='brief',
+                          rasterized=rasterize)
+        ax.axhline(REFERENCE_RATE, linestyle='--', linewidth=1, color=plotsPalette.REFERENCE_LINE)
         ax.set_ylim(0, 1)
         # Rates are fractions; tRAX labels the same axis with scales::percent_format().
         ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
@@ -192,7 +219,7 @@ class visualizer():
         ax.tick_params(axis='x', rotation=90)
         ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0, frameon=False)
         if outfile:
-            plt.savefig(outfile, bbox_inches='tight')
+            outfile = toolsTG.save_current(outfile, self.settings)
             logger.info(f'Mismatch plot saved to {outfile}')
         return fig
 
@@ -230,7 +257,7 @@ class visualizer():
                 if count not in wide.columns:
                     continue
                 ax.bar(wide.index, wide[count].values, bottom=bottom,
-                       color=palette[str(count)], edgecolor='black', linewidth=0.4,
+                       color=palette[str(count)], edgecolor=plotsPalette.BAR_EDGE, linewidth=0.4,
                        label=str(count))
                 bottom = bottom + wide[count].values
             ax.set_title('tRNA' if readtype == 'trna' else 'non-tRNA')
@@ -242,6 +269,6 @@ class visualizer():
 
         axes[0][-1].legend(title='Read\nmismatches', bbox_to_anchor=(1.01, 1),
                            loc='upper left', borderaxespad=0, frameon=False)
-        plt.savefig(outfile, bbox_inches='tight')
+        outfile = toolsTG.save_current(outfile, self.settings)
         plt.close(fig)
         logger.info(f'Mismatch count histogram saved to {outfile}')

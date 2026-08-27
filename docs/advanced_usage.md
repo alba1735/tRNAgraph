@@ -137,34 +137,47 @@ Used to filter data before plotting.
 - `obs`: Include only these values.
 - `obs_r`: **Reverse** filter (Exclude these values).
 
-### Custom Colormaps (`--colormap`)
+### Style Files (`--style`)
 
-Define custom colors for groups or features. Supports Hex, RGB, or Matplotlib names.
+One JSON file carries both the color palette and the presentation settings for a figure set, so a paper's figures can be regenerated from a single file. It supersedes the former `--colormap`, which only ever carried colors.
 
 ```json
 {
-  "group": {
-    "Control": "lightgrey",
-    "Treated": "#FF5733"
+  "colors": {
+    "group":    { "Control": "lightgrey", "Treated": "#FF5733" },
+    "amino":    { "Ala": "royalblue", "Gly": "#FF9896" },
+    "trimtype": { "Merged": "royalblue", "Discarded": "#B0B0B0" }
   },
-  "amino": {
-    "Ala": "royalblue",
-    "Gly": "#FF9896"
-  },
-  "trimtype": {
-    "Merged": "royalblue",
-    "Unmerged": "lightgrey",
-    "Trimmed": "royalblue",
-    "Discarded": "#B0B0B0"
-  }
+  "defaults": { "format": "pdf", "dpi": 300, "font_size": 10 },
+  "volcano":  { "figsize": [8, 8], "marker_size": 12 },
+  "pca":      { "marker_size": 40 }
 }
 ```
 
-> [!NOTE]
-> Some plots default to using group as the default category for plotting making a colormap with this name will override the default colormap in those cases.
+Colors accept hex, RGB or Matplotlib names. Precedence runs **built-in defaults → `defaults` → the graph type's own block → a CLI flag**, so `--format svg` overrides a `format` set in the file.
+
+Settings:
+
+| Key | Applies to | Meaning |
+| --- | --- | --- |
+| `format` | every graph type | `pdf`, `svg` or `png`. Also settable with `--format`. |
+| `dpi` | every graph type | Raster resolution; affects PNG size and embedded raster layers. |
+| `font_size` | every graph type | Base font size, applied while figures are built. |
+| `figsize` | every graph type | `[width, height]` in inches. **Individual plots only** — combined/multi-page pages compute their own geometry from how many panels they lay out. |
+| `marker_size` | `volcano`, `pca`, `cluster`, `mismatch` | Point size for scatter layers. |
+| `alpha` | `volcano`, `pca`, `cluster`, `mismatch` | Point opacity. |
+| `rasterize_over` | `volcano`, `pca`, `cluster`, `mismatch` | Rasterize the point layer above this many points, keeping text and axes vector — a vector file carrying tens of thousands of markers is slow to open and is often rejected on submission. |
+
+A key set in a graph type's own block that the type cannot use is an error rather than a silent no-op, so a style file that appears to do nothing fails instead. The same key in `defaults` is fine — `defaults` broadcasts, and a type that cannot use a key simply skips it. `coverage`, `radar` and `logo` deliberately reject `alpha`: their opacity values are structural (shaded arm bands, fill translucency scaled by how many series overlay each other), not a point-opacity knob.
 
 > [!NOTE]
-> `preprocess trim --colormap` runs before any AnnData object exists, so it only reads the `trimtype` key -- it doesn't use `group` or any other `adata.obs`-derived key. `Merged`/`Unmerged` only ever appear for paired-end samples (fastp only merges paired input); single-end samples' filter-passing reads are labeled `Trimmed` instead, so the bar categories a given plot shows depend on which library types are in the manifest.
+> Some plots default to using `group` as the plotting category, so a `colors.group` block overrides the default palette in those cases.
+
+> [!NOTE]
+> `preprocess trim --style` runs before any AnnData object exists, so it reads only `colors.trimtype` — not `group` or any other `adata.obs`-derived key. `Merged`/`Unmerged` only ever appear for paired-end samples (fastp only merges paired input); single-end samples' filter-passing reads are labeled `Trimmed` instead, so the bar categories a given plot shows depend on which library types are in the manifest.
+
+> [!NOTE]
+> Multi-page combined outputs are always PDF regardless of `format`: they are built with `PdfPages`, and neither SVG nor PNG has a multi-page concept. Individual plots honor the setting.
 
 ## Custom Downstream Analysis
 

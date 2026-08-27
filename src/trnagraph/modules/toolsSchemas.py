@@ -88,17 +88,6 @@ class GraphFilterConfig(BaseModel):
         return v
 
 
-class ColormapFile(RootModel[Dict[str, Dict[str, str]]]):
-    '''
-    Validates the `--colormap` JSON passed to `trnagraph graph`/`preprocess trim`: a top-level
-    dict keyed by grouping-column name (e.g. 'group', or 'trimtype' for the trim-stats plot),
-    each mapping category value -> color string. Previously a bare `json.load()` -- a
-    non-string color value (or a flat, non-nested dict) would only surface much later as an
-    opaque matplotlib error inside `mplcolors.to_rgb()`.
-    '''
-    root: Dict[str, Dict[str, str]]
-
-
 class MetadataFile(BaseModel):
     '''
     Validates the metadata/samples file passed to `analyze build -i`, after the fastq column
@@ -151,3 +140,164 @@ class PairsFile(BaseModel):
         if not self.pairs:
             raise ValueError(f'Pairs file {self.path} contains no valid Sample1/Sample2 pairs.')
         return self
+
+
+# Graph types that accept their own style block. Kept here rather than imported from
+# adataGraph to avoid a circular import; the test suite pins the two lists together.
+STYLE_GRAPH_TYPES = ('cluster', 'compare', 'correlation', 'count', 'coverage', 'heatmap',
+                     'logo', 'mismatch', 'pca', 'radar', 'volcano', 'trimming')
+
+OUTPUT_FORMATS = ('pdf', 'svg', 'png')
+
+# Keys every graph type can honour.
+UNIVERSAL_STYLE_KEYS = frozenset({'format', 'dpi', 'font_size', 'figsize'})
+
+# Extra keys each graph type consumes, beyond the universal set. A key set in a graph type's
+# own block but absent here is rejected at load rather than silently ignored -- a style file
+# that appears to do nothing is the failure mode this whole schema exists to avoid. The
+# `defaults` block is exempt: it broadcasts, so a type that cannot use a key just skips it.
+GRAPH_STYLE_SUPPORT = {
+    'volcano':     frozenset({'marker_size', 'alpha', 'rasterize_over'}),
+    'pca':         frozenset({'marker_size', 'alpha', 'rasterize_over'}),
+    'cluster':     frozenset({'marker_size', 'alpha', 'rasterize_over'}),
+    'mismatch':    frozenset({'marker_size', 'alpha', 'rasterize_over'}),
+    # coverage/radar/logo deliberately do NOT accept alpha: their alpha values are structural
+    # (shaded arm bands, fill translucency scaled by how many series overlay each other) rather
+    # than a point-opacity knob, so a global override would break tuned visuals rather than
+    # restyle them.
+    'coverage':    frozenset(),
+    'radar':       frozenset(),
+    'logo':        frozenset(),
+    'compare':     frozenset(),
+    'correlation': frozenset(),
+    'count':       frozenset(),
+    'heatmap':     frozenset(),
+    'trimming':    frozenset(),
+}
+
+
+class StyleBlock(BaseModel):
+    '''
+    Presentation settings, valid either as the file's `defaults` or as one graph type's
+    override. `extra='forbid'` so a typo like "marker_sizes" fails at load instead of being
+    silently ignored while the user wonders why the figure did not change -- the same
+    reasoning that put extra='forbid' on GraphFilterConfig.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    # Applied to individual plots only. Combined/multi-page pages compute their own page
+    # geometry from how many panels they are laying out, so a fixed figsize there would
+    # either clip panels or leave dead space; those ignore it with a warning.
+    figsize: Optional[Tuple[float, float]] = None
+    marker_size: Optional[float] = None
+    font_size: Optional[float] = None
+    dpi: Optional[int] = None
+    alpha: Optional[float] = None
+    # Above this many points, a scatter layer is rasterized while text and axes stay vector.
+    # A vector PDF carrying tens of thousands of points is slow to open and is often rejected
+    # by journal submission systems.
+    rasterize_over: Optional[int] = None
+    format: Optional[Literal['pdf', 'svg', 'png']] = None
+
+    @field_validator('figsize')
+    @classmethod
+    def _positive_figsize(cls, v):
+        if v is not None and (v[0] <= 0 or v[1] <= 0):
+            raise ValueError(f'figsize must be two positive numbers, got {v}.')
+        return v
+
+    @field_validator('marker_size', 'font_size', 'dpi')
+    @classmethod
+    def _positive(cls, v, info):
+        if v is not None and v <= 0:
+            raise ValueError(f'{info.field_name} must be positive, got {v}.')
+        return v
+
+    @field_validator('alpha')
+    @classmethod
+    def _unit_interval(cls, v):
+        if v is not None and not 0 <= v <= 1:
+            raise ValueError(f'alpha must be between 0 and 1, got {v}.')
+        return v
+
+
+class StyleFile(BaseModel):
+    '''
+    Validates the `--style` JSON passed to `trnagraph graph` and `preprocess trim`.
+
+    Supersedes the former `--colormap` file, so that one file carries both the palette and
+    the presentation settings for a figure set rather than the user juggling two. A file in
+    the old colormap shape (a bare mapping of column -> value -> color) is still accepted and
+    read as `colors`, which is what keeps existing colormap.json files working.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    colors: Optional[Dict[str, Dict[str, str]]] = None
+    defaults: Optional[StyleBlock] = None
+    cluster: Optional[StyleBlock] = None
+    compare: Optional[StyleBlock] = None
+    correlation: Optional[StyleBlock] = None
+    count: Optional[StyleBlock] = None
+    coverage: Optional[StyleBlock] = None
+    heatmap: Optional[StyleBlock] = None
+    logo: Optional[StyleBlock] = None
+    mismatch: Optional[StyleBlock] = None
+    pca: Optional[StyleBlock] = None
+    radar: Optional[StyleBlock] = None
+    volcano: Optional[StyleBlock] = None
+    trimming: Optional[StyleBlock] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def _accept_bare_colormap(cls, data):
+        '''
+        A legacy colormap file has no `colors`/`defaults`/graph-type keys at all -- every top
+        level key is a grouping column whose value is a color mapping. Detect that shape and
+        lift it into `colors` rather than failing on extra='forbid', so an existing
+        colormap.json keeps working under --style unchanged.
+        '''
+        if not isinstance(data, dict) or not data:
+            return data
+        known = {'colors', 'defaults', *STYLE_GRAPH_TYPES}
+        if any(key in known for key in data):
+            return data
+        if all(isinstance(v, dict) and all(isinstance(c, str) for c in v.values())
+               for v in data.values()):
+            return {'colors': data}
+        return data
+
+    @model_validator(mode='after')
+    def _reject_unsupported_per_type_keys(self) -> 'StyleFile':
+        for graph_type in STYLE_GRAPH_TYPES:
+            block = getattr(self, graph_type, None)
+            if block is None:
+                continue
+            allowed = UNIVERSAL_STYLE_KEYS | GRAPH_STYLE_SUPPORT.get(graph_type, frozenset())
+            unsupported = sorted(set(block.model_dump(exclude_none=True)) - allowed)
+            if unsupported:
+                raise ValueError(
+                    f"'{graph_type}' does not use {unsupported}. Supported for this graph "
+                    f"type: {sorted(allowed)}. Put it in 'defaults' if you meant it to apply "
+                    f"wherever it is relevant."
+                )
+        return self
+
+    def resolve(self, graph_type: str) -> Dict[str, Any]:
+        '''
+        Settings for one graph type: `defaults` with that type's own block laid over it.
+        Only keys the file actually set appear, so a caller can distinguish "not configured"
+        from "configured to the same value as the built-in default".
+        '''
+        merged: Dict[str, Any] = {}
+        if self.defaults is not None:
+            merged.update(self.defaults.model_dump(exclude_none=True))
+        override = getattr(self, graph_type, None) if graph_type in STYLE_GRAPH_TYPES else None
+        if override is not None:
+            merged.update(override.model_dump(exclude_none=True))
+        return merged
+
+    def colors_for(self, column: Optional[str]) -> Optional[Dict[str, str]]:
+        '''The palette for one grouping column, or None when the file does not set it.'''
+        if not self.colors or column is None:
+            return None
+        return self.colors.get(column)

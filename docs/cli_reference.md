@@ -61,7 +61,7 @@ trnagraph preprocess trim -i <manifest> [options]
 - **`-u`, `--umilength`**: Length of the Unique Molecular Identifier (UMI) in base pairs. Set to `0` to disable UMI extraction. Default: `0`.
 - **`--umi3`**: Specifies that the UMI is located at the 3' end of the read. If not set, it is assumed to be at the 5' end. Default: `False` (5' end).
 - **`-n`, `--threads`**: Number of threads to use for fastp. Default: max_cores.
-- **`--colormap`**: Path to a JSON file specifying custom colors for the trim-stats plot's read-type bars, under a top-level `trimtype` key (see [Custom Colormaps](advanced_usage.md#custom-colormaps---colormap)). Falls back to the default palette if omitted or if the file has no `trimtype` key. Recognized bar categories: `Merged`/`Unmerged` (paired-end samples only -- fastp's merge step doesn't run on single-end input), `Trimmed` (single-end samples' filter-passing reads), `Discarded` (either type).
+- **`--style`**: Path to a JSON style file. Only its `colors.trimtype` block is read here (see [Style Files](advanced_usage.md#style-files---style)), but it is the same file `analyze graph` takes, so one file can style the whole pipeline. Falls back to the default palette if omitted or if the file has no `trimtype` key. Recognized bar categories: `Merged`/`Unmerged` (paired-end samples only -- fastp's merge step doesn't run on single-end input), `Trimmed` (single-end samples' filter-passing reads), `Discarded` (either type).
 
 > [!NOTE]
 > If R2_Path is omitted in the manifest file, the sample will be treated as single-end.
@@ -223,13 +223,14 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`-o`, `--output`**: Output directory. Default: `figures`.
 - **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`.
 - **`--config`**: JSON configuration file for filtering.
-- **`--colormap`**: JSON file for custom colors.
+- **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
+- **`--format`**: Output image format for every plot: `pdf`, `svg` or `png`. Overrides a `format` set in `--style`. Multi-page combined outputs stay PDF. Default: `pdf`.
 - **`--regen_uns`**: Force regeneration of calculated stats.
 - **`--variant`**: Select which `<norm>:<tag>` variant to plot, e.g. `raw:full`, `norm:u60`, `allfeatures:full` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Plots for a non-default variant are written to a `<norm>_<tag>/` subfolder under each graph type's output directory, so different `--variant` runs into the same `-o` don't overwrite each other.
 - **`--allreads`**: Plot every graph type from all reads instead of unique reads. Default: `False` (unique). "Unique" here means **transcript-specific** — a read that aligned to exactly one mature tRNA transcript — not genome-level uniqueness; the genome MAPQ filter is separate and always applied. This is one option for the whole command, so two plots of the same dataset never rest on different denominators. Plots for every graph type except coverage are written to an `allreads/` subfolder (nested inside the `--variant` folder when both are used); coverage is excluded because `--covtype` already names what was plotted. Readtypes with no transcript-specific counts (`antisense`, and the pre-tRNA categories) fall back to all reads with a warning.
 
 > [!NOTE]
-> The PCA and volcano *combined overview* pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
+> The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 **Cluster Plot Options:**
 
@@ -243,15 +244,16 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--covgrp`**: Grouping variable. Default: `group`.
 - **`--covtype`**: Which coverage category to plot. Reads are binned by how specifically they could be assigned, into four mutually exclusive categories that sum to total coverage:
 
-  | Alias | `adata.var` value | Meaning |
-  | --- | --- | --- |
-  | `unique` / `transcript` | `uniquecoverage` | Assigned to exactly one tRNA transcript |
-  | `isodecoder` | `multitrnacoverage` | One anticodon, several transcripts |
-  | `isotype` | `multianticodoncoverage` | One amino acid, several anticodons |
-  | `notamino` | `multiaminocoverage` | Several amino acids |
-  | `total` | `coverage` | The sum of all four |
+  | Alias                   | `adata.var` value        | Meaning                                 |
+  | ----------------------- | ------------------------ | --------------------------------------- |
+  | `unique` / `transcript` | `uniquecoverage`         | Assigned to exactly one tRNA transcript |
+  | `isodecoder`            | `multitrnacoverage`      | One anticodon, several transcripts      |
+  | `isotype`               | `multianticodoncoverage` | One amino acid, several anticodons      |
+  | `notamino`              | `multiaminocoverage`     | Several amino acids                     |
+  | `total`                 | `coverage`               | The sum of all four                     |
 
   Any other `adata.var` coverage value (`readstarts`, `readends`, `mismatchedbases`, `deletions`, …) is also accepted. Default: `unique`, or `total` under `--allreads`; an explicit value is always honored. Each category is written to its own subfolder named for its alias, so separate `--covtype` runs into the same `-o` never overwrite each other.
+
 - **`--covmethod`**: Combination method (`mean`).
 - **`--combinedpdfonly`**: Skip individual tRNA PDFs. Default: `False`.
 
@@ -267,10 +269,15 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 **Volcano Options:**
 
-- **`--volgrp`**: Grouping variable used both to define the pairwise group comparisons and to look up per-group colors in `--colormap` (the same `<obs_column>: {<value>: <color>}` shape used by PCA, keyed on `--volgrp`'s value, e.g. `"group"`). Default: `group`.
+- **`--volgrp`**: Grouping variable used both to define the pairwise group comparisons and to look up per-group colors in `--style`'s `colors` block (the same `<obs_column>: {<value>: <color>}` shape used by PCA, keyed on `--volgrp`'s value, e.g. `"group"`). Default: `group`.
 - **`--diffrts`**: Read types to generate per-readtype tRNA volcano plots for, shared with heatmap. See the heatmap entry above for accepted values.
 - **`--volcutoff`**: Read count cutoff. Default: `80`.
 - **`--vollabels`**: Number of top significant markers to label on each plot, ranked by `|log2FC| * -log10(p-value)`. Default: `100` (labeling every significant marker has unbounded cost on large datasets); pass `0` to disable labels entirely, or any other value to label exactly that many.
+- **`--volxlim`**: Force the x-axis half-width to this log2 fold change. By default the axis is capped at the 95th percentile of `|log2FC|` whenever the largest value exceeds 1.5x that percentile, and points beyond the cap are drawn as triangles at the boundary — so one extreme feature cannot compress every other one. Nothing is ever dropped, only pinned to the edge.
+
+**Differential Expression Options:**
+
+- **`--lfcshrink` / `--no-lfcshrink`**: Shrink log2 fold changes with an apeGLM prior. On by default — tRAX shrinks its own fold changes via DESeq2's `betaPrior`, so unshrunken estimates were a silent divergence from the reference pipeline as well as noisier for low-count features. p-values are unaffected. apeGLM shrinks a design coefficient rather than an arbitrary contrast, so this costs one DESeq2 fit per distinct baseline group instead of one overall; `--no-lfcshrink` is available for faster iteration. Shrinkage state is part of the cached `uns['log2FC']` key, so switching it recomputes rather than serving a stale frame.
 
 > [!NOTE]
 > Two extra subplots are generated automatically (in combined plots) whenever `adata.uns['nontRNA_counts']` is non-empty (i.e., `--gtf` was used at `analyze build`): a non-tRNA-only plot and a combined tRNA + non-tRNA plot. No additional flags are needed, and both are skipped with a log message if non-tRNA counts are unavailable. These use a different DESeq2 normalization than the per-readtype plots — see [Data Structure: Graphing Notes](data_structure.md#6-graphing-notes).

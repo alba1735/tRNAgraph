@@ -6,6 +6,7 @@ import pandas as pd
 import anndata as ad
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 plt.rcParams['savefig.dpi'] = 300
@@ -15,7 +16,7 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title, threaded):
+def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title, threaded, settings=None):
     '''
     Compute and plot a correlation matrix (R^2 heatmap) from a wide (feature x sample/group)
     dataframe. Only plots when more than 20 samples/groups' worth of signal is present, matching
@@ -37,13 +38,13 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
 
     df_corr = df_wide.corr(method=corr_method)
     plt.figure(figsize=(6, 6))
-    ax = sns.heatmap(df_corr**2, square=True, cmap='Blues', cbar_kws={'label': f'{corr_method} R^2'})
+    ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.SEQUENTIAL_CORRELATION, cbar_kws={'label': f'{corr_method} R^2'})
     ax.set_xlabel('')
     ax.set_ylabel('')
     ax.set_title(f'{corr_method} {corr_group} {title} Correlation Matrix'.title())
     plt.gca().set_box_aspect(1)
     outpath = f'{output}{filename}.pdf'
-    plt.savefig(outpath, bbox_inches='tight')
+    toolsTG.save_current(outpath, settings)
     msg = f'Correlation matrix for {title} saved to {outpath}'
     if threaded:
         threaded += msg + '\n'
@@ -61,7 +62,7 @@ def _collapse_to_corr_group(df_wide, sample_to_group, corr_group):
         return df_wide
     return df_wide.rename(columns=lambda c: sample_to_group.get(str(c), c)).T.groupby(level=0, observed=True).mean().T
 
-def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE):
+def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
     '''
     Generate correlation graphs for each sample in an AnnData object.
 
@@ -87,7 +88,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
         df_corr = df.pivot_table(index='trna', columns=corr_group, values=i, observed=True)
         title = i.split('_')[1]
         filename = f'{corr_method}_{corr_group}_{title}_correlation_matrix'
-        threaded = _plot_corr_matrix(df_corr, corr_method, corr_group, output, filename, title, threaded)
+        threaded = _plot_corr_matrix(df_corr, corr_method, corr_group, output, filename, title, threaded, settings=settings)
 
     # Non-tRNA and combined tRNA + non-tRNA correlation matrices. These run automatically
     # alongside the per-readtype matrices above (no separate flag), but only when non-tRNA
@@ -108,7 +109,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
         nontrna_grouped = _collapse_to_corr_group(nontrna_df, sample_to_group, corr_group)
         threaded = _plot_corr_matrix(nontrna_grouped, corr_method, corr_group, output,
                                       f'{corr_method}_{corr_group}_nontrna_correlation_matrix',
-                                      'Non-tRNA RNAs', threaded)
+                                      'Non-tRNA RNAs', threaded, settings=settings)
 
         # Combined correlation: all tRNA reads (total, not unique-only) + non-tRNA RNAs, both
         # normalized against the all-feature-controlled size factors so the two feature sets
@@ -162,7 +163,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
                 combined_grouped = _collapse_to_corr_group(combined_df, sample_to_group, corr_group)
                 threaded = _plot_corr_matrix(combined_grouped, corr_method, corr_group, output,
                                               f'{corr_method}_{corr_group}_allrna_correlation_matrix',
-                                              'All tRNA + Non-tRNA RNAs', threaded)
+                                              'All tRNA + Non-tRNA RNAs', threaded, settings=settings)
 
     if threaded:
         return threaded

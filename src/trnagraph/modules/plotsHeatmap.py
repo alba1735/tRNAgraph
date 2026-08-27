@@ -8,6 +8,7 @@ import pandas as pd
 import os
 
 from . import toolsTG
+from . import plotsPalette
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -18,7 +19,7 @@ plt.rcParams['ps.fonttype'] = 42
 logger = logging.getLogger(__name__)
 
 
-def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False):
+def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False, settings=None):
     '''
     Generate heatmap visualizations for each group in an AnnData object. `readtypes` are
     fully-resolved obs column names (e.g. 'nreads_total_unique_norm'), already carrying the
@@ -42,7 +43,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         # `readtypes` arrives as resolved obs column names -- adataGraph.resolved_diffrts()
         # applies the command-wide read basis once, so no module decides its own denominator.
         # Create a color palette for the heatmap
-        cmap = sns.diverging_palette(255, 85, s=255, l=70, sep=20, as_cmap=True)
+        cmap = plotsPalette.diverging_lfc_cmap()
         # Create a correlation matrix from reads stored in adata observations
         df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=overwrite).main()
         if df.empty:
@@ -104,7 +105,7 @@ def heatmap_plot(df, col, cmap, heatbound):
     log_tdf = tdf[[i for i in tdf.columns if 'log2' in i]]
     pval_tdf = tdf[[i for i in tdf.columns if 'pval' in i]]
     sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=4, vmin=-4, cbar=True, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
-    sns.heatmap(-np.log10(pval_tdf), ax=axs[1], cmap='Greens', vmin=0, vmax=3, cbar=True, yticklabels=False, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
+    sns.heatmap(-np.log10(pval_tdf), ax=axs[1], cmap=plotsPalette.SEQUENTIAL_SIGNIFICANCE, vmin=0, vmax=3, cbar=True, yticklabels=False, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
     axs[0].tick_params(axis='x', labelrotation=90)
     axs[1].tick_params(axis='x', labelrotation=90)
     axs[1].set_ylabel('')

@@ -8,6 +8,7 @@ import pandas as pd
 import anndata as ad
 
 from . import toolsTG
+from . import plotsPalette
 
 from functools import partial
 from multiprocessing import Pool
@@ -31,7 +32,7 @@ class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
     '''
-    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output, phase_tracker=None, quiet=False):
+    def __init__(self, adata, threads, coverage_grp, coverage_obs, coverage_type, coverage_gap, coverage_method, colormap, output, phase_tracker=None, quiet=False, settings=None):
         self.logger = logging.getLogger(__name__)
         self.threads = threads
         self.coverage_obs = coverage_obs
@@ -57,10 +58,11 @@ class visualizer():
         if colormap != None: #and self.coverage_combine_all == False:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
-            coverage_pal = sns.husl_palette(len(self.adata.obs[self.coverage_grp].unique()))
+            coverage_pal = plotsPalette.categorical_palette(len(self.adata.obs[self.coverage_grp].unique()))
             self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
         self.category_output = f'{output}{self.category_dir}/'
+        self.settings = settings
 
     def build_output_dirs(self):
         '''
@@ -191,7 +193,7 @@ class visualizer():
             )
             return
         frames = self._partition_frame()
-        palette = sns.color_palette('mako_r', len(toolsTG.COVERAGE_PARTITION))
+        palette = sns.color_palette(plotsPalette.SEQUENTIAL_ORDERED, len(toolsTG.COVERAGE_PARTITION))
         labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
         ulist = self._covobs_list()
         pages = [ulist[i * 16:(i + 1) * 16] for i in range((len(ulist) + 15) // 16)]
@@ -242,9 +244,9 @@ class visualizer():
             warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
             ax.set_ylim(0, top)
         for i in [37, 58]:
-            ax.plot([i, i], [0, top], linewidth=1, ls='--', color='black', zorder=3)
+            ax.plot([i, i], [0, top], linewidth=1, ls='--', color=plotsPalette.REFERENCE_LINE, zorder=3)
         for i in [[14, 21], [32, 38], [54, 60], [10, 25], [27, 43], [49, 65]]:
-            ax.fill_between(i, [top, top], color='#cacaca', alpha=0.35, zorder=0)
+            ax.fill_between(i, [top, top], color=plotsPalette.REGION_SHADE, alpha=plotsPalette.REGION_SHADE_ALPHA, zorder=0)
         ax.tick_params(axis='both', which='both', bottom=False, top=False, left=False, right=False)
 
     def generate_combine(self):
@@ -342,7 +344,7 @@ class visualizer():
                         outend = f'{covobs}_{self.coverage_type}_with_endstarts_{self.coverage_method}.pdf'
                     else:
                         outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_{i}_with_endstarts_{self.coverage_method}.pdf'
-                    plt.savefig(outstart+outend, bbox_inches='tight')
+                    toolsTG.save_current(outstart+outend, self.settings)
             plt.close()
 
     def _assemble_plot_(self, df, covobs, lgnd, cov_fill):
@@ -360,7 +362,7 @@ class visualizer():
         if ax.get_ylim()[1] < 20:
             outstart += 'low_coverage/'
             low_coverage = True
-        plt.savefig(outstart+outend, bbox_inches='tight')
+        toolsTG.save_current(outstart+outend, self.settings)
         plt.close()
 
         return low_coverage, outstart
@@ -380,8 +382,8 @@ class visualizer():
             df = self.__coverage_transform__(df, singlecol=True)
             # Scale the df so that sum of all values is 1
             df = df/df.sum()
-            sns.lineplot(data=df, linewidth=1.5, dashes=False, color='dimgrey', zorder=3, ax=ax)
-            sns.histplot(data=rse, x='position', weights='value', hue='variable', palette=['magenta','cyan'], alpha=0.5, discrete=True, zorder=2, \
+            sns.lineplot(data=df, linewidth=1.5, dashes=False, color=plotsPalette.COVERAGE_TRACE_MUTED, zorder=3, ax=ax)
+            sns.histplot(data=rse, x='position', weights='value', hue='variable', palette=[plotsPalette.READSTART_COLOR, plotsPalette.READEND_COLOR], alpha=0.5, discrete=True, zorder=2, \
                          stat='probability', common_norm=False, linewidth=0, legend=True, ax=ax)
         # Fill the area under the curve with the mean by going in order of the column with the highest mean to the lowest if fill/both is specified
         if coverage_fill == 'fill':
@@ -418,13 +420,13 @@ class visualizer():
                 for i, row in rse[rse['variable']==rt].iterrows():
                     if row['value'] >= 0.1:
                         if row['position'] - current_start > 1:
-                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color=plotsPalette.REFERENCE_LINE, zorder=3)
                             current_bound = row['position']
                         current_start = row['position']
                         endstart_switch = True
                     else:
                         if endstart_switch:
-                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+                            plt.plot([row['position']-0.5,row['position']-0.5],[0,ylim[1]],linewidth=1,ls='--',color=plotsPalette.REFERENCE_LINE, zorder=3)
                             # Set name as the avg of the start and end positions
                             if current_bound+1 == row['position']:
                                 names_df = pd.concat([names_df, pd.DataFrame({'position_start':[current_bound-1], 'position_end':[row['position']], 'name':[str(current_bound)]},\
@@ -442,14 +444,14 @@ class visualizer():
                                                                       columns=['position_start','position_end','name'])])
         else:
             for i in [37, 58]:
-                plt.plot([i,i],[0,ylim[1]],linewidth=1,ls='--',color='black', zorder=3)
+                plt.plot([i,i],[0,ylim[1]],linewidth=1,ls='--',color=plotsPalette.REFERENCE_LINE, zorder=3)
         # Set xaxis parameters
         if xaxis:
             ax.set_xlabel("Positions on tRNA")
         if coverage_fill == 'endstarts':
             ax.set_xlim(-0.5, 75.5)
             # Add horizontal dashed line to plot for histo above 10%
-            plt.plot([-0.5,75.5],[0.1,0.1],linewidth=1,ls='--',color='black', zorder=3)
+            plt.plot([-0.5,75.5],[0.1,0.1],linewidth=1,ls='--',color=plotsPalette.REFERENCE_LINE, zorder=3)
             # Add the xticks and xticklabels
             names_df['avg'] = (names_df['position_end'] + names_df['position_start'])/2
             names_df = names_df.sort_values(by=['avg'])
@@ -461,7 +463,7 @@ class visualizer():
             ax.set_xticklabels(['\nD-Arm','\nA-Arm','37','\nT-Arm','58'])
         # Add coverage regions to background
         for i in [[14,21],[32,38],[54,60],[10,25],[27,43],[49,65]]:
-            ax.fill_between(i,[ylim[1],ylim[1]], color='#cacaca', alpha=0.35, zorder=0)
+            ax.fill_between(i,[ylim[1],ylim[1]], color=plotsPalette.REGION_SHADE, alpha=plotsPalette.REGION_SHADE_ALPHA, zorder=0)
         # Capatilize the legend and move the legend outside the plot and remove the border around it
         if lgnd:
             if coverage_fill == 'endstarts':

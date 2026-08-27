@@ -1,0 +1,15 @@
+{
+  "colors": {
+    "group": {
+      "VC_24h": "#FFAE49",
+      "VC_log": "#44B7C2",
+      "VC_CF": "#024B7A"
+    },
+    "trimtype": {
+      "Merged": "#44B7C2",
+      "Unmerged": "#FFAE49",
+      "Trimmed": "#024B7A",
+      "Discarded": "#B0B0B0"
+    }
+  }
+}
