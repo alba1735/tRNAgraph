@@ -253,7 +253,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two *different* `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would emit a skip warning on every ordinary run. See **Compare Options** below.
+> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would emit a skip warning on every ordinary run. See **Compare Options** below.
 
 **Cluster Plot Options:**
 

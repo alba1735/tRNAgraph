@@ -80,6 +80,7 @@ flowchart LR
 ## Documentation
 
 - **[Installation & Quick Start](#installation)**: Get up and running.
+- **[Tutorial](docs/tutorial.md)**: Three worked examples, from a reproducible yeast run to a full human OTTR-seq analysis.
 - **[CLI Reference](docs/cli_reference.md)**: Detailed documentation for all commands and flags.
 - **[Data Structure](docs/data_structure.md)**: Details on the AnnData object, observations, and variables.
 - **[Advanced Usage](docs/advanced_usage.md)**: Python API, configuration files, and downstream analysis.
