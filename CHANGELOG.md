@@ -2,6 +2,59 @@
 
 <!-- version list -->
 
+## v2.1.0-alpha.1 (2026-08-27)
+
+### Bug Fixes
+
+- **build**: Align adata.var region labels with tRNAscan-SE's scheme
+  ([`a6c913c`](https://github.com/alba1735/tRNAgraph/commit/a6c913c5e6f742ddc7b29cac9787f18e1a2bd257))
+
+- **build**: Label the anticodon stem in adata.var
+  ([`fd0968d`](https://github.com/alba1735/tRNAgraph/commit/fd0968dacc55a596189690606302f49ef25c6230))
+
+- **coverage**: Anchor the specificity legend to the plot grid
+  ([`a85bd27`](https://github.com/alba1735/tRNAgraph/commit/a85bd276d00cd6a8ab4ef80927a138094e9ed04c))
+
+- **mismatch**: Move the per-amino roll-up out of individual/
+  ([`fec0d59`](https://github.com/alba1735/tRNAgraph/commit/fec0d596547bd3657f4fefc92204a57db3e7eb01))
+
+- **test**: Refuse to wipe a workspace tools test does not own
+  ([`3e8acd8`](https://github.com/alba1735/tRNAgraph/commit/3e8acd81a03ad56fd813a362d7f688e48a3d51c2))
+
+- **test-suite**: Resolve assets and workspace independently of install layout
+  ([`2d52f4e`](https://github.com/alba1735/tRNAgraph/commit/2d52f4e1e867b2e54b25f97d55cc301df55dc121))
+
+- **update**: Require a verified source checkout before running git
+  ([`9df18aa`](https://github.com/alba1735/tRNAgraph/commit/9df18aa5da42ee126751a0744c2c1ec860528696))
+
+### Chores
+
+- Delete seven orphaned plotsLegacy modules
+  ([`a85bd27`](https://github.com/alba1735/tRNAgraph/commit/a85bd276d00cd6a8ab4ef80927a138094e9ed04c))
+
+### Documentation
+
+- Add build status and python version badges
+  ([`3e19900`](https://github.com/alba1735/tRNAgraph/commit/3e1990092d78bcf728375a46aed2faaa69589c54))
+
+### Features
+
+- **logging**: Name the variant in graph, cluster and log2fc log files
+  ([`a85bd27`](https://github.com/alba1735/tRNAgraph/commit/a85bd276d00cd6a8ab4ef80927a138094e9ed04c))
+
+- **mismatch**: Port mismatch plots and split the two sigmismatch artifacts
+  ([`103a7db`](https://github.com/alba1735/tRNAgraph/commit/103a7dbb56bd083e02da6d195dda59b817b57452))
+
+- **style**: Add --style/--format, volcano axis capping, apeGLM shrinkage, and centralize plot
+  colors
+  ([`ca9498c`](https://github.com/alba1735/tRNAgraph/commit/ca9498c14410977d714b23827dd7d152e7f45cde))
+
+### Refactoring
+
+- **makedb**: Select covariance models via the shared assets helper
+  ([`7844a0f`](https://github.com/alba1735/tRNAgraph/commit/7844a0ffcdf40ccd2b9913487c18081bfe986651))
+
+
 ## v2.0.1 (2026-08-26)
 
 ### Bug Fixes
