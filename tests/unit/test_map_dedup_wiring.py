@@ -134,29 +134,120 @@ def test_dedup_run_records_its_provenance(tmp_path):
     assert "SampleA" in written and "SampleB" in written
 
 
-def test_dedup_runs_samples_concurrently(tmp_path):
-    """Deduplication is per-sample and umi_tools is single-threaded, so the only parallelism
-    available is running samples at once. Serially this took 2.4h on a 9-sample human dataset
-    against a ~32min slowest sample, so the win is most of the wall clock.
+def test_dedup_concurrency_follows_threads_and_memory(tmp_path):
+    """umi_tools is single-threaded, so samples are the only unit of parallelism -- but memory,
+    not cores, is what actually limits it: roughly 7GB per concurrent job on a human-scale bam.
 
-    Concurrency is capped below the mapping pool's: umi_tools holds a position's reads in memory
-    and the reference workflow this replaces (dedup.bash) deliberately serialised for that reason,
-    so the cap is deliberately conservative rather than matching bowtie2's.
+    Concurrency is therefore the smallest of half the thread count, what system memory affords,
+    and the number of samples. Serially this phase took 2.4h on a nine-sample human dataset
+    against a ~32min slowest sample, so the win is most of the wall clock.
     """
-    _sample_names(tmp_path, ["S1", "S2", "S3", "S4"])
-    mapper = _make_mapper(tmp_path, dedup=True, threads=32)
+    _sample_names(tmp_path, ["S1", "S2", "S3", "S4", "S5", "S6"])
+    mapper = _make_mapper(tmp_path, dedup=True, threads=8)
 
     seen = {}
 
     def fake_pool(processes=None, **kwargs):
         seen["processes"] = processes
-        raise AssertionError("pool constructed")  # stop before real work
+        raise AssertionError("pool constructed")
 
     with patch.object(mapper, "mapsamples"), \
          patch.object(toolsMap.toolsDedup, "detect_umi_separator", return_value="_"), \
+         patch.object(toolsMap, "_memory_job_limit", return_value=99), \
          patch.object(toolsMap, "Pool", side_effect=fake_pool):
         with pytest.raises(AssertionError):
             mapper.main()
 
-    assert seen["processes"] > 1, "dedup should run samples concurrently"
-    assert seen["processes"] <= 4, "dedup concurrency should stay below the mapping pool's"
+    assert seen["processes"] == 4, "8 threads should allow 4 concurrent dedup jobs"
+
+
+def test_dedup_concurrency_is_capped_by_available_memory(tmp_path):
+    """A machine with many cores but little RAM must not launch a job per core.
+
+    Without this bound, 40 threads would start 20 jobs at ~7GB each -- 140GB -- and be killed
+    partway through, after some samples had already been deduplicated.
+    """
+    _sample_names(tmp_path, ["S1", "S2", "S3", "S4", "S5", "S6"])
+    mapper = _make_mapper(tmp_path, dedup=True, threads=40)
+
+    seen = {}
+
+    def fake_pool(processes=None, **kwargs):
+        seen["processes"] = processes
+        raise AssertionError("pool constructed")
+
+    with patch.object(mapper, "mapsamples"), \
+         patch.object(toolsMap.toolsDedup, "detect_umi_separator", return_value="_"), \
+         patch.object(toolsMap, "_memory_job_limit", return_value=2), \
+         patch.object(toolsMap, "Pool", side_effect=fake_pool):
+        with pytest.raises(AssertionError):
+            mapper.main()
+
+    assert seen["processes"] == 2, "memory, not cores, should bind here"
+
+
+def test_dedup_concurrency_never_exceeds_the_sample_count(tmp_path):
+    _sample_names(tmp_path, ["S1", "S2"])
+    mapper = _make_mapper(tmp_path, dedup=True, threads=64)
+
+    seen = {}
+
+    def fake_pool(processes=None, **kwargs):
+        seen["processes"] = processes
+        raise AssertionError("pool constructed")
+
+    with patch.object(mapper, "mapsamples"), \
+         patch.object(toolsMap.toolsDedup, "detect_umi_separator", return_value="_"), \
+         patch.object(toolsMap, "_memory_job_limit", return_value=99), \
+         patch.object(toolsMap, "Pool", side_effect=fake_pool):
+        with pytest.raises(AssertionError):
+            mapper.main()
+
+    assert seen["processes"] == 2
+
+
+def test_memory_job_limit_scales_with_the_largest_bam(tmp_path):
+    """The estimate is derived from the bams, since real usage depends on read count and UMI
+    length rather than being a fixed figure.
+
+    Sized off the largest rather than the mean: the pool hands out jobs in no guaranteed order,
+    so the biggest ones can be resident together and an average would under-estimate exactly
+    when it matters.
+    """
+    small = tmp_path / "small.bam"
+    large = tmp_path / "large.bam"
+    small.write_bytes(b"x" * 1024)
+    large.write_bytes(b"x" * 4096)
+
+    only_small = toolsMap._memory_job_limit([str(small)], multiple=1)
+    with_large = toolsMap._memory_job_limit([str(small), str(large)], multiple=1)
+
+    # Four times the bytes per job means at most a quarter as many concurrent jobs.
+    assert only_small == with_large * 4
+
+
+def test_memory_job_limit_is_absent_rather_than_wrong_when_undeterminable(tmp_path):
+    assert toolsMap._memory_job_limit([str(tmp_path / "missing.bam")]) is None
+    assert toolsMap._memory_job_limit([]) is None
+
+
+def test_dedup_phase_sizes_its_pool_without_patching(tmp_path):
+    """Exercises the real sizing path end to end.
+
+    The other concurrency tests patch _memory_job_limit, which meant they still passed when the
+    pool was sized from a variable that had not been assigned yet. This one does not patch it, so
+    the wiring itself is covered.
+
+    threads=2 forces the serial branch so dedup_sample can be observed in this process -- a real
+    pool would run it in children where the patch does not apply. The sizing block runs before
+    that branch either way, which is the part being covered.
+    """
+    _sample_names(tmp_path, ["S1", "S2"])
+    mapper = _make_mapper(tmp_path, dedup=True, threads=2)
+
+    with patch.object(mapper, "mapsamples"), \
+         patch.object(toolsMap.toolsDedup, "detect_umi_separator", return_value="_"), \
+         patch.object(toolsMap.toolsDedup, "dedup_sample") as mock_dedup:
+        mapper.main()
+
+    assert mock_dedup.call_count == 2

@@ -332,10 +332,59 @@ class MapReads:
                 return False
         return True
 
-# Concurrency ceiling for the deduplication phase. Lower than the mapping pool's because
-# umi_tools holds a position's reads in memory while resolving its UMI network; the manual
-# tRAX-era workflow serialised samples entirely for that reason.
-DEDUP_MAX_CONCURRENCY = 4
+# Deduplication concurrency is bounded by MEMORY, not cores. umi_tools is single-threaded, so
+# samples are the only unit of parallelism, but it holds a position's reads and their UMI network
+# in memory. A machine with many cores and modest RAM would otherwise launch a job per core and
+# be killed partway through, after some samples had already been deduplicated.
+#
+# The per-job estimate is derived from the bam rather than fixed, because the real figure depends
+# on read count and UMI length, both of which vary by protocol and by sample. Eight times the
+# bam's on-disk size is deliberately conservative: on a human OTTR dataset whose largest bam is
+# 1.85GB, umi_tools was observed using roughly 7GB, i.e. about 3.8x -- so this leaves better than
+# 2x headroom for a longer UMI or a more fragmented library without needing retuning per dataset.
+# Erring high costs some concurrency; erring low gets the run killed partway through, after some
+# samples have already been deduplicated.
+DEDUP_MEMORY_PER_BAM_MULTIPLE = 8
+
+# Fraction of the thread budget to spend on dedup jobs. Half rather than all because the jobs are
+# IO-heavy as well as memory-heavy, so a job per thread buys little beyond this point.
+DEDUP_THREAD_FRACTION = 2
+
+
+def _total_system_memory():
+    """Total physical memory in bytes, or None where it cannot be determined."""
+    try:
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def _memory_job_limit(bam_paths, multiple=DEDUP_MEMORY_PER_BAM_MULTIPLE):
+    """How many concurrent dedup jobs memory affords, or None if it cannot be determined.
+
+    Sized off the LARGEST bam in the set rather than the mean: jobs are handed out by the pool in
+    no guaranteed order, so the largest ones can be resident together and an average would
+    under-estimate exactly when it matters.
+
+    Uses total rather than available memory: available fluctuates with page cache, and the same
+    command picking different concurrency on consecutive runs is worse than a stable, slightly
+    conservative number.
+    """
+    total_bytes = _total_system_memory()
+    if total_bytes is None:
+        return None
+    sizes = []
+    for path in bam_paths:
+        try:
+            sizes.append(os.path.getsize(path))
+        except OSError:
+            continue
+    if not sizes:
+        return None
+    per_job = max(sizes) * multiple
+    if per_job <= 0:
+        return None
+    return max(1, int(total_bytes / per_job))
 
 
 def dedup_sample_wrapper(args):
@@ -540,14 +589,6 @@ class MapSamples:
         sampledata = toolsTG.samplefile(self.samplefilename)
         samples = sampledata.getsamples()
 
-        # umi_tools is single-threaded, so the only parallelism available is running samples
-        # concurrently. The cap is deliberately below the mapping pool's: umi_tools holds a
-        # position's reads in memory while resolving its UMI network, and the manual workflow this
-        # replaces (tRAX-era dedup.bash) serialised the samples explicitly for that reason. Four
-        # concurrent jobs takes a measured 2.4h nine-sample human run to roughly the length of its
-        # slowest single sample (~32 min) without approaching bowtie2's footprint.
-        pool_size = min(DEDUP_MAX_CONCURRENCY, max(1, self.cores // 8), len(samples))
-
         pending = []
         for samplename in samples:
             bamfile = os.path.join(self.bamdir, samplename + ".bam")
@@ -559,6 +600,16 @@ class MapSamples:
         if not pending:
             self.write_dedupinfo([])
             return
+
+        # Concurrency is the smallest of: half the thread budget, what memory affords given these
+        # bams' own sizes, and the number of samples actually being deduplicated. Memory is the
+        # binding constraint in practice -- see DEDUP_MEMORY_PER_BAM_MULTIPLE. Sized here, after
+        # the bam list is known, because the estimate is derived from those files.
+        limits = [max(1, self.cores // DEDUP_THREAD_FRACTION), len(pending)]
+        memory_limit = _memory_job_limit([bam for _, bam in pending])
+        if memory_limit is not None:
+            limits.append(memory_limit)
+        pool_size = max(1, min(limits))
 
         self.logger.info(
             f"Deduplicating {len(pending)} samples by UMI "
