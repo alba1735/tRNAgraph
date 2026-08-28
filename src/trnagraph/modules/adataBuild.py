@@ -1624,10 +1624,47 @@ class AnnDataBuilder():
         # Add both DESeq2 size factor sets as uns (tRNA-controlled default, and all-feature secondary)
         adata.uns['deseq2_sizefactors_trna'] = self.size_factors
         adata.uns['deseq2_sizefactors_allfeatures'] = self.size_factors_allfeatures
+        # Replicate-correlation QC. Cheap (one correlation matrix over the count table) and the
+        # fastest way to see whether the declared grouping is supported by the data, or whether a
+        # single sample disagrees with its own replicates badly enough to warrant dropping.
+        try:
+            corr = toolsTG.replicate_correlation(adata.obs)
+            adata.uns['replicate_correlation'] = corr['per_sample']
+            adata.uns['replicate_correlation_pairs'] = corr['pairs']
+            adata.uns['replicate_correlation_summary'] = corr['summary']
+            self._log_replicate_correlation(corr)
+        except Exception as exc:
+            # Diagnostic only -- never fail a build over it.
+            self.logger.warning(f"Could not compute replicate correlation: {exc}")
+
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
         _precompute_default_log2fc(adata, threads=self.analysis_args.threads)
-        
+
         return adata
+
+    def _log_replicate_correlation(self, corr):
+        '''Reports the QC to the log and to a tab-separated file beside the other results.'''
+        summary = corr['summary']
+        if summary['n_within_pairs'] == 0:
+            self.logger.warning(
+                "Replicate correlation: every sample is its own group, so there are no "
+                "replicates to correlate. If that is not intended, check the 'group' column of "
+                "your metadata -- the generated trim_metadata.tsv template sets group = sample."
+            )
+        else:
+            self.logger.info(
+                f"Replicate correlation: within-group r2 {summary['within_mean']:.4f}, "
+                f"between-group r2 {summary['between_mean']:.4f}, "
+                f"separation {summary['separation']:+.4f}"
+            )
+
+        path = self.expinfo.replicatecorrelation
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as out:
+            for key, value in summary.items():
+                formatted = f"{value:.6f}" if isinstance(value, float) else value
+                print(f"# {key}\t{formatted}", file=out)
+            corr['per_sample'].to_csv(out, sep='\t', index=False, float_format='%.6f')
 
     def _handle_preprocessing(self, args):
         '''

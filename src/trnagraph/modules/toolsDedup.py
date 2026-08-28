@@ -7,6 +7,7 @@ by running `umi_tools` directly against the same BAM directory and rejoining the
 `analyze build`.
 '''
 import logging
+import re
 import os
 import subprocess
 
@@ -175,3 +176,80 @@ def umi_tools_version():
     if result.returncode != 0:
         return None
     return result.stdout.decode("utf-8", errors="replace").strip().split()[-1]
+
+
+# What umi_tools reports at the end of a dedup run, and the key each lands under. Anything
+# missing is left absent rather than defaulted, so an older umi_tools that does not report a
+# field is distinguishable from one that reported zero.
+_LOG_FIELDS = (
+    ('input_reads',            r'Input Reads:\s*(\d+)',                                int),
+    ('output_reads',           r'Number of reads out:\s*(\d+)',                        int),
+    ('positions',              r'Total number of positions deduplicated:\s*(\d+)',     int),
+    ('mean_umis_per_position', r'Mean number of unique UMIs per position:\s*([\d.]+)', float),
+    ('max_umis_per_position',  r'Max\. number of unique UMIs per position:\s*(\d+)',   int),
+)
+
+# Column order for the emitted table, sample first.
+DEDUP_STATS_COLUMNS = (
+    'sample', 'input_reads', 'output_reads', 'retained_pct', 'reads_per_molecule',
+    'positions', 'reads_per_position', 'mean_umis_per_position', 'max_umis_per_position',
+)
+
+
+def parse_dedup_log(log_path):
+    '''
+    Extracts umi_tools' end-of-run statistics from one sample's dedup log.
+
+    Returns only the fields actually found. A missing or unreadable log yields an empty dict --
+    the statistics are a diagnostic, and their absence must never fail a run that otherwise
+    deduplicated correctly.
+    '''
+    try:
+        with open(log_path) as handle:
+            text = handle.read()
+    except OSError:
+        return {}
+
+    stats = {}
+    for key, pattern, cast in _LOG_FIELDS:
+        found = re.findall(pattern, text)
+        if found:
+            stats[key] = cast(found[-1])
+    return stats
+
+
+def _ratio(numerator, denominator, scale=1.0):
+    if not numerator or not denominator:
+        return None
+    return scale * numerator / denominator
+
+
+def dedup_stats_row(samplename, log_path):
+    '''
+    One sample's row of the deduplication statistics table.
+
+    The derived rates are what make the raw counts readable: `reads_per_molecule` is the
+    duplication level, `reads_per_position` distinguishes a deeply-sequenced library from a
+    low-complexity one, and `max_umis_per_position` read against the UMI's own 4^n ceiling says
+    whether the tag space is being exhausted at the deepest positions.
+    '''
+    stats = parse_dedup_log(log_path)
+    inp = stats.get('input_reads')
+    out = stats.get('output_reads')
+    pos = stats.get('positions')
+    return {
+        'sample': samplename,
+        'input_reads': inp,
+        'output_reads': out,
+        'retained_pct': _ratio(out, inp, 100.0),
+        'reads_per_molecule': _ratio(inp, out),
+        'positions': pos,
+        'reads_per_position': _ratio(inp, pos),
+        'mean_umis_per_position': stats.get('mean_umis_per_position'),
+        'max_umis_per_position': stats.get('max_umis_per_position'),
+    }
+
+
+def dedup_log_path(bam_path):
+    '''Where dedup_sample() writes umi_tools' log for a given bam.'''
+    return bam_path[:-len('.bam')] + '_dedup.log' if bam_path.endswith('.bam') else bam_path + '_dedup.log'

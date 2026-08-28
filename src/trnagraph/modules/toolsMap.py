@@ -332,6 +332,28 @@ class MapReads:
                 return False
         return True
 
+# Concurrency ceiling for the deduplication phase. Lower than the mapping pool's because
+# umi_tools holds a position's reads in memory while resolving its UMI network; the manual
+# tRAX-era workflow serialised samples entirely for that reason.
+DEDUP_MAX_CONCURRENCY = 4
+
+
+def dedup_sample_wrapper(args):
+    """Runs one sample's deduplication in a pool worker.
+
+    Returns None on success or an error string, rather than raising: an exception crossing a
+    multiprocessing boundary loses its traceback, and a partial failure needs to name which
+    sample failed. dedup_sample() restores the original bam before it raises, so a failed
+    sample leaves its mapping intact.
+    """
+    bam_path, method, keep_prededup = args
+    try:
+        toolsDedup.dedup_sample(bam_path, method=method, keep_prededup=keep_prededup)
+    except Exception as exc:
+        return f"Deduplication failed for {os.path.basename(bam_path)}: {exc}"
+    return None
+
+
 def map_sample_wrapper(args):
     mapper, samplename, fastqfile, bamfile, expname = args
     return mapper.map_sample(samplename, fastqfile, bamfile, expname)
@@ -399,6 +421,8 @@ class expdatabase:
         
         self.maplog = res_path(basename+"-mapstats.txt")
         self.dedupinfo = res_path(basename+"-dedupinfo.txt")
+        self.dedupstats = res_path(basename+"-dedupstats.txt")
+        self.replicatecorrelation = res_path(basename+"-replicatecorrelation.txt")
         self.genetypes = res_path(basename+"-genetypes.txt")
         self.genecounts = res_path(basename+"-readcounts.txt")
         self.trnacounts = res_path(basename+"-trnacounts.txt")
@@ -516,21 +540,56 @@ class MapSamples:
         sampledata = toolsTG.samplefile(self.samplefilename)
         samples = sampledata.getsamples()
 
-        self.logger.info(f"Deduplicating {len(samples)} samples by UMI (method={self.dedup_method})")
-        records = []
-        for samplename in toolsTG.progress_iterator(
-            samples, total=len(samples), desc="Deduplicating samples",
-            logger=self.logger, quiet=self.quiet,
-        ):
+        # umi_tools is single-threaded, so the only parallelism available is running samples
+        # concurrently. The cap is deliberately below the mapping pool's: umi_tools holds a
+        # position's reads in memory while resolving its UMI network, and the manual workflow this
+        # replaces (tRAX-era dedup.bash) serialised the samples explicitly for that reason. Four
+        # concurrent jobs takes a measured 2.4h nine-sample human run to roughly the length of its
+        # slowest single sample (~32 min) without approaching bowtie2's footprint.
+        pool_size = min(DEDUP_MAX_CONCURRENCY, max(1, self.cores // 8), len(samples))
+
+        pending = []
+        for samplename in samples:
             bamfile = os.path.join(self.bamdir, samplename + ".bam")
             if not os.path.isfile(bamfile):
                 self.logger.warning(f"No bam file found for {samplename}, skipping deduplication")
                 continue
-            separator = toolsDedup.detect_umi_separator(bamfile)
-            toolsDedup.dedup_sample(
-                bamfile, method=self.dedup_method, keep_prededup=self.keep_prededup,
-            )
-            records.append((samplename, bamfile, separator))
+            pending.append((samplename, bamfile))
+
+        if not pending:
+            self.write_dedupinfo([])
+            return
+
+        self.logger.info(
+            f"Deduplicating {len(pending)} samples by UMI "
+            f"(method={self.dedup_method}, {pool_size} concurrent jobs)"
+        )
+
+        # Separators are detected up front, in the parent: it is a cheap read of the first reads of
+        # each bam, and doing it here means a missing UMI is refused before any sample has been
+        # modified, rather than after some have already been deduplicated.
+        records = []
+        for samplename, bamfile in pending:
+            records.append((samplename, bamfile, toolsDedup.detect_umi_separator(bamfile)))
+
+        args = [(bamfile, self.dedup_method, self.keep_prededup) for _, bamfile, _ in records]
+        if pool_size == 1:
+            results = [dedup_sample_wrapper(a) for a in toolsTG.progress_iterator(
+                args, total=len(args), desc="Deduplicating samples",
+                logger=self.logger, quiet=self.quiet)]
+        else:
+            with Pool(processes=pool_size) as pool:
+                results = list(toolsTG.progress_iterator(
+                    pool.imap_unordered(dedup_sample_wrapper, args),
+                    total=len(args), desc="Deduplicating samples",
+                    logger=self.logger, quiet=self.quiet,
+                ))
+
+        failures = [r for r in results if r is not None]
+        if failures:
+            for message in failures:
+                self.logger.error(message)
+            sys.exit(1)
 
         self.write_dedupinfo(records)
 
@@ -552,8 +611,45 @@ class MapSamples:
             print(f"keep_prededup\t{self.keep_prededup}", file=info)
             print("sample\tbam\tumi_separator\tumi_tools_log", file=info)
             for samplename, bamfile, separator in records:
-                logpath = bamfile[:-len('.bam')] + '_dedup.log'
+                logpath = toolsDedup.dedup_log_path(bamfile)
                 print(f"{samplename}\t{bamfile}\t{separator}\t{logpath}", file=info)
+
+        self.write_dedupstats(records)
+
+    def write_dedupstats(self, records):
+        '''
+        Per-sample deduplication statistics, as a tab-separated table.
+
+        Separate from dedupinfo because they answer a different question: dedupinfo records what
+        was run, this records whether it worked. Read across samples it is the fastest way to
+        spot one that should be dropped -- an outlying `reads_per_molecule` means uneven PCR
+        amplification, a low `reads_per_position` with few `positions` means a low-complexity
+        library, and `max_umis_per_position` approaching 4^n for an n-base UMI means the tag
+        space is saturating and counts at the deepest features are compressed.
+
+        Every number here comes from umi_tools' own end-of-run log, so this costs a small text
+        parse rather than another pass over the bams.
+        '''
+        rows = [toolsDedup.dedup_stats_row(name, toolsDedup.dedup_log_path(bam))
+                for name, bam, _ in records]
+
+        def fmt(value):
+            if value is None:
+                return 'NA'
+            return f"{value:.2f}" if isinstance(value, float) else str(value)
+
+        with open(self.expinfo.dedupstats, 'w') as out:
+            print('\t'.join(toolsDedup.DEDUP_STATS_COLUMNS), file=out)
+            for row in rows:
+                print('\t'.join(fmt(row[c]) for c in toolsDedup.DEDUP_STATS_COLUMNS), file=out)
+
+        for row in rows:
+            if row['reads_per_molecule'] is not None:
+                self.logger.info(
+                    f"  {row['sample']}: {row['retained_pct']:.1f}% retained, "
+                    f"{row['reads_per_molecule']:.2f} reads/molecule, "
+                    f"{row['reads_per_position']:.2f} reads/position"
+                )
 
     def mapsamples(self):
         # Calculate resource allocation

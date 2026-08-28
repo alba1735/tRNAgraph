@@ -514,6 +514,14 @@ the aligned block. So `--ccatail` and the `readends` coverage type mean what the
 data, and the end-type breakdown is trustworthy — which is what you would hope from a method
 designed to capture ends faithfully.
 
+> [!NOTE]
+> This does **not** call for `makedb --forcecca`. For eukaryotes the CCA tail is added to the
+> reference by default already — `--forcecca` only overrides the prokaryotic default, where CCA
+> is usually genomically encoded and so is not appended. Passing it to a `-s euk` build changes
+> nothing. Reach for it only when building a `bact`/`arch` database whose organism does not
+> encode CCA genomically. How faithfully a method captures the 3′ end is a property of the
+> library, not of how the reference is built.
+
 ---
 
 ## Reading the output

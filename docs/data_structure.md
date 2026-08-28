@@ -320,6 +320,18 @@ Pre-summed tables useful for bar charts and high-level overviews.
 - `nontRNA_counts`: Reads mapping to features defined in the external GTF (e.g., rRNA, mRNA).
 - `type_counts`: Reads summed by Gene Type.
 
+### Quality Control
+
+Diagnostics computed at `analyze build`. Each is also written as a tab-separated file under `results/`, so they can be read without opening the object.
+
+- `replicate_correlation`: Per-sample table — `sample`, `group`, `mean_r2_within_group`, `mean_r2_other_groups`, `n_replicates`. A sample whose within-group r² sits well below its peers' is the one to question before trusting anything downstream.
+- `replicate_correlation_pairs`: Every sample pair with its r² and whether the two share a group.
+- `replicate_correlation_summary`: `within_mean`, `between_mean`, `separation` (within − between), and the pair counts. **`separation` is the headline number**: it says whether the declared grouping is visible in the counts at all. It is also the objective test of whether a processing step helped — removing a technical artifact should *widen* it, since replicates become more alike while genuinely different conditions do not. `n_within_pairs` of 0 means every sample is its own group, which is the default `trim_metadata.tsv` mistake rather than a real design.
+
+Computed on `log1p`-transformed normalized counts. tRNA abundance spans orders of magnitude, so on raw counts Pearson r would be dominated by whichever few transcripts are most abundant and every pair of samples would look near-identical regardless of grouping.
+
+Deduplication statistics are written by `preprocess map --dedup` to `results/<exp>-dedupstats.txt` rather than stored here, since they are produced before any AnnData object exists. See [CLI Reference: map](cli_reference.md#map).
+
 ### Run Information
 
 Provenance metadata for reproducibility.

@@ -132,3 +132,31 @@ def test_dedup_run_records_its_provenance(tmp_path):
     assert "unique" in written
     assert "1.1.6" in written
     assert "SampleA" in written and "SampleB" in written
+
+
+def test_dedup_runs_samples_concurrently(tmp_path):
+    """Deduplication is per-sample and umi_tools is single-threaded, so the only parallelism
+    available is running samples at once. Serially this took 2.4h on a 9-sample human dataset
+    against a ~32min slowest sample, so the win is most of the wall clock.
+
+    Concurrency is capped below the mapping pool's: umi_tools holds a position's reads in memory
+    and the reference workflow this replaces (dedup.bash) deliberately serialised for that reason,
+    so the cap is deliberately conservative rather than matching bowtie2's.
+    """
+    _sample_names(tmp_path, ["S1", "S2", "S3", "S4"])
+    mapper = _make_mapper(tmp_path, dedup=True, threads=32)
+
+    seen = {}
+
+    def fake_pool(processes=None, **kwargs):
+        seen["processes"] = processes
+        raise AssertionError("pool constructed")  # stop before real work
+
+    with patch.object(mapper, "mapsamples"), \
+         patch.object(toolsMap.toolsDedup, "detect_umi_separator", return_value="_"), \
+         patch.object(toolsMap, "Pool", side_effect=fake_pool):
+        with pytest.raises(AssertionError):
+            mapper.main()
+
+    assert seen["processes"] > 1, "dedup should run samples concurrently"
+    assert seen["processes"] <= 4, "dedup concurrency should stay below the mapping pool's"

@@ -2380,3 +2380,76 @@ def readbed(filename, orgdb="genome", seqfile= None, includeintrons = False):
     if skippedlines > 0:
         logger.warning("skipped "+str(skippedlines)+" in "+filename)
 
+
+
+# Column carrying the per-feature counts replicate correlation is computed from. Normalized
+# rather than raw, so a depth difference between samples is not read as a biological one.
+REPLICATE_CORR_VALUE = 'nreads_total_unique_norm'
+
+
+def replicate_correlation(obs, group_col='group', value_col=REPLICATE_CORR_VALUE,
+                          feature_col='trna', sample_col='sample'):
+    '''
+    Pearson r-squared between every pair of samples, summarised by whether the pair shares a group.
+
+    The headline number is `separation` -- mean within-group r2 minus mean between-group r2. It
+    says whether the experiment's own grouping is visible in its counts at all, and it is the
+    objective test of whether a processing step helped: removing a technical artifact should widen
+    it, because replicates become more alike while genuinely different conditions do not.
+
+    Counts are log1p-transformed first. tRNA abundance spans orders of magnitude, and on raw
+    counts Pearson r would be dominated by whichever handful of transcripts happen to be most
+    abundant, making every pair of samples look near-identical regardless of grouping.
+
+    Returns per-sample and per-pair tables alongside the summary, since the summary alone cannot
+    identify *which* sample is the problem.
+    '''
+    import numpy as np
+    import pandas as pd
+
+    matrix = obs.pivot_table(index=feature_col, columns=sample_col, values=value_col,
+                             aggfunc='sum', observed=True).dropna()
+    matrix = np.log1p(matrix)
+    r2 = matrix.corr(method='pearson') ** 2
+
+    groups = obs.drop_duplicates(sample_col).set_index(sample_col)[group_col].to_dict()
+    samples = list(r2.columns)
+
+    pairs = []
+    for i, s1 in enumerate(samples):
+        for s2 in samples[i + 1:]:
+            pairs.append({'sample_1': s1, 'sample_2': s2,
+                          'group_1': groups.get(s1), 'group_2': groups.get(s2),
+                          'same_group': groups.get(s1) == groups.get(s2),
+                          'r2': float(r2.loc[s1, s2])})
+    pairs_df = pd.DataFrame(pairs)
+
+    within = pairs_df.loc[pairs_df['same_group'], 'r2'] if len(pairs_df) else pd.Series(dtype=float)
+    between = pairs_df.loc[~pairs_df['same_group'], 'r2'] if len(pairs_df) else pd.Series(dtype=float)
+
+    per_sample = []
+    for s in samples:
+        own = [p['r2'] for p in pairs
+               if (p['sample_1'] == s or p['sample_2'] == s) and p['same_group']]
+        other = [p['r2'] for p in pairs
+                 if (p['sample_1'] == s or p['sample_2'] == s) and not p['same_group']]
+        per_sample.append({
+            'sample': s,
+            'group': groups.get(s),
+            'mean_r2_within_group': float(np.mean(own)) if own else float('nan'),
+            'mean_r2_other_groups': float(np.mean(other)) if other else float('nan'),
+            'n_replicates': len(own),
+        })
+
+    return {
+        'summary': {
+            'within_mean': float(within.mean()) if len(within) else float('nan'),
+            'between_mean': float(between.mean()) if len(between) else float('nan'),
+            'separation': (float(within.mean()) - float(between.mean()))
+                          if len(within) and len(between) else float('nan'),
+            'n_within_pairs': int(len(within)),
+            'n_between_pairs': int(len(between)),
+        },
+        'per_sample': pd.DataFrame(per_sample),
+        'pairs': pairs_df,
+    }
