@@ -2,6 +2,32 @@
 
 <!-- version list -->
 
+## v2.1.0-alpha.2 (2026-08-31)
+
+### Bug Fixes
+
+- **cli**: Make tools test --log a switch and document 22 missing flags
+  ([`b63b11b`](https://github.com/alba1735/tRNAgraph/commit/b63b11b140f6e53a5be2a880627846116bc65c16))
+
+### Documentation
+
+- Add a tutorial with three worked examples
+  ([`8936b77`](https://github.com/alba1735/tRNAgraph/commit/8936b775fb162738228d2f50f65e7e23f3612aac))
+
+### Features
+
+- **map**: Add UMI deduplication via umi_tools to the mapping stage
+  ([`5ffc753`](https://github.com/alba1735/tRNAgraph/commit/5ffc753c83053c34b763701eb9788c172131d8b6))
+
+- **map**: Emit deduplication and replicate-correlation QC tables
+  ([`7277fad`](https://github.com/alba1735/tRNAgraph/commit/7277fadef4ff4278a9afea6ce406e1f6efcbe3c7))
+
+### Performance Improvements
+
+- **map**: Size dedup concurrency from bam size and available memory
+  ([`2988ee6`](https://github.com/alba1735/tRNAgraph/commit/2988ee64c77b57067a8201d5133a84baea458eb7))
+
+
 ## v2.1.0-alpha.1 (2026-08-27)
 
 ### Bug Fixes
