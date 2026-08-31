@@ -58,7 +58,7 @@ class visualizer():
         if colormap != None: #and self.coverage_combine_all == False:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
-            coverage_pal = plotsPalette.categorical_palette(len(self.adata.obs[self.coverage_grp].unique()))
+            coverage_pal = plotsPalette.categorical(settings, len(self.adata.obs[self.coverage_grp].unique()))
             self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
         self.category_output = f'{output}{self.category_dir}/'
@@ -193,7 +193,8 @@ class visualizer():
             )
             return
         frames = self._partition_frame()
-        palette = sns.color_palette(plotsPalette.SEQUENTIAL_ORDERED, len(toolsTG.COVERAGE_PARTITION))
+        palette = plotsPalette.discrete_colors(plotsPalette.gradient(self.settings, 'ordered'),
+                                               len(toolsTG.COVERAGE_PARTITION))
         labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
         ulist = self._covobs_list()
         pages = [ulist[i * 16:(i + 1) * 16] for i in range((len(ulist) + 15) // 16)]

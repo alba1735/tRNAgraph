@@ -124,7 +124,7 @@ def split_barplots(df, count_type, level, output, colormap=None, percent=False, 
     if colormap:
         sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=colormap, data=df, ax=ax)
     else:
-        sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=plotsPalette.categorical_palette(len(df['group'].unique())), data=df, ax=ax)
+        sns.barplot(x='type', y='count', hue='group', errorbar=None, palette=plotsPalette.categorical(settings, len(df['group'].unique())), data=df, ax=ax)
         
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles=handles, labels=labels, loc='upper left', bbox_to_anchor=(1, 1), borderaxespad=0, frameon=False)
@@ -170,7 +170,7 @@ def stacked_barplots(df, count_type, level, output, colormap=None, percent=False
     # Keyed by label, not by position. The bars are drawn in reverse index order while the
     # palette used to be built in forward order, so a colormap entry landed on whichever bar
     # sat at the mirrored position instead of on the bar it named.
-    fallback = plotsPalette.categorical_palette(len(df.index))
+    fallback = plotsPalette.categorical(settings, len(df.index))
     bar_colors = {bar: (colormap or {}).get(bar, fallback[i]) for i, bar in enumerate(df.index)}
     if collapsed:
         # The collapsed band is background, not a category competing with the tRNA types, so

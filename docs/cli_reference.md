@@ -426,6 +426,22 @@ trnagraph tools merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
 - **`--droprna`**: Drop RNA categories that are not present in both objects. Default: `False`.
 - **`--force`**: Proceed even if the two objects' build provenance (database/gtf) conflicts. Default: `False` (refuses the merge on a conflict).
 
+### `template`
+
+Writes a blank, fully-enumerated JSON config template into the current directory. Every key the file format accepts is present and set to `null`, so the template is a valid no-op until you fill something in -- it documents the format, which JSON itself cannot do.
+
+**Usage:**
+
+```bash
+trnagraph tools template [options]
+```
+
+**Options:**
+
+- **`--style`**: Write the `--style` template (colors, gradients, categorical palette and presentation settings). Default: write every available template.
+- **`-o, --output`**: Directory to write the template(s) into. Default: `.`.
+- **`--overwrite`**: Replace an existing template file instead of refusing. Default: `False` -- the expected workflow is emit, edit, then re-emit after an upgrade, so an edited file is never replaced silently.
+
 ### `test`
 
 Runs the internal automated test suite.

@@ -7,7 +7,7 @@ instead of being duplicated as plain dataclasses in the modules that use them.
 '''
 
 import re
-from typing import Any, Dict, List, Optional, Literal, Tuple
+from typing import Any, Dict, List, Optional, Literal, Tuple, Union
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, RootModel, field_validator, model_validator
@@ -221,6 +221,96 @@ class StyleBlock(BaseModel):
         return v
 
 
+# A palette value in a style file is either a registered colormap/palette NAME or an explicit
+# list of color tokens. One shape for both the ordered ramps and the categorical fallback, so
+# a user learns it once.
+PaletteValue = Union[str, List[str]]
+
+# Ordered/continuous scales a style file can set, named by what they ENCODE rather than by
+# appearance, matching plotsPalette's role naming. Deliberately not keyed by graph type: the
+# heatmap draws two of these at once (`lfc` and `significance`), the seqlogo draws two more
+# (`score` and `sequence`), and `ordered` is shared by coverage and cluster -- so a per-graph
+# type `cmap` key could not express what the plots actually do.
+GRADIENT_ROLES = ('correlation', 'significance', 'score', 'sequence', 'ordered', 'lfc')
+
+
+def _check_colors(values, field):
+    '''Every entry must be something matplotlib can interpret as a color.'''
+    from matplotlib.colors import is_color_like
+
+    bad = [c for c in values if not (isinstance(c, str) and is_color_like(c))]
+    if bad:
+        raise ValueError(
+            f"'{field}' contains {bad}, which matplotlib does not recognize as colors. Use "
+            f"hex ('#1f77b4'), a named color ('tab:blue', 'red'), or any other matplotlib "
+            f"color token."
+        )
+
+
+def _validate_colormap_name(name, field):
+    '''
+    Reject an unknown colormap at FILE LOAD rather than at draw time.
+
+    seaborn is imported first because mako/rocket/crest/flare/vlag/icefire are registered by
+    seaborn, not shipped with matplotlib -- checking matplotlib alone would reject the very
+    ramps tRNAgraph itself defaults to.
+    '''
+    import seaborn as sns  # noqa: F401  -- registers seaborn's colormaps as a side effect
+    import matplotlib.pyplot as plt
+
+    try:
+        plt.get_cmap(name)
+    except (ValueError, KeyError):
+        raise ValueError(
+            f"'{field}' names colormap '{name}', which is not registered. Use a matplotlib or "
+            f"seaborn colormap name (e.g. 'mako_r', 'vlag', 'Blues'), or give a list of two or "
+            f"more colors to build your own ramp."
+        ) from None
+
+
+def _validate_gradient(v, field):
+    if v is None:
+        return v
+    if isinstance(v, str):
+        _validate_colormap_name(v, field)
+        return v
+    if len(v) < 2:
+        raise ValueError(
+            f"'{field}' needs at least two colors to interpolate a ramp, got {len(v)}."
+        )
+    _check_colors(v, field)
+    return v
+
+
+class GradientBlock(BaseModel):
+    '''
+    The ordered/continuous scales, each settable to a colormap name or a list of colors.
+
+    extra='forbid' so a misspelled role (`significants`) fails at load rather than leaving the
+    user staring at an unchanged figure -- the same reasoning behind StyleBlock's forbid.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    # correlation R^2 heatmap.
+    correlation: Optional[PaletteValue] = None
+    # -log10(p) panel; drawn beside `lfc`, so the two must stay mutually distinguishable.
+    significance: Optional[PaletteValue] = None
+    # seqlogo per-position score heatmap and its colorbar.
+    score: Optional[PaletteValue] = None
+    # seqlogo sequence heatmap background.
+    sequence: Optional[PaletteValue] = None
+    # coverage specificity partition and cluster numeric coloring: light = least, dark = most.
+    ordered: Optional[PaletteValue] = None
+    # diverging scale for log2 fold change, centered on zero -- wants an odd number of stops
+    # with a neutral middle when given as a list.
+    lfc: Optional[PaletteValue] = None
+
+    @field_validator(*GRADIENT_ROLES)
+    @classmethod
+    def _valid_gradient(cls, v, info):
+        return _validate_gradient(v, info.field_name)
+
+
 class StyleFile(BaseModel):
     '''
     Validates the `--style` JSON passed to `trnagraph graph` and `preprocess trim`.
@@ -233,6 +323,13 @@ class StyleFile(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     colors: Optional[Dict[str, Dict[str, str]]] = None
+    # Ordered/continuous scales, keyed by the quantity they encode. A sibling of `colors`
+    # rather than a per-graph-type key, because the roles are shared across graph types.
+    gradients: Optional[GradientBlock] = None
+    # The fallback palette for unordered categories a `colors` entry does not name. Its own
+    # key rather than a `gradients` role: it is a seaborn palette namespace, not a colormap
+    # one, so 'husl' is valid here and meaningless there.
+    categorical: Optional[PaletteValue] = None
     defaults: Optional[StyleBlock] = None
     cluster: Optional[StyleBlock] = None
     compare: Optional[StyleBlock] = None
@@ -247,6 +344,33 @@ class StyleFile(BaseModel):
     volcano: Optional[StyleBlock] = None
     trimming: Optional[StyleBlock] = None
 
+    @field_validator('categorical')
+    @classmethod
+    def _valid_categorical(cls, v):
+        '''
+        A seaborn palette NAME or an explicit list of colors.
+
+        Validated separately from the gradients because the namespaces differ: 'husl' is a
+        legitimate categorical palette and not a colormap, while 'mako_r' is the reverse.
+        '''
+        if v is None or not isinstance(v, str):
+            if v is not None:
+                if not v:
+                    raise ValueError("'categorical' must name at least one color.")
+                _check_colors(v, 'categorical')
+            return v
+        import seaborn as sns
+
+        try:
+            sns.color_palette(v, 2)
+        except Exception:
+            raise ValueError(
+                f"'categorical' names palette '{v}', which seaborn does not recognize. Use a "
+                f"seaborn palette name (e.g. 'colorblind', 'husl', 'tab10'), or give an "
+                f"explicit list of colors."
+            ) from None
+        return v
+
     @model_validator(mode='before')
     @classmethod
     def _accept_bare_colormap(cls, data):
@@ -258,7 +382,7 @@ class StyleFile(BaseModel):
         '''
         if not isinstance(data, dict) or not data:
             return data
-        known = {'colors', 'defaults', *STYLE_GRAPH_TYPES}
+        known = {'colors', 'gradients', 'categorical', 'defaults', *STYLE_GRAPH_TYPES}
         if any(key in known for key in data):
             return data
         if all(isinstance(v, dict) and all(isinstance(c, str) for c in v.values())

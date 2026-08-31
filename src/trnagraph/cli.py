@@ -16,7 +16,7 @@ from types import SimpleNamespace
 try:
     from .modules.lazy_imports import (
         toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsTemplate, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from .modules import env_check
@@ -29,7 +29,7 @@ except ImportError:
 
     from tRNAgraph.modules.lazy_imports import (
         toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsTemplate, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from tRNAgraph.modules import env_check
@@ -467,7 +467,7 @@ def graph(
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
     graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
-    style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file carrying both the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). Structure: a 'colors' block (grouping column -> value -> color), a 'defaults' block applying to every graph, and optional per-graph-type blocks overriding it. A CLI flag always wins over the file. A file in the old --colormap shape is still accepted and read as its colors block"),
+    style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file carrying both the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). Structure: a 'colors' block (grouping column -> value -> color), a 'gradients' block setting the ordered/continuous scales by role, a 'categorical' fallback palette, a 'defaults' block applying to every graph, and optional per-graph-type blocks overriding it. Run `trnagraph tools template --style` for a blank file listing every key. A CLI flag always wins over the file. A file in the old --colormap shape is still accepted and read as its colors block"),
     format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60', 'allfeatures:o60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag (e.g. 'u60'). Default 'norm:full' is today's default behavior"),
@@ -659,6 +659,20 @@ def merge(
 
         print('Merging database objects...\n')
         adataMerge.anndataMerger(args).merge()
+        print('Done!\n')
+
+@tools_app.command("template", help="Write a blank, fully-enumerated JSON config template into the current directory")
+def template(
+    style: bool = typer.Option(False, "--style", help="Write the --style template (colors, gradients, categorical palette and presentation settings). Default: write every available template"),
+    output: str = typer.Option(".", "-o", "--output", help="Directory to write the template(s) into"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing template file instead of refusing"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    with handle_output(quiet, tool="template", destination=os.path.abspath(output)):
+        args = SimpleNamespace(mode='template', style=style, output=output, overwrite=overwrite, quiet=quiet)
+
+        for path in toolsTemplate.TemplateWriter(args).run():
+            print(f'Wrote {path}')
         print('Done!\n')
 
 @tools_app.command("test", help="Run pipeline demo tests")

@@ -58,6 +58,7 @@ toolsCountReads = LazyLoader('toolsCountReads')
 toolsGetCoverage = LazyLoader('toolsGetCoverage')
 toolsTrackHub = LazyLoader('toolsTrackHub')
 toolsTestSuite = LazyLoader('toolsTestSuite')
+toolsTemplate = LazyLoader('toolsTemplate')
 toolsUpdate = LazyLoader('toolsUpdate')
 
 # Adata modules

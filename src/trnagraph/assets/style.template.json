@@ -1,0 +1,105 @@
+{
+  "colors": null,
+  "gradients": {
+    "correlation": null,
+    "significance": null,
+    "score": null,
+    "sequence": null,
+    "ordered": null,
+    "lfc": null
+  },
+  "categorical": null,
+  "defaults": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "cluster": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "compare": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "correlation": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "count": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "coverage": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "heatmap": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "logo": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "mismatch": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "pca": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "radar": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "volcano": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "trimming": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  }
+}

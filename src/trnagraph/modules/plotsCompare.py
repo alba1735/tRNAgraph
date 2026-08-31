@@ -24,7 +24,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
     if colormap != None:
         pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
     else:
-        pal = plotsPalette.categorical_palette(len(adata.obs[comparegrp1].unique()))
+        pal = plotsPalette.categorical(settings, len(adata.obs[comparegrp1].unique()))
         pal = dict(zip(sorted(adata.obs[comparegrp1].unique()), pal))
 
     # Was hardcoded to all reads while plotsCluster was hardcoded to unique, so two plots of

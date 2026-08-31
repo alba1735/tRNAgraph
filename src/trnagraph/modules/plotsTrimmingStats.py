@@ -84,7 +84,7 @@ class visualizer:
 
         # Plot stacked bars, husl palette (or --colormap 'trimtype' overrides) to match the
         # rest of tRNAgraph's plots*.py modules -- see plotsCount.py's stacked_barplots
-        palette = plotsPalette.categorical_palette(len(cols))
+        palette = plotsPalette.categorical(self.settings, len(cols))
         if self.colormap:
             palette = [self.colormap.get(c, palette[i]) for i, c in enumerate(cols)]
         df_pivot.plot(kind='bar', stacked=True, ax=ax, width=0.8, edgecolor=plotsPalette.BAR_EDGE, linewidth=0.5,

@@ -11,7 +11,6 @@ from . import plotsPalette
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.gridspec as gridspec
-plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
@@ -32,6 +31,7 @@ class visualizer():
         self.ccatail = ccatail
         self.pseudogenes = pseudogenes
         self.rnamode = rnamode
+        self.settings = settings
         self.pal_dict = dict(plotsPalette.NUCLEOTIDE_COLORS)
         # Drop CCA tail if specified
         if self.ccatail:
@@ -205,7 +205,7 @@ class visualizer():
         # Create a heatmap in the lower subplot
         # scores_df = pd.DataFrame([df_consensus['actual_score'], df_consensus['ref_score'], df_consensus['mismatchedbases']])
         scores_df = pd.DataFrame([df_consensus['actual_score'], df_consensus['ref_score']])
-        sns.heatmap(scores_df, cmap=plotsPalette.SEQUENTIAL_SCORE, cbar=False, square=True, linewidths=0, linecolor='black', ax=ax2)
+        sns.heatmap(scores_df, cmap=plotsPalette.gradient(self.settings, 'score'), cbar=False, square=True, linewidths=0, linecolor='black', ax=ax2)
         # Print the consensus horizontally aligned with the heatmap below it
         for i in df_consensus.iterrows():
             ascore_color, rscore_color, fweight = 'black', 'black', 'normal'
@@ -227,7 +227,7 @@ class visualizer():
         ax2.get_yaxis().set_label_coords(-0.1,0.5)
         ax2.set_xticks([])
         # Create a legend in the right subplot for the heatmap
-        ax4.imshow(np.linspace(0, 100, 101).reshape(-1, 1)[::-1], cmap=plotsPalette.SEQUENTIAL_SCORE, aspect='auto', interpolation='nearest')
+        ax4.imshow(np.linspace(0, 100, 101).reshape(-1, 1)[::-1], cmap=plotsPalette.gradient(self.settings, 'score'), aspect='auto', interpolation='nearest')
         ax4.set_xticks([])
         ax4.set_yticks([0, 100])
         ax4.set_yticklabels(['100%', '0%'])
@@ -279,10 +279,10 @@ class visualizer():
         # Add a title to the figure and save the figure
         if self.manual_grp:
             fig.suptitle(f'Consensus Logo {unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/consensus_{unit}_{self.logosize}.pdf', bbox_inches='tight')
+            toolsTG.save_current(f'{self.output}/consensus_{unit}_{self.logosize}.pdf', self.settings, bbox_inches='tight')
         else:
             fig.suptitle(f'Consensus Logo {self.coverage_grp}_{unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/consensus_{self.coverage_grp}_{unit}_{self.logosize}.pdf', bbox_inches='tight')
+            toolsTG.save_current(f'{self.output}/consensus_{self.coverage_grp}_{unit}_{self.logosize}.pdf', self.settings, bbox_inches='tight')
         plt.close()
 
     def map_plot(self, seq_df, unit):
@@ -293,7 +293,7 @@ class visualizer():
         fig = plt.figure(figsize=(18,len(trna_list)))
 
         seq_hm = np.zeros((len(trna_list), len(seq_df)))
-        sns.heatmap(seq_hm, cmap=plotsPalette.SEQUENTIAL_SEQUENCE, cbar=False, square=True, linewidths=0, linecolor='black')
+        sns.heatmap(seq_hm, cmap=plotsPalette.gradient(self.settings, 'sequence'), cbar=False, square=True, linewidths=0, linecolor='black')
         # Populate the heatmap boxes with the sequence matching the color from the self.pal_dict or gray if match is True
         tick_pos, tick_names = [],[]
 
@@ -316,10 +316,10 @@ class visualizer():
         # Add a title to the figure and save the figure
         if self.manual_grp:
             # fig.suptitle(f'Map {unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/map_{unit}_{self.logosize}.pdf', bbox_inches='tight')
+            toolsTG.save_current(f'{self.output}/map_{unit}_{self.logosize}.pdf', self.settings, bbox_inches='tight')
         else:
             # fig.suptitle(f'Map {self.coverage_grp}_{unit}', fontsize='x-large')
-            plt.savefig(f'{self.output}/map_{self.coverage_grp}_{unit}_{self.logosize}.pdf', bbox_inches='tight')
+            toolsTG.save_current(f'{self.output}/map_{self.coverage_grp}_{unit}_{self.logosize}.pdf', self.settings, bbox_inches='tight')
         plt.close()
 
     def position_swap(self, df, pos):

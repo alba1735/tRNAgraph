@@ -50,7 +50,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
 
     # Plot the explained variance ratio
     plt.figure(figsize=(6, 6))
-    ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=plotsPalette.categorical_palette(len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
+    ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=plotsPalette.categorical(settings, len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
     # Set the x and y labels and title
     ax.set_xlabel('Principal Component')
     ax.set_ylabel('Explained Variance Ratio')
@@ -72,7 +72,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if colormap:
         ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=colormap, hue=hue_dict, legend='full')
     else:
-        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=plotsPalette.categorical_palette(len(set(hue_dict.values()))), hue=hue_dict, legend='full')
+        ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=plotsPalette.categorical(settings, len(set(hue_dict.values()))), hue=hue_dict, legend='full')
     ax.set_xlabel('PC1 ({:.2f}%)'.format(evr[0]*100))
     ax.set_ylabel('PC2 ({:.2f}%)'.format(evr[1]*100))
     # Capatilize the legend and move the legend outside the plot and remove the border around it
@@ -104,7 +104,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     if colormap:
         ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=colormap, hue_order=sorted(set(hue_dict.values())))
     else:
-        ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=plotsPalette.categorical_palette(len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
+        ax = sns.pairplot(df_pca, hue=pcacolors.capitalize(), palette=plotsPalette.categorical(settings, len(set(hue_dict.values()))), hue_order=sorted(set(hue_dict.values())))
     # Remove the ticks and tick labels
     ax.tick_params(axis='both', which='both', bottom=False, top=False,
                    left=False, right=False, labelbottom=False, labelleft=False)

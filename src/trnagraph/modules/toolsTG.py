@@ -407,10 +407,20 @@ def resolve_plot_style(style, graph_type, **overrides):
     A CLI flag always wins over the file -- passing None for an override means "not
     specified", so a flag left at its default never masks the file.
     '''
+    from . import plotsPalette
+
     resolved = dict(PLOT_STYLE_DEFAULTS)
     if style is not None:
         resolved.update(style.resolve(graph_type))
     resolved.update({k: v for k, v in overrides.items() if v is not None})
+    # The palette rides in `settings` rather than being threaded as a new parameter: every
+    # plot module already receives this dict, and tests/unit/test_plot_settings_scope.py
+    # already statically guards the failure mode a NEW threaded parameter reintroduces (a
+    # helper reading it without being given it, invisible until it runs inside a pool).
+    # Every graph type gets every gradient role -- see plotsPalette.resolve_gradients.
+    resolved['gradients'] = plotsPalette.resolve_gradients(
+        getattr(style, 'gradients', None) if style is not None else None)
+    resolved['categorical'] = getattr(style, 'categorical', None) if style is not None else None
     return resolved
 
 

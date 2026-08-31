@@ -43,7 +43,10 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         # `readtypes` arrives as resolved obs column names -- adataGraph.resolved_diffrts()
         # applies the command-wide read basis once, so no module decides its own denominator.
         # Create a color palette for the heatmap
-        cmap = plotsPalette.diverging_lfc_cmap()
+        cmap = plotsPalette.gradient(settings, 'lfc')
+        # The significance panel sits beside the log2FC panel in the same figure, so it
+        # is resolved here and threaded through rather than read inside heatmap_plot.
+        sig_cmap = plotsPalette.gradient(settings, 'significance')
         # Create a correlation matrix from reads stored in adata observations
         df, log2fc_dict = toolsTG.adataLog2FC(adata, grp, readtype, readcount_cutoff=cutoff, config_name=config_name, overwrite=overwrite).main()
         if df.empty:
@@ -63,7 +66,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
         # Create a pdf with a heatmap for sorted by each group on each page
         with PdfPages(f'{output}{grp}_{readtype}_{cutoff}_{heatbound}_heatmap.pdf') as pdf:
             for col in [i for i in df.columns.tolist() if 'log2' in i]:
-                plt = heatmap_plot(df, col, cmap, heatbound)
+                plt = heatmap_plot(df, col, cmap, sig_cmap, heatbound)
                 # Save figure
                 if threaded:
                     threaded += f'Saving heatmap for {readtype} {col}...\n'
@@ -77,7 +80,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
     if not df_combine.empty:
         with PdfPages(f'{output}{grp}_combine_{cutoff}_{heatbound}_heatmap.pdf') as pdf:
             for col in [i for i in df_combine.columns.tolist() if 'log2' in i]:
-                plt = heatmap_plot(df_combine, col, cmap, heatbound)
+                plt = heatmap_plot(df_combine, col, cmap, sig_cmap, heatbound)
                 # Save figure
                 if threaded:
                     threaded += f'Saving heatmap for combine {col}...\n'
@@ -90,7 +93,7 @@ def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, t
     if threaded:
         return threaded
 
-def heatmap_plot(df, col, cmap, heatbound):
+def heatmap_plot(df, col, cmap, sig_cmap, heatbound):
     # Sort df by the sum of the log2FC values for each row
     tdf = df.sort_values(by=col, ascending=False)
     # subset df to only include the top and bottom heatbound values only if the heatmap is larger than heatbound
@@ -105,7 +108,7 @@ def heatmap_plot(df, col, cmap, heatbound):
     log_tdf = tdf[[i for i in tdf.columns if 'log2' in i]]
     pval_tdf = tdf[[i for i in tdf.columns if 'pval' in i]]
     sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=4, vmin=-4, cbar=True, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
-    sns.heatmap(-np.log10(pval_tdf), ax=axs[1], cmap=plotsPalette.SEQUENTIAL_SIGNIFICANCE, vmin=0, vmax=3, cbar=True, yticklabels=False, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
+    sns.heatmap(-np.log10(pval_tdf), ax=axs[1], cmap=sig_cmap, vmin=0, vmax=3, cbar=True, yticklabels=False, square=True, cbar_kws={'fraction':0.05, 'pad':0.05})
     axs[0].tick_params(axis='x', labelrotation=90)
     axs[1].tick_params(axis='x', labelrotation=90)
     axs[1].set_ylabel('')

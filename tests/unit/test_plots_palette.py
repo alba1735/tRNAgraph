@@ -93,7 +93,11 @@ def test_de_direction_colors_are_distinguishable_from_the_nonsignificant_grey():
 def test_every_exported_color_is_parseable_by_matplotlib():
     import matplotlib.colors as mplcolors
 
-    names = [n for n in dir(plotsPalette) if n.isupper() and not n.endswith(('_ALPHA', '_KWARGS'))]
+    # Private module tables (e.g. _GRADIENT_DEFAULTS, which maps a role to a colormap NAME
+    # rather than to a color) are not exported values and are not what this asserts.
+    # Note '_NAME'.isupper() is True, so the underscore check has to be explicit.
+    names = [n for n in dir(plotsPalette)
+             if n.isupper() and not n.startswith('_') and not n.endswith(('_ALPHA', '_KWARGS'))]
     for name in names:
         value = getattr(plotsPalette, name)
         if isinstance(value, str) and value not in ('husl', 'Blues', 'Greens', 'Greys', 'mako_r'):

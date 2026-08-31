@@ -26,7 +26,7 @@ class visualizer():
         self.clusterlabels = clusterlabels
         self.masking = masking
         self.colormap = colormap
-        self.numericcolormap = plotsPalette.SEQUENTIAL_ORDERED # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
+        self.numericcolormap = plotsPalette.gradient(settings, 'ordered') # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
         # --style's marker_size when set, otherwise the tuned default.
         self.point_size = (settings or {}).get('marker_size') or 20
         # --allreads can only change how an EXISTING embedding is coloured: the UMAP

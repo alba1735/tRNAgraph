@@ -120,14 +120,14 @@ def mismatch_count_shares(adata):
     return long
 
 
-def _palette(values, colormap, key):
+def _palette(values, colormap, key, settings=None):
     '''Resolve a palette for `values`, preferring the user's colormap block for `key`.'''
     supplied = (colormap or {}).get(key, {})
     supplied = {k: (v if not str(v).startswith('#') else mplcolors.to_rgb(v))
                 for k, v in supplied.items()}
     missing = [v for v in values if v not in supplied]
     if missing:
-        generated = plotsPalette.categorical_palette(len(missing))
+        generated = plotsPalette.categorical(settings, len(missing))
         supplied.update(dict(zip(missing, generated)))
     return supplied
 
@@ -197,7 +197,7 @@ class visualizer():
         else:
             levels = sorted(df[hue].dropna().unique())
 
-        palette = _palette(levels, self.colormap, palette_key)
+        palette = _palette(levels, self.colormap, palette_key, self.settings)
         settings = self.settings or {}
         # stripplot's `size` is a diameter in points where scatter's `s` is an area, so the
         # shared marker_size is square-rooted to keep one number meaning the same visual
@@ -247,7 +247,7 @@ class visualizer():
         fig, axes = plt.subplots(1, len(types), figsize=(6 * len(types), 6), squeeze=False)
 
         counts = sorted(shares['count'].unique())
-        palette = _palette([str(c) for c in counts], self.colormap, 'mismatch')
+        palette = _palette([str(c) for c in counts], self.colormap, 'mismatch', self.settings)
 
         for ax, readtype in zip(axes[0], types):
             subset = shares[shares['type'] == readtype]

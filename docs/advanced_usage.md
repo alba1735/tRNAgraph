@@ -148,6 +148,8 @@ One JSON file carries both the color palette and the presentation settings for a
     "amino":    { "Ala": "royalblue", "Gly": "#FF9896" },
     "trimtype": { "Merged": "royalblue", "Discarded": "#B0B0B0" }
   },
+  "gradients": { "correlation": "crest", "lfc": ["#0173b2", "#ffffff", "#d55e00"] },
+  "categorical": "colorblind",
   "defaults": { "format": "pdf", "dpi": 300, "font_size": 10 },
   "volcano":  { "figsize": [8, 8], "marker_size": 12 },
   "pca":      { "marker_size": 40 }
@@ -155,6 +157,27 @@ One JSON file carries both the color palette and the presentation settings for a
 ```
 
 Colors accept hex, RGB or Matplotlib names. Precedence runs **built-in defaults → `defaults` → the graph type's own block → a CLI flag**, so `--format svg` overrides a `format` set in the file.
+
+Run `trnagraph tools template --style` to drop a blank `style.template.json` listing every key the file accepts into the current directory. Every value in it is `null`, so it changes nothing until you fill something in.
+
+#### Gradients
+
+`gradients` sets the ordered/continuous scales, keyed by **what they encode** rather than by which graph draws them — a heatmap draws two of these at once, a sequence logo draws two more, and one is shared between coverage and cluster, so there is no one-to-one mapping to graph types.
+
+| Role | Used by | Encodes |
+| --- | --- | --- |
+| `correlation` | `correlation` | Correlation R² |
+| `significance` | `heatmap` | −log10(p), drawn beside `lfc` |
+| `lfc` | `heatmap` | Log2 fold change, diverging and centered on zero |
+| `score` | `logo` | Per-position score, drawn beside `sequence` |
+| `sequence` | `logo` | Sequence heatmap background |
+| `ordered` | `coverage`, `cluster` | Ordered specificity / numeric cluster coloring |
+
+Each takes either a Matplotlib or seaborn colormap name (`"mako_r"`, `"vlag"`, `"Blues"`) or a list of two or more colors to interpolate into your own ramp (`["#f7fbff", "#08306b"]`). A list for `lfc` wants an odd number of stops with a neutral middle, since that scale is centered on zero. An unknown name or an unparseable color fails when the file is read, not part-way through a long run.
+
+#### Categorical palette
+
+`categorical` sets the fallback for unordered categories that no `colors` entry names. It takes a seaborn palette name (`"colorblind"`, `"husl"`, `"tab10"`) or an explicit list of colors. A list shorter than the number of categories being drawn is **cycled**, with a warning — an explicit list states which colors you want, so nothing you did not choose is substituted for it. This is also the one key `preprocess trim --style` reads beyond `colors.trimtype`.
 
 Settings:
 

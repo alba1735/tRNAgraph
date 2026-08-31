@@ -107,7 +107,7 @@ class visualizer:
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=self.colormap[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=self.colormap[i])
             else:
-                pal = dict(zip(tdf.columns, plotsPalette.categorical_palette(len(tdf.columns))))
+                pal = dict(zip(tdf.columns, plotsPalette.categorical(self.settings, len(tdf.columns))))
                 ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=pal[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=pal[i])
         # Capatilize the legend and move the legend outside the plot and remove the border around it

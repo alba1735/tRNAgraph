@@ -38,7 +38,7 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
 
     df_corr = df_wide.corr(method=corr_method)
     plt.figure(figsize=(6, 6))
-    ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.SEQUENTIAL_CORRELATION, cbar_kws={'label': f'{corr_method} R^2'})
+    ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.gradient(settings, 'correlation'), cbar_kws={'label': f'{corr_method} R^2'})
     ax.set_xlabel('')
     ax.set_ylabel('')
     ax.set_title(f'{corr_method} {corr_group} {title} Correlation Matrix'.title())
