@@ -326,6 +326,8 @@ def readtype_marker(readtype):
     if bare in READTYPE_MARKERS:
         return READTYPE_MARKERS[bare]
     fallback = dict(READTYPE_MARKER_FALLBACK)
-    fallback['label'] = f'{bare} counts'
+    # Capitalised to match the mapped labels ("Whole counts"), since these are read side by
+    # side in legends and figure titles.
+    fallback['label'] = f'{bare.capitalize()} counts'
     return fallback
 

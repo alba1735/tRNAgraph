@@ -194,6 +194,35 @@ def _readtype_legend(fig, tdf, horizontal=False):
                bbox_to_anchor=(0.5, offset), fontsize=8)
 
 
+def _readtype_subject(tdf):
+    '''
+    What this heatmap holds, for its title, or None when the frame does not say.
+
+    Every heatmap used to carry the same title, so the file holding `total` counts and the
+    file stacking four read types were indistinguishable once opened -- and their filenames
+    are no help, since `total` and `combine` both read as "everything" while meaning opposite
+    things (`total` is ONE read type, numerically the sum of the other four; `combine` stacks
+    those four as separate rows). Renaming the files belongs to the terminology pass on the
+    roadmap; saying what a figure holds does not have to wait for it.
+
+    Derived from the same column the markers are, so the title and the glyphs cannot describe
+    different things.
+    '''
+    if 'readtype' not in tdf.columns:
+        return None
+    labels, seen = [], set()
+    for readtype in tdf['readtype']:
+        label = plotsPalette.readtype_marker(readtype)['label']
+        if label not in seen:
+            seen.add(label)
+            labels.append(label)
+    if len(labels) == 1:
+        return labels[0]
+    ordered = [m['label'] for m in plotsPalette.READTYPE_MARKERS.values() if m['label'] in seen]
+    ordered += [label for label in labels if label not in ordered]
+    return f'Read types combined: {", ".join(ordered)}'
+
+
 #: Accepted --heatorient values. 'vertical' is the historical layout: features on rows,
 #: comparisons on columns, the two panels side by side.
 HEAT_ORIENT_CHOICES = ('vertical', 'horizontal')
@@ -279,7 +308,9 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
     # preferred where a renderer is available because it also covers the panel titles.
     if marked is not None:
         _readtype_legend(fig, tdf, horizontal=horizontal)
-    title = f'Heatmap of log2FC of tRNA read counts between groups \nsorted by {col}'
+    subject = _readtype_subject(tdf)
+    title = 'Heatmap of log2FC of tRNA read counts between groups'
+    title += f'\n{subject}, sorted by {col}' if subject else f' \nsorted by {col}'
     if horizontal:
         # The stacked layout has no such gap to close -- its height is derived from the panels
         # themselves -- and the constrained layout already reserves room for a suptitle. Naming

@@ -134,3 +134,40 @@ def test_the_legend_order_is_canonical_not_whatever_sorted_first(monkeypatch):
     entries = _legend_entries(monkeypatch, _frame())
 
     assert entries == ["5' counts", "3' counts", 'Whole counts']
+
+
+def _title(monkeypatch, frame):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    plotsHeatmap.heatmap_plot(frame, 'log2_A-B', 'vlag', 'rocket_r', 25)
+    return plt.gcf()._suptitle.get_text()
+
+
+def test_a_single_read_type_heatmap_names_that_read_type_in_its_title(monkeypatch):
+    """Every heatmap carried the same title, so the file holding total counts and the file
+    stacking four read types were indistinguishable once opened -- the filename was the only
+    thing that said which was which, and 'total' and 'combine' both read as 'everything'."""
+    title = _title(monkeypatch, _frame(readtypes=['nreads_wholecounts_unique_norm']))
+
+    assert 'Whole counts' in title
+    assert 'sorted by log2_A-B' in title
+
+
+def test_the_combined_heatmap_says_it_combines_and_names_what_it_holds(monkeypatch):
+    title = _title(monkeypatch, _frame())
+
+    assert 'combined' in title.lower()
+    for label in ("5' counts", "3' counts", 'Whole counts'):
+        assert label in title
+    assert 'sorted by log2_A-B' in title
+
+
+def test_a_frame_without_read_types_keeps_the_original_title(monkeypatch):
+    """Direct callers that never set a readtype column must be unaffected."""
+    frame = _frame().drop(columns='readtype')
+    title = _title(monkeypatch, frame)
+
+    assert 'sorted by log2_A-B' in title
+    assert 'counts' not in title.replace('read counts', '')
