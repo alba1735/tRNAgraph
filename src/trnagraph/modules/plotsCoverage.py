@@ -29,6 +29,21 @@ logger = logging.getLogger(__name__)
 # legend -- just enough to clear the top row's axis titles without reopening a dead band.
 LEGEND_TITLE_CLEARANCE = 0.018
 
+#: Grid geometry for the specificity pages. Four tRNA rows keeps each panel at the size the
+#: arm-band furniture and tick labels were tuned for; eight group columns is as many as fit
+#: across a page while staying legible.
+#: Below this ceiling a plot is filed under low_coverage/. Shared by the coverage and
+#: specificity individuals so one tRNA sorts the same way in both.
+LOW_COVERAGE_CEILING = 20
+
+PARTITION_ROWS_PER_PAGE = 4
+PARTITION_COLUMNS_PER_PAGE = 8
+
+#: Above this many --covgrp values the grid is refused outright rather than capped. Plotting
+#: the first 24 of 436 would be a figure that misrepresents itself as complete.
+MAX_PARTITION_COLUMNS = 24
+
+
 # Pool tasks that reference a BOUND METHOD pickle `self` for every task -- and `self` carries
 # the whole AnnData. Measured on the hg38 object that is 549 MB per task, against 436 tasks for
 # the per-tRNA split and 28 per combined PDF, so a run spends its time shovelling gigabytes
@@ -92,6 +107,10 @@ class visualizer():
             self.coverage_pal = dict(zip(sorted(self.adata.obs[self.coverage_grp].unique()), coverage_pal))
         self.output = output
         self.category_output = f'{output}{self.category_dir}/'
+        # Specificity gets its own directory rather than sitting at the coverage base or under
+        # a --covtype: it shows every category at once, so it belongs to none of them, and the
+        # combined grid now sits beside the individual plots it summarises.
+        self.specificity_output = f'{output}specificity/'
         self.settings = settings
 
     def build_output_dirs(self):
@@ -103,6 +122,9 @@ class visualizer():
         logger.info(toolsTG.builder(self.category_output))
         logger.info(toolsTG.builder(f'{self.category_output}{self.coverage_obs}/'))
         logger.info(toolsTG.builder(f'{self.category_output}{self.coverage_obs}/low_coverage/'))
+        logger.info(toolsTG.builder(self.specificity_output))
+        logger.info(toolsTG.builder(f'{self.specificity_output}{self.coverage_obs}/'))
+        logger.info(toolsTG.builder(f'{self.specificity_output}{self.coverage_obs}/low_coverage/'))
 
     def clean_adata(self, adata):
         '''
@@ -169,29 +191,129 @@ class visualizer():
             ulist = sorted(ulist, key=lambda x: ('-'.join(x.split('-')[:-1]), int(x.split('-')[-1])))
         return ulist
 
+    def _partition_groups(self):
+        '''The --covgrp values to draw, in a stable order.'''
+        return sorted(self.partition_source.obs[self.coverage_grp].dropna().unique())
+
     def _partition_frame(self):
         '''
-        Coverage per position for each of tRAX's four read-specificity categories, aggregated
-        across --covgrp with --covmethod, as {covobs: DataFrame(position x category)}.
+        Coverage per position for each of tRAX's four read-specificity categories, PER GROUP:
+        {covobs: {group: DataFrame(position x category)}}.
 
-        Built once, up front, and plotted serially rather than through the Pool the combined
-        pages use: the four category views would otherwise be pickled to every worker for a
-        single set of pages, which costs more than the plotting saves.
+        The group axis is the point. This used to aggregate across every --covgrp value at
+        once, so the plot ignored --covgrp entirely and a treated and an untreated sample were
+        averaged into one trace with nothing on the figure saying so. Within a group the
+        samples are still reduced with --covmethod, exactly as the coverage plots do.
+
+        Built once, up front: these are aggregated position vectors, so even a human build
+        (436 tRNAs x 4 categories x a handful of groups) is a few hundred thousand floats.
         '''
         views = {}
         for category in toolsTG.COVERAGE_PARTITION:
             sub = self.partition_source[:, np.isin(self.partition_source.var.coverage, [category])]
             sub = sub[:, np.isin(sub.var.gap, self.coverage_gap)]
             views[category] = sub[~sub.obs[self.coverage_grp].isna()]
+        groups = self._partition_groups()
         frames = {}
         for covobs in self._covobs_list():
-            columns = {}
-            for category, view in views.items():
-                subset = view[view.obs[self.coverage_obs] == covobs]
-                df = pd.DataFrame(subset.X.T, columns=subset.obs[self.coverage_grp].values)
-                columns[category] = self.__coverage_transform__(df, singlecol=True)
-            frames[covobs] = pd.DataFrame(columns)
+            per_group = {}
+            for group in groups:
+                columns = {}
+                for category, view in views.items():
+                    subset = view[(view.obs[self.coverage_obs] == covobs)
+                                  & (view.obs[self.coverage_grp] == group)]
+                    df = pd.DataFrame(subset.X.T, columns=subset.obs[self.coverage_grp].values)
+                    columns[category] = self.__coverage_transform__(df, singlecol=True)
+                per_group[group] = pd.DataFrame(columns)
+            frames[covobs] = per_group
         return frames
+
+    def generate_partition_split(self):
+        '''
+        One specificity plot per --covobs value per --covgrp value.
+
+        The grid answers "how do these groups compare"; this answers "what does this one group
+        actually look like", at full size. Sorted into low_coverage/ by the same ceiling the
+        individual coverage plots use, so a tRNA that is quiet in both views sorts the same way
+        in both places.
+        '''
+        frames = self._partition_frame()
+        palette = plotsPalette.discrete_colors(
+            plotsPalette.gradient(self.settings, 'ordered'), len(toolsTG.COVERAGE_PARTITION))
+        labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
+        for covobs, per_group in frames.items():
+            for group, frame in per_group.items():
+                fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
+                self.generate_partition_plot(frame, ax, covobs, palette)
+                ax.set_title(f'{covobs} read specificity ({group})')
+                # Each file needs its own key: unlike a grid page, there is nothing else on
+                # the canvas to name the four stacked categories.
+                handles = [mpatches.Patch(color=color, label=label)
+                           for color, label in zip(palette, labels)]
+                ax.legend(handles=handles[::-1], loc='upper left', bbox_to_anchor=(1, 1),
+                          borderaxespad=0, frameon=False, title='Read specificity')
+                outstart = f'{self.specificity_output}{self.coverage_obs}/'
+                if ax.get_ylim()[1] < LOW_COVERAGE_CEILING:
+                    outstart += 'low_coverage/'
+                toolsTG.save_current(
+                    f'{outstart}{covobs}_specificity_by_{self.coverage_grp}_{group}_'
+                    f'{self.coverage_method}.pdf', self.settings)
+                plt.close(fig)
+
+    def _partition_pages(self, frames):
+        '''
+        The specificity grid, as one figure per page: tRNAs down, --covgrp values across.
+
+        Paginated in BOTH axes -- four tRNA rows and eight group columns at a time -- so a
+        wide experiment continues onto further pages rather than shrinking panels until
+        nothing is readable.
+        '''
+        groups = self._partition_groups()
+        if len(groups) > MAX_PARTITION_COLUMNS:
+            raise toolsTG.InvalidParameterError(
+                f"--covgrp '{self.coverage_grp}' has {len(groups)} values, more than the "
+                f"{MAX_PARTITION_COLUMNS} the specificity grid can show. Group by a column "
+                f"with fewer values, or filter this one with --config."
+            )
+        palette = plotsPalette.discrete_colors(
+            plotsPalette.gradient(self.settings, 'ordered'), len(toolsTG.COVERAGE_PARTITION))
+        labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
+        covobs_list = self._covobs_list()
+        row_pages = [covobs_list[i:i + PARTITION_ROWS_PER_PAGE]
+                     for i in range(0, len(covobs_list), PARTITION_ROWS_PER_PAGE)]
+        column_pages = [groups[i:i + PARTITION_COLUMNS_PER_PAGE]
+                        for i in range(0, len(groups), PARTITION_COLUMNS_PER_PAGE)]
+        return [self._partition_page(rows, columns, frames, groups, palette, labels)
+                for rows in row_pages for columns in column_pages]
+
+    def _partition_page(self, rows, columns, frames, all_groups, palette, labels):
+        '''One page of the grid. Panels in a row share a y-axis so the groups are comparable.'''
+        fig, axes = plt.subplots(len(rows), len(columns), squeeze=False,
+                                 figsize=(3.0 * len(columns) + 1.5, 3.0 * len(rows) + 1.5))
+        for r, covobs in enumerate(rows):
+            # Scaled against EVERY group of this tRNA, not just the ones on this page: two
+            # column-pages of one tRNA drawn to different scales would invite exactly the
+            # false comparison the grid exists to make possible.
+            row_top = max((frames[covobs][group].sum(axis=1).max() for group in all_groups),
+                          default=0)
+            for c, group in enumerate(columns):
+                ax = axes[r][c]
+                self.generate_partition_plot(frames[covobs][group], ax, covobs, palette,
+                                             xaxis=r == len(rows) - 1, top=row_top)
+                # The group names caption the columns once, along the top; the tRNA names
+                # caption the rows once, down the left. Repeating either in every panel would
+                # crowd out the plots.
+                ax.set_title(group if r == 0 else '')
+                ax.set_ylabel(covobs if c == 0 else '')
+        # The row label replaces each panel's own y-axis label, so the units are stated once
+        # for the page rather than lost.
+        fig.supylabel('Normalized Readcounts')
+        handles = [mpatches.Patch(color=color, label=label)
+                   for color, label in zip(palette, labels)]
+        fig.legend(handles=handles[::-1], loc='lower center', frameon=False,
+                   ncol=len(labels), bbox_to_anchor=(0.5, -0.01))
+        fig.tight_layout()
+        return fig
 
     def generate_partition_overview(self):
         '''
@@ -209,9 +331,16 @@ class visualizer():
         (light = least specific, dark = most) rather than R's categorical hues, since the
         categories are an ordered specificity scale, not unordered groups.
 
-        Lives at the coverage base directory, not under a category, because it shows every
-        category at once and so belongs to none of them -- and it is identical under
-        --allreads, which selects a category rather than changing this partition.
+        Laid out as a grid -- one row per --covobs value, one column per --covgrp value, with
+        a row sharing a y-axis -- so the groups can be read against each other. It previously
+        aggregated across every group with --covmethod, which meant the figure ignored --covgrp
+        entirely and averaged a treated and an untreated sample into one trace. With a single
+        group the grid degenerates to exactly that old figure, which is why it replaces it
+        rather than joining it.
+
+        Lives under specificity/, not at the coverage base or under a --covtype, because it
+        shows every category at once and so belongs to none of them -- and it is identical
+        under --allreads, which selects a category rather than changing this partition.
         '''
         present = set(self.partition_source.var['coverage'])
         missing = [c for c in toolsTG.COVERAGE_PARTITION if c not in present]
@@ -223,37 +352,15 @@ class visualizer():
             )
             return
         frames = self._partition_frame()
-        palette = plotsPalette.discrete_colors(plotsPalette.gradient(self.settings, 'ordered'),
-                                               len(toolsTG.COVERAGE_PARTITION))
-        labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
-        ulist = self._covobs_list()
-        pages = [ulist[i * 16:(i + 1) * 16] for i in range((len(ulist) + 15) // 16)]
         outend = (f'combined_{self.coverage_obs}_specificity_by_'
                   f'{self.coverage_grp}_{self.coverage_method}.pdf')
-        with PdfPages(f'{self.output}{outend}') as pdf:
-            for page in pages:
-                fig = plt.figure(figsize=(24, 22))
-                for i, covobs in enumerate(page):
-                    ax = fig.add_subplot(4, 4, i + 1)
-                    self.generate_partition_plot(frames[covobs], ax, covobs, palette,
-                                                 xaxis=page.index(covobs) > 11)
-                handles = [mpatches.Patch(color=c, label=l) for c, l in zip(palette, labels)]
-                # One legend per page rather than per subplot: the categories are identical
-                # in all sixteen, so repeating it sixteen times only costs plot area.
-                # Anchored to the subplot grid rather than to the figure corner: the 4x4 grid
-                # stops well short of the canvas top, so anchoring at (0.995, 0.995) left the
-                # legend stranded in a tall empty band that `bbox_inches='tight'` then kept.
-                # Sitting just above the top row's titles, laid out in one horizontal row,
-                # puts it beside the plots it labels instead of floating above them.
-                fig.legend(handles=handles[::-1], loc='lower right', frameon=False,
-                           ncol=len(labels),
-                           bbox_to_anchor=(fig.subplotpars.right,
-                                           fig.subplotpars.top + LEGEND_TITLE_CLEARANCE))
-                pdf.savefig(fig, bbox_inches='tight')
-                plt.close(fig)
-        logger.info(f'Coverage specificity overview saved to {self.output}{outend}')
+        with PdfPages(f'{self.specificity_output}{outend}') as pdf:
+            for page in self._partition_pages(frames):
+                pdf.savefig(page, bbox_inches='tight')
+                plt.close(page)
+        logger.info(f'Coverage specificity overview saved to {self.specificity_output}{outend}')
 
-    def generate_partition_plot(self, df, ax, covobs, palette, xaxis=True):
+    def generate_partition_plot(self, df, ax, covobs, palette, xaxis=True, top=None):
         '''
         One stacked specificity plot. Deliberately reuses generate_plot()'s axis furniture --
         the same D/A/T-arm shading, the 37/58 modification guides and the 0-75 position range
@@ -263,6 +370,10 @@ class visualizer():
                      colors=palette, zorder=2, linewidth=0)
         ax.set_title(f'{covobs} read specificity')
         ax.set_ylabel('Normalized Readcounts')
+        if top:
+            # A caller drawing a row of groups passes one ceiling for all of them, so the
+            # panels can be read against each other rather than each being scaled to itself.
+            ax.set_ylim(0, top)
         ax.set_xlim(0, 75)
         ax.set_xticks([18.01, 35.01, 37, 57.01, 58])
         ax.set_xticklabels(['\nD-Arm', '\nA-Arm', '37', '\nT-Arm', '58'])
@@ -270,7 +381,7 @@ class visualizer():
             ax.set_xlabel('Positions on tRNA')
         # Same identical-ylim guard as generate_plot(): a tRNA with no coverage at all leaves
         # the top of the range at 0, which matplotlib warns about but which is benign here.
-        top = ax.get_ylim()[1]
+        top = top or ax.get_ylim()[1]
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims")
             ax.set_ylim(0, top)
@@ -406,7 +517,7 @@ class visualizer():
             outend = '_'.join(outend.split('_')[:-1]) + '.pdf'
         outstart = f'{self.category_output}{self.coverage_obs}/'
         low_coverage = False
-        if ax.get_ylim()[1] < 20:
+        if ax.get_ylim()[1] < LOW_COVERAGE_CEILING:
             outstart += 'low_coverage/'
             low_coverage = True
         toolsTG.save_current(outstart+outend, self.settings)

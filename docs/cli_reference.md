@@ -312,7 +312,7 @@ Only used by `-g compare`, which `all` does not include.
 
 **Coverage Plot Options:**
 
-- **`--covgrp`**: Grouping variable. Default: `group`.
+- **`--covgrp`**: Grouping variable. Default: `group`. Also the columns of the read-specificity grid (see below), which refuses to draw more than 24 of them — that check runs before any plotting, so a too-wide column costs nothing.
 - **`--covtype`**: Which coverage category to plot. Reads are binned by how specifically they could be assigned, into four mutually exclusive categories that sum to total coverage:
 
   | Alias                   | `adata.var` value        | Meaning                                 |
@@ -328,10 +328,15 @@ Only used by `-g compare`, which `all` does not include.
 - **`--covmethod`**: Combination method (`mean`).
 - **`--covobs`**: The basis each individual coverage plot is drawn for — i.e. what one plot represents. Default: `trna` (one plot per tRNA transcript).
 - **`--covgap`**: Include alignment gap positions in coverage plots. Default: `False`, since gap columns carry no reads and stretch the x-axis.
-- **`--combinedpdfonly`**: Skip individual tRNA PDFs. Default: `False`.
+- **`--combinedpdfonly`**: Skip individual tRNA PDFs. Default: `False`. Covers the read-specificity individuals too, which are one file per tRNA **per group** and so the larger of the two sets.
 
 > [!NOTE]
-> A stacked overview of all four categories at once is written to the top of the coverage output directory (`combined_<covobs>_specificity_by_<covgrp>_<covmethod>.pdf`), above the per-category subfolders. It shows what fraction of each position's signal is transcript-specific versus only isodecoder-, isotype- or amino-level assignable — reading that from the per-category folders would mean comparing four PDFs by eye. It is the same under `--allreads`, which selects a category rather than changing the partition.
+> The four categories stacked together are written under `coverage/specificity/`, which shows what fraction of each position's signal is transcript-specific versus only isodecoder-, isotype- or amino-level assignable — reading that from the per-category folders would mean comparing four PDFs by eye. Two views are produced:
+>
+> - `combined_<covobs>_specificity_by_<covgrp>_<covmethod>.pdf` — a **grid**, one row per `--covobs` value and one column per `--covgrp` value, with the panels in a row sharing a y-axis so the groups can be read against each other. Paginated at 4 rows × 8 columns; a row's scale covers every group, including those on a later column-page, so the pages stay comparable.
+> - `specificity/<covobs>/` — the same plot per group at full size, one file per `--covobs` value per group, with quiet ones sorted into `low_coverage/` by the same ceiling the individual coverage plots use.
+>
+> Both are the same under `--allreads`, which selects a category rather than changing the partition. With a single group the grid is one column wide, which is what this plot looked like before it gained a group axis.
 
 **Heatmap Options:**
 

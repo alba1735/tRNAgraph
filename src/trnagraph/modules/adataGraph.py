@@ -307,6 +307,20 @@ class anndataGrapher:
                 f"--corrmask '{corrmask}' is not one of "
                 f"{', '.join(plotsCorrelation.CORR_MASK_CHOICES)}"
             )
+        covgrp = getattr(self.args, 'covgrp', None)
+        graphtypes = getattr(self.args, 'graphtypes', []) or []
+        draws_coverage = 'coverage' in graphtypes or 'all' in graphtypes
+        if draws_coverage and covgrp in self.adata.obs.columns:
+            # Checked here rather than inside the grid: the grid is drawn after the per-tRNA
+            # and combined coverage plots, so on a human build the user would receive
+            # hundreds of files before being told the grouping cannot be drawn at all.
+            width = int(self.adata.obs[covgrp].nunique())
+            if width > plotsCoverage.MAX_PARTITION_COLUMNS:
+                problems.append(
+                    f"--covgrp '{covgrp}' has {width} values, more than the "
+                    f"{plotsCoverage.MAX_PARTITION_COLUMNS} the coverage specificity grid can "
+                    f"show; group by a column with fewer values, or filter it with --config"
+                )
         heatorient = getattr(self.args, 'heatorient', None)
         if heatorient is not None and heatorient not in plotsHeatmap.HEAT_ORIENT_CHOICES:
             problems.append(
@@ -504,9 +518,13 @@ class anndataGrapher:
             if not self.args.combinedpdfonly:
                 self.logger.info('Generating individual coverage plots pdfs...')
                 pcV.generate_split()
+                # Specificity emits one plot per --covobs value PER GROUP, so it multiplies
+                # the per-tRNA file count that --combinedpdfonly exists to avoid.
+                self.logger.info('Generating individual coverage specificity plots pdfs...')
+                pcV.generate_partition_split()
             self.logger.info('Generating combined coverage plots pdf...')
             pcV.generate_combine()
-            self.logger.info('Generating coverage specificity overview pdf...')
+            self.logger.info('Generating coverage specificity grid pdf...')
             pcV.generate_partition_overview()
         if gt == 'heatmap':
             threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings, orientation=getattr(self.args, 'heatorient', 'vertical'))
