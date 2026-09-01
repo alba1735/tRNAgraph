@@ -257,7 +257,8 @@ class visualizer():
                 if count not in wide.columns:
                     continue
                 ax.bar(wide.index, wide[count].values, bottom=bottom,
-                       color=palette[str(count)], edgecolor=plotsPalette.BAR_EDGE, linewidth=0.4,
+                       color=palette[str(count)], edgecolor=plotsPalette.BAR_EDGE,
+                       linewidth=toolsTG.linewidth_for(self.settings, 0.4),
                        label=str(count))
                 bottom = bottom + wide[count].values
             ax.set_title('tRNA' if readtype == 'trna' else 'non-tRNA')

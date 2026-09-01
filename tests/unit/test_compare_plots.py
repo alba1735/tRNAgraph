@@ -107,3 +107,28 @@ def test_a_threaded_run_saves_every_comparison_and_reports_all_of_them(monkeypat
     expected_pairs = len(TIMEPOINTS) * (len(TIMEPOINTS) - 1) // 2
     assert len(serial) == expected_pairs * 2, "one figure per pair, for amino and for iso"
     assert [path for path, _ in threaded] == [path for path, _ in serial]
+
+
+def test_a_configured_line_width_reaches_the_bar_edges(monkeypatch):
+    """compare's bar edges default to the bar spacing itself (`bardiff`), which is how the
+    plot was tuned. A --style line_width replaces that with an absolute width; the grid
+    hlines/vlines are furniture and keep theirs."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    widths = []
+
+    def fake_save(path, settings=None):
+        widths.extend(patch.get_linewidth() for patch in plt.gcf().axes[0].patches)
+
+    monkeypatch.setattr(plotsCompare.toolsTG, "save_current", fake_save)
+    plotsCompare.visualizer(_make_adata(), "group", "timepoint", None, "out/",
+                            threaded=False, settings={"line_width": 0.25})
+
+    assert widths, "no bars were drawn"
+    # The zero-width entries are the grey significance backdrop drawn behind each row
+    # (linewidth=0 by design). It is furniture, so line_width deliberately does not reach it;
+    # every bar that actually has an edge carries the configured width.
+    assert set(w for w in widths if w) == {0.25}
+    assert 0.0 in widths, 'the strokeless backdrop must stay strokeless'

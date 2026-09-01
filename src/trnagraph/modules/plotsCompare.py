@@ -52,6 +52,9 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
         barwidths = np.linspace(0.1, 0.9, len(cgrp1list)+1)
         bardiff = np.diff(barwidths)[0]
         barwidths = {k:v for k,v in zip(cgrp1list, barwidths)}
+        # Bar edges default to the bar spacing itself, which is how this plot was tuned; a
+        # --style line_width replaces that with an absolute width.
+        edgewidth = toolsTG.linewidth_for(settings, bardiff)
         # Enumerate the index of the dataframe so that the bar heights can be adjusted
         en_dict = dict(enumerate(df.index.values))
         for cgrp2 in cgrp2list:
@@ -65,13 +68,13 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
                 for y,posname in en_dict.items():
                     if abs(df.loc[posname, ('log2',cgrp1,cgrp2)]) >= 1:
                         ax.barh(y+barwidths[cgrp1], df.loc[posname, ('log2',cgrp1,cgrp2)], color=pal[cgrp1], align='edge',
-                                height=bardiff, linewidth=bardiff, edgecolor=pal[cgrp1], label=cgrp1)
+                                height=bardiff, linewidth=edgewidth, edgecolor=pal[cgrp1], label=cgrp1)
                         # ax.hlines(y+0.25, xmin=xminmax[0], xmax=xminmax[1], color=plotsPalette.GRID_LINE, linewidth=bardiff, zorder=-1)
                         # ax.hlines(y+0.75, xmin=xminmax[0], xmax=xminmax[1], color=plotsPalette.GRID_LINE, linewidth=bardiff, zorder=-1)
                         ax.barh(y+0.4, xminmax, color=plotsPalette.GRID_LINE, align='edge', height=0.2, linewidth=0, zorder=-2)
                     else:
                         ax.barh(y+barwidths[cgrp1], df.loc[posname, ('log2',cgrp1,cgrp2)], color='white', align='edge',
-                                height=bardiff, linewidth=bardiff, edgecolor=pal[cgrp1], label=cgrp1)
+                                height=bardiff, linewidth=edgewidth, edgecolor=pal[cgrp1], label=cgrp1)
                     ax.hlines(y+0.5, xmin=xminmax[0], xmax=xminmax[1], color=plotsPalette.GRID_LINE, linewidth=0.5, zorder=1)
             # Set the xlim to the xminmax
             ax.set_xlim(xminmax)

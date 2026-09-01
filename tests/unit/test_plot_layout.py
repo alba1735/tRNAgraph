@@ -224,3 +224,95 @@ def test_pca_and_correlation_stay_square_unconditionally(name):
 
     assert 'set_box_aspect(1)' in source
     assert '_keep_square' not in source, f'{name} must not make its square conditional'
+
+
+# --- line width ------------------------------------------------------------------------
+
+def test_linewidth_for_prefers_the_configured_value():
+    assert toolsTG.linewidth_for({'line_width': 0.75}, 2) == 0.75
+
+
+@pytest.mark.parametrize('settings', [None, {}, {'line_width': None}])
+def test_linewidth_for_falls_back_to_the_modules_default(settings):
+    """Each module's default is a tuned value (coverage traces 2, radar outlines 1.5), so an
+    unset key must leave it exactly as it was rather than imposing a single global width."""
+    assert toolsTG.linewidth_for(settings, 2) == 2
+
+
+LINE_WIDTH_MODULES = ['plotsCoverage.py', 'plotsRadar.py', 'plotsMismatch.py',
+                      'plotsCompare.py', 'plotsCount.py']
+
+
+@pytest.mark.parametrize('name', LINE_WIDTH_MODULES)
+def test_every_module_supporting_line_width_consults_the_helper(name):
+    """
+    The five graph types whose GRAPH_STYLE_SUPPORT entry accepts `line_width` must actually
+    read it, or the schema advertises a key that never reaches a figure -- the exact failure
+    the support table exists to prevent. Only that the helper is referenced is asserted:
+    which strokes it governs is a per-module judgement (data traces and bar edges, never the
+    dashed guides or grid lines).
+    """
+    source = pathlib.Path('src/trnagraph/modules').joinpath(name).read_text()
+
+    assert 'linewidth_for(' in source, (
+        f'{name} accepts a --style line_width but hardcodes every stroke width, so the '
+        f'setting cannot reach it.'
+    )
+
+
+def _coverage_visualizer(settings):
+    """A minimal plotsCoverage.visualizer, built without touching disk."""
+    import anndata as ad
+    import numpy as np
+    import pandas as pd
+
+    from trnagraph.modules import plotsCoverage
+
+    n_obs, n_var = 4, 6
+    obs = pd.DataFrame(
+        {"trna": ["tRNA-Ala-AGC-1"] * n_obs,
+         "group": ["A", "A", "B", "B"],
+         "sample": [f"s{i}" for i in range(n_obs)]},
+        index=[f"obs{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame(
+        {"coverage": ["uniquecoverage"] * n_var, "gap": [False] * n_var},
+        index=[f"v{i}" for i in range(n_var)],
+    )
+    adata = ad.AnnData(X=np.arange(n_obs * n_var, dtype=float).reshape(n_obs, n_var),
+                       obs=obs, var=var)
+    return plotsCoverage.visualizer(
+        adata, threads=1, coverage_grp="group", coverage_obs="trna",
+        coverage_type="uniquecoverage", coverage_gap=[False], coverage_method="mean",
+        colormap=None, output="out/", settings=settings)
+
+
+def _drawn_widths(standalone, settings):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    visualizer = _coverage_visualizer(settings)
+    frame = pd.DataFrame({"A": [1.0, 2.0, 3.0, 2.0, 1.0, 0.5],
+                          "B": [2.0, 3.0, 4.0, 3.0, 2.0, 1.0]})
+    fig, ax = plt.subplots()
+    visualizer.generate_plot(frame, ax, "tRNA-Ala-AGC-1", coverage_fill="fill",
+                             lgnd=False, standalone=standalone)
+    widths = [line.get_linewidth() for line in ax.lines]
+    plt.close(fig)
+    return widths
+
+
+def test_a_configured_line_width_reaches_a_standalone_coverage_trace():
+    assert 0.4 in _drawn_widths(standalone=True, settings={'line_width': 0.4})
+
+
+def test_a_combined_panel_keeps_its_own_line_width():
+    """The invariant that separates this from figsize by policy rather than by mechanism:
+    combined and multi-page pages are deliberately static, so a style file's line_width must
+    not reach the panels of a combined page even though nothing technical prevents it."""
+    widths = _drawn_widths(standalone=False, settings={'line_width': 0.4})
+
+    assert 0.4 not in widths
+    assert 2 in widths, 'the panel must keep the module default'

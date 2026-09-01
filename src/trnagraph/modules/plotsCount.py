@@ -180,7 +180,8 @@ def stacked_barplots(df, count_type, level, output, colormap=None, percent=False
         
     for bar in df.index.values[::-1]:
         # apply plotsBar stacking styling: linewidth=0.5
-        ax.bar(df.columns, df.loc[bar], 0.9, bottom=bar_bottom, color=bar_colors[bar], label=bar, linewidth=0.5, edgecolor='black', clip_on=False)
+        ax.bar(df.columns, df.loc[bar], 0.9, bottom=bar_bottom, color=bar_colors[bar], label=bar,
+               linewidth=toolsTG.linewidth_for(settings, 0.5), edgecolor='black', clip_on=False)
         bar_bottom += df.loc[bar]
         
     sns.despine(left=True, bottom=True)

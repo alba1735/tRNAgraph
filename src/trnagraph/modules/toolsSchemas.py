@@ -277,21 +277,23 @@ UNIVERSAL_STYLE_KEYS = frozenset({'format', 'dpi', 'font_size', 'figsize'})
 # own block but absent here is rejected at load rather than silently ignored -- a style file
 # that appears to do nothing is the failure mode this whole schema exists to avoid. The
 # `defaults` block is exempt: it broadcasts, so a type that cannot use a key just skips it.
+# `line_width` goes to the types that draw a data trace or a bar edge. The scatter types are
+# served by marker_size instead, and heatmap/correlation/logo have no stroke a user would set.
 GRAPH_STYLE_SUPPORT = {
     'volcano':     frozenset({'marker_size', 'alpha', 'rasterize_over'}),
     'pca':         frozenset({'marker_size', 'alpha', 'rasterize_over'}),
     'cluster':     frozenset({'marker_size', 'alpha', 'rasterize_over'}),
-    'mismatch':    frozenset({'marker_size', 'alpha', 'rasterize_over'}),
+    'mismatch':    frozenset({'marker_size', 'alpha', 'rasterize_over', 'line_width'}),
     # coverage/radar/logo deliberately do NOT accept alpha: their alpha values are structural
     # (shaded arm bands, fill translucency scaled by how many series overlay each other) rather
     # than a point-opacity knob, so a global override would break tuned visuals rather than
     # restyle them.
-    'coverage':    frozenset(),
-    'radar':       frozenset(),
+    'coverage':    frozenset({'line_width'}),
+    'radar':       frozenset({'line_width'}),
     'logo':        frozenset(),
-    'compare':     frozenset(),
+    'compare':     frozenset({'line_width'}),
     'correlation': frozenset(),
-    'count':       frozenset(),
+    'count':       frozenset({'line_width'}),
     'heatmap':     frozenset(),
     'trimming':    frozenset(),
 }
@@ -311,6 +313,10 @@ class StyleBlock(BaseModel):
     # either clip panels or leave dead space; those ignore it with a warning.
     figsize: Optional[Tuple[float, float]] = None
     marker_size: Optional[float] = None
+    # Stroke width for data traces and bar edges, in points, replacing the module's own tuned
+    # default. Shrinking figsize scales geometry but not strokes, so a small figure otherwise
+    # renders with lines far too heavy for the panel they sit in.
+    line_width: Optional[float] = None
     font_size: Optional[float] = None
     dpi: Optional[int] = None
     alpha: Optional[float] = None
@@ -327,7 +333,7 @@ class StyleBlock(BaseModel):
             raise ValueError(f'figsize must be two positive numbers, got {v}.')
         return v
 
-    @field_validator('marker_size', 'font_size', 'dpi')
+    @field_validator('marker_size', 'line_width', 'font_size', 'dpi')
     @classmethod
     def _positive(cls, v, info):
         if v is not None and v <= 0:

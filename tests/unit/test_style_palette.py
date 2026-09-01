@@ -427,3 +427,30 @@ def test_the_template_resolves_inside_the_installed_package():
     install; assets_dir() goes through importlib.resources instead.
     """
     assert (pathlib.Path(toolsTG.assets_dir()) / 'style.template.json').is_file()
+
+
+# --- line width ------------------------------------------------------------------------
+
+def test_line_width_is_accepted_by_the_graph_types_that_draw_lines_or_bar_edges():
+    """coverage/radar/mismatch/compare/count are the modules with a data trace or a bar edge.
+    The scatter types are served by marker_size, and heatmap/correlation/logo have no stroke
+    a user would want to set."""
+    for graph_type in ('coverage', 'radar', 'mismatch', 'compare', 'count'):
+        assert 'line_width' in GRAPH_STYLE_SUPPORT[graph_type]
+
+
+def test_line_width_is_rejected_where_it_would_do_nothing():
+    """extra='forbid' plus this table is what stops a style file silently doing nothing --
+    a key accepted under `heatmap` would advertise a setting that never reaches a figure."""
+    for graph_type in ('heatmap', 'correlation', 'logo'):
+        assert 'line_width' not in GRAPH_STYLE_SUPPORT[graph_type]
+        with pytest.raises(ValidationError):
+            StyleFile.model_validate({graph_type: {'line_width': 1.0}})
+
+
+def test_line_width_must_be_positive():
+    with pytest.raises(ValidationError):
+        StyleBlock(line_width=0)
+    with pytest.raises(ValidationError):
+        StyleBlock(line_width=-1)
+    assert StyleBlock(line_width=0.5).line_width == 0.5

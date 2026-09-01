@@ -385,7 +385,7 @@ class visualizer():
                     df_readstartends['position'] = df_readstartends.index
                     # Melt the df so that readstarts and readends are in the same column for plotting
                     df_readstartends = df_readstartends.melt(id_vars='position', value_vars=['readstarts', 'readends'])
-                    self.generate_plot(df_grp, ax, covobs, coverage_fill='endstarts', rse=df_readstartends)
+                    self.generate_plot(df_grp, ax, covobs, coverage_fill='endstarts', rse=df_readstartends, standalone=True)
                     # Save the plot
                     if self.coverage_grp == self.coverage_obs:
                         outend = f'{covobs}_{self.coverage_type}_with_endstarts_{self.coverage_method}.pdf'
@@ -397,7 +397,7 @@ class visualizer():
     def _assemble_plot_(self, df, covobs, lgnd, cov_fill):
         # Generate plot with confidence intervals
         fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
-        self.generate_plot(df, ax, covobs, coverage_fill=cov_fill, lgnd=lgnd)
+        self.generate_plot(df, ax, covobs, coverage_fill=cov_fill, lgnd=lgnd, standalone=True)
         # Get max y value for plot
         outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_with_{cov_fill}_{self.coverage_method}.pdf'
         if self.coverage_grp == self.coverage_obs:
@@ -414,22 +414,30 @@ class visualizer():
 
         return low_coverage, outstart
 
-    def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True, rse=None):
+    def generate_plot(self, df, ax, trna, coverage_fill, lgnd=True, xaxis=True, rse=None, standalone=False):
         '''
         Generate coverage plots for a single tRNA.
+
+        `standalone` says whether this figure is one of the per-tRNA files or a panel of a
+        combined page. It governs one thing: whether a --style `line_width` reaches the trace.
+        The combined and multi-page pages deliberately keep their tuned widths, exactly as
+        they keep their computed figsize -- shrinking a panel grid is not something a style
+        file does, so there is nothing there for a stroke width to stay in proportion with.
         '''
+        # Only a standalone plot consults the style; a panel keeps the module's own width.
+        trace_settings = self.settings if standalone else None
         # Get the cov method of all the columns
         if coverage_fill == 'ci': 
-            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',2), zorder=2, ax=ax)
+            sns.lineplot(data=df, linewidth=toolsTG.linewidth_for(trace_settings, 2), dashes=False, palette=self.coverage_pal, errorbar=('se',2), zorder=2, ax=ax)
         elif coverage_fill == 'fill':
             df = self.__coverage_transform__(df)
-            sns.lineplot(data=df, linewidth=2, dashes=False, palette=self.coverage_pal, errorbar=('se',False), zorder=2, ax=ax)
+            sns.lineplot(data=df, linewidth=toolsTG.linewidth_for(trace_settings, 2), dashes=False, palette=self.coverage_pal, errorbar=('se',False), zorder=2, ax=ax)
         elif coverage_fill == 'endstarts':
             # Get the cov method of all the columns
             df = self.__coverage_transform__(df, singlecol=True)
             # Scale the df so that sum of all values is 1
             df = df/df.sum()
-            sns.lineplot(data=df, linewidth=1.5, dashes=False, color=plotsPalette.COVERAGE_TRACE_MUTED, zorder=3, ax=ax)
+            sns.lineplot(data=df, linewidth=toolsTG.linewidth_for(trace_settings, 1.5), dashes=False, color=plotsPalette.COVERAGE_TRACE_MUTED, zorder=3, ax=ax)
             sns.histplot(data=rse, x='position', weights='value', hue='variable', palette=[plotsPalette.READSTART_COLOR, plotsPalette.READEND_COLOR], alpha=0.5, discrete=True, zorder=2, \
                          stat='probability', common_norm=False, linewidth=0, legend=True, ax=ax)
         # Fill the area under the curve with the mean by going in order of the column with the highest mean to the lowest if fill/both is specified

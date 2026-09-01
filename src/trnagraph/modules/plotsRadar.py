@@ -104,11 +104,11 @@ class visualizer:
             a = angles + angles[:1]
             # Plot data for each anticodon group
             if self.colormap != None:
-                ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=self.colormap[i])
+                ax.plot(a, v, linewidth=toolsTG.linewidth_for(self.settings, 1.5), linestyle='solid', label=i, color=self.colormap[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=self.colormap[i])
             else:
                 pal = dict(zip(tdf.columns, plotsPalette.categorical(self.settings, len(tdf.columns))))
-                ax.plot(a, v, linewidth=1.5, linestyle='solid', label=i, color=pal[i])
+                ax.plot(a, v, linewidth=toolsTG.linewidth_for(self.settings, 1.5), linestyle='solid', label=i, color=pal[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=pal[i])
         # Capatilize the legend and move the legend outside the plot and remove the border around it
         handles, labels = ax.get_legend_handles_labels()

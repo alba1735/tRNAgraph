@@ -591,6 +591,27 @@ def figsize_for(settings, default):
     return tuple(configured) if configured else default
 
 
+def linewidth_for(settings, default):
+    '''
+    The --style line width for an INDIVIDUAL plot, or the module's own tuned default.
+
+    Shrinking `figsize` scales a figure's geometry but not its stroke widths, so a small
+    coverage plot renders with traces disproportionately heavy for the panel they sit in.
+    This is an ABSOLUTE point value replacing the module default, not a multiplier scaling
+    it: a user asking for hairlines wants hairlines, not "whatever this module chose, times
+    0.4".
+
+    Data traces and bar edges only. The dashed modification guides, grid lines and arm-band
+    shading keep their own widths -- that furniture is structural rather than a presentation
+    knob, the same reasoning that withholds `alpha` from coverage.
+
+    Individual plots only, exactly as with figsize_for(): combined and multi-page pages
+    compute their own geometry, are already unaffected by `figsize`, and stay static.
+    '''
+    configured = (settings or {}).get('line_width')
+    return configured if configured else default
+
+
 @contextlib.contextmanager
 def style_context(settings):
     '''

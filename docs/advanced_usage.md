@@ -183,7 +183,8 @@ One JSON file carries both the color palette and the presentation settings for a
   "categorical": "colorblind",
   "defaults": { "format": "pdf", "dpi": 300, "font_size": 10 },
   "volcano":  { "figsize": [8, 8], "marker_size": 12 },
-  "pca":      { "marker_size": 40 }
+  "pca":      { "marker_size": 40 },
+  "coverage": { "figsize": [3, 3], "line_width": 0.6 }
 }
 ```
 
@@ -223,6 +224,7 @@ Settings:
 | `font_size` | every graph type | Base font size, applied while figures are built. |
 | `figsize` | every graph type | `[width, height]` in inches. **Individual plots only** — combined/multi-page pages compute their own geometry from how many panels they lay out. PCA and correlation stay square whatever you set, so there `figsize` sets how big the square is; a standalone volcano given an explicit size is allowed to be non-square. Saved pages come out slightly smaller than requested because output is cropped to content. |
 | `marker_size` | `volcano`, `pca`, `cluster`, `mismatch` | Point size for scatter layers. |
+| `line_width` | `coverage`, `radar`, `mismatch`, `compare`, `count` | Stroke width in points for **data traces and bar edges**, replacing the module's own tuned default (coverage traces are 2, radar outlines 1.5). An absolute value, not a multiplier: shrinking `figsize` scales a figure's geometry but not its strokes, so a small plot otherwise renders with lines far too heavy for the panel. **Individual plots only**, like `figsize`. It deliberately does not touch the dashed modification guides, grid lines or arm-band shading — that furniture is structural rather than a presentation knob. |
 | `alpha` | `volcano`, `pca`, `cluster`, `mismatch` | Point opacity. |
 | `rasterize_over` | `volcano`, `pca`, `cluster`, `mismatch` | Rasterize the point layer above this many points, keeping text and axes vector — a vector file carrying tens of thousands of markers is slow to open and is often rejected on submission. |
 

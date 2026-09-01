@@ -15,6 +15,7 @@
     "figsize": null,
     "font_size": null,
     "format": null,
+    "line_width": null,
     "marker_size": null,
     "rasterize_over": null
   },
@@ -31,7 +32,8 @@
     "dpi": null,
     "figsize": null,
     "font_size": null,
-    "format": null
+    "format": null,
+    "line_width": null
   },
   "correlation": {
     "dpi": null,
@@ -43,13 +45,15 @@
     "dpi": null,
     "figsize": null,
     "font_size": null,
-    "format": null
+    "format": null,
+    "line_width": null
   },
   "coverage": {
     "dpi": null,
     "figsize": null,
     "font_size": null,
-    "format": null
+    "format": null,
+    "line_width": null
   },
   "heatmap": {
     "dpi": null,
@@ -69,6 +73,7 @@
     "figsize": null,
     "font_size": null,
     "format": null,
+    "line_width": null,
     "marker_size": null,
     "rasterize_over": null
   },
@@ -85,7 +90,8 @@
     "dpi": null,
     "figsize": null,
     "font_size": null,
-    "format": null
+    "format": null,
+    "line_width": null
   },
   "volcano": {
     "alpha": null,
