@@ -276,3 +276,56 @@ def categorical(settings, n):
             f'being drawn; the list is being cycled, so some categories share a color.'
         )
     return [colors[i % len(colors)] for i in range(int(n))]
+
+# --- Read-type markers ---------------------------------------------------------------
+# One shape per read type, for plots that draw several read types together and so cannot use
+# position alone to say which is which. The combined heatmap stacks read types under the same
+# tRNA names; the volcano figure this vocabulary comes from overlays them on one axes.
+#
+# Shapes rather than colors, deliberately: in both consumers color is already spoken for
+# (log2FC on the heatmap, significance on the volcano), so read type needs a channel of its
+# own. The assignment is not invented here -- it is the one already used in the project's
+# published volcano legend, and reusing it keeps a reader's memory good across figures.
+#
+# Keyed on the BARE read type. An earlier attempt matched full obs column names literally and
+# had two of them wrong, so whole-count rows silently went unmarked; normalizing means a new
+# basis or a renamed column cannot desynchronise this table.
+READTYPE_MARKERS = {
+    'fiveprime':   {'glyph': '●', 'marker': 'o', 'label': "5' counts",     'filled': True},
+    'threeprime':  {'glyph': '■', 'marker': 's', 'label': "3' counts",     'filled': True},
+    'other':       {'glyph': '▲', 'marker': '^', 'label': 'Other counts',  'filled': True},
+    'wholecounts': {'glyph': '◆', 'marker': 'D', 'label': 'Whole counts',  'filled': True},
+    # The three pre-tRNA categories share one marker, as the published legend does: they are
+    # one family to a reader, and three near-identical shapes at 8pt would not be readable.
+    'wholeprecounts':   {'glyph': '✕', 'marker': 'X', 'label': 'Pre-tRNA counts', 'filled': True},
+    'partialprecounts': {'glyph': '✕', 'marker': 'X', 'label': 'Pre-tRNA counts', 'filled': True},
+    'trailercounts':    {'glyph': '✕', 'marker': 'X', 'label': 'Pre-tRNA counts', 'filled': True},
+}
+
+#: Shape for a read type with no assigned marker (`antisense`, or anything a later build adds).
+#: Hollow, so it reads as "unlabelled category" rather than competing with the filled circle.
+READTYPE_MARKER_FALLBACK = {'glyph': '○', 'marker': 'o', 'filled': False}
+
+
+def readtype_marker(readtype):
+    '''
+    The marker for one read type, given either a bare name or a full obs column.
+
+    Accepts 'fiveprime', 'nreads_fiveprime_norm' or 'nreads_fiveprime_unique_norm' alike --
+    callers hold the column name, and making each of them strip it first is how the previous
+    attempt came to match on strings that no longer existed.
+    '''
+    # Imported here, not at module scope: this module is read from everywhere and the
+    # no-top-level-imports rule is what keeps it cheap.
+    import re
+
+    bare = str(readtype)
+    match = re.fullmatch(r'nreads_(.+?)(_unique)?_norm', bare)
+    if match:
+        bare = match.group(1)
+    if bare in READTYPE_MARKERS:
+        return READTYPE_MARKERS[bare]
+    fallback = dict(READTYPE_MARKER_FALLBACK)
+    fallback['label'] = f'{bare} counts'
+    return fallback
+

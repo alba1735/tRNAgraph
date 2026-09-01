@@ -132,6 +132,68 @@ def _horizontal_figsize(log_tdf):
     return (width, round(2 * panel_height + label_height + 1.0, 2))
 
 
+def _readtype_labels(tdf, feature_labels, horizontal=False):
+    '''
+    Feature labels marked with their read type's glyph, or None to leave them alone.
+
+    The glyph sits on the side NEAREST the cells it describes, which is the start of the
+    string when the labels run horizontally and the end of it when they are rotated 90
+    degrees -- rotation puts the first character at the bottom, furthest from the panel.
+
+    Only the COMBINED heatmap mixes read types; a per-read-type heatmap would get the same
+    glyph on every row, which teaches a reader nothing. That is decided from the data rather
+    than from a flag: one distinct read type means nothing to disambiguate.
+
+    Read types are taken POSITIONALLY. The combined frame stacks each read type under the same
+    tRNA index labels, so `tdf.loc[label, 'readtype']` returns a Series rather than a scalar
+    exactly when the marker is needed -- the defect that sank an earlier attempt at this.
+    '''
+    if 'readtype' not in tdf.columns:
+        return None
+    readtypes = list(tdf['readtype'])
+    if len(set(readtypes)) < 2:
+        return None
+    glyphs = [plotsPalette.readtype_marker(readtype)['glyph'] for readtype in readtypes]
+    if horizontal:
+        return [f'{label} {glyph}' for glyph, label in zip(glyphs, feature_labels)]
+    return [f'{glyph} {label}' for glyph, label in zip(glyphs, feature_labels)]
+
+
+def _readtype_legend(fig, tdf, horizontal=False):
+    '''
+    Key the glyphs, using the same wording the published figure's legend uses.
+
+    Entries cover only the read types actually drawn: naming the whole vocabulary would
+    advertise read types this plot does not contain. Built from matplotlib marker codes rather
+    than from the unicode glyphs, which is why the two are stored side by side in
+    plotsPalette -- a legend drawn from one and labels from the other would drift apart.
+    '''
+    from matplotlib.lines import Line2D
+
+    # Ordered by the vocabulary, not by which row happened to sort first: the same three read
+    # types would otherwise be listed in a different order on the next plot.
+    present = {plotsPalette.readtype_marker(rt)['label'] for rt in tdf['readtype']}
+    ordered = [m for m in plotsPalette.READTYPE_MARKERS.values() if m['label'] in present]
+    ordered += [plotsPalette.readtype_marker(rt) for rt in tdf['readtype']
+                if plotsPalette.readtype_marker(rt)['label'] not in
+                {m['label'] for m in plotsPalette.READTYPE_MARKERS.values()}]
+
+    seen, handles, labels = set(), [], []
+    for marker in ordered:
+        if marker['label'] in seen:
+            continue
+        seen.add(marker['label'])
+        handles.append(Line2D([], [], linestyle='none', marker=marker['marker'],
+                              color=plotsPalette.AXIS_TEXT,
+                              markerfacecolor=None if marker['filled'] else 'none'))
+        labels.append(marker['label'])
+    # Anchored clear of the axis label, which in the stacked layout sits at the bottom centre
+    # and was being written through by the legend.
+    offset = -0.12 if horizontal else -0.02
+    fig.legend(handles, labels, loc='lower center', ncol=len(labels), frameon=False,
+               bbox_to_anchor=(0.5, offset), fontsize=8)
+
+
 #: Accepted --heatorient values. 'vertical' is the historical layout: features on rows,
 #: comparisons on columns, the two panels side by side.
 HEAT_ORIENT_CHOICES = ('vertical', 'horizontal')
@@ -166,10 +228,19 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
     # The shared axis is labelled once, on the panel at the outside edge of the stack: the
     # left panel in the side-by-side layout, the bottom panel when stacked.
     shared_axis_off = {'yticklabels': False} if not horizontal else {'xticklabels': False}
+    # The read-type glyph rides IN the tick label rather than being drawn beside it, so it
+    # moves with the label under either orientation and cannot fall out of alignment.
+    marked = _readtype_labels(tdf, log_tdf.columns if horizontal else log_tdf.index,
+                              horizontal=horizontal)
+    labelled = {}
+    if marked is not None:
+        labelled = {'xticklabels': marked} if horizontal else {'yticklabels': marked}
     sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=4, vmin=-4, cbar=True, square=True,
-                cbar_kws=_cbar_kws(horizontal), **(shared_axis_off if horizontal else {}))
+                cbar_kws=_cbar_kws(horizontal),
+                **(shared_axis_off if horizontal else labelled))
     sns.heatmap(pval_tdf, ax=axs[1], cmap=sig_cmap, vmin=0, vmax=3, cbar=True, square=True,
-                cbar_kws=_cbar_kws(horizontal), **({} if horizontal else shared_axis_off))
+                cbar_kws=_cbar_kws(horizontal),
+                **(labelled if horizontal else shared_axis_off))
     # The feature names are rotated on whichever axis carries them; transposing moves them
     # from y to x, and they are long enough to need rotating in either position.
     for ax in axs:
@@ -179,20 +250,6 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
     else:
         axs[1].set_ylabel('')
 
-    # # Set a column of symbols to the left of the heatmap based on readtype
-    # for i, row in enumerate(tdf.index.tolist()):
-    #     if tdf.loc[row, 'readtype'] == 'nreads_fiveprime_unique_norm' or tdf.loc[row, 'readtype'] == 'nreads_fiveprime_norm':
-    #         axs[0].text(-0.5, i+0.5, '\u25CF', fontsize=8, horizontalalignment='center', verticalalignment='center')
-    #     elif tdf.loc[row, 'readtype'] == 'nreads_threeprime_unique_norm' or tdf.loc[row, 'readtype'] == 'nreads_threeprime_norm':
-    #         axs[0].text(-0.5, i+0.5, '\u25A0', fontsize=8, horizontalalignment='center', verticalalignment='center')
-    #     elif tdf.loc[row, 'readtype'] == 'nreads_other_unique_norm' or tdf.loc[row, 'readtype'] == 'nreads_other_norm':
-    #         axs[0].text(-0.5, i+0.5, '\u25B2', fontsize=8, horizontalalignment='center', verticalalignment='center')
-    #     elif tdf.loc[row, 'readtype'] == 'nreads_whole_unique_norm' or tdf.loc[row, 'readtype'] == 'nreads_whole_norm':
-    #         axs[0].text(-0.5, i+0.5, '\u25C6', fontsize=8, horizontalalignment='center', verticalalignment='center')
-    #     elif tdf.loc[row, 'readtype'] == 'nreads_precounts_norm':
-    #         axs[0].text(-0.5, i+0.5, '\u2715', fontsize=8, horizontalalignment='center', verticalalignment='center')
-    # # Adjust xticklabels to the left of the heatmap to make room for the symbols
-    # axs[0].set_xticklabels(['']+tdf.columns.tolist(), fontsize=8)
 
     cbar = axs[0].collections[0].colorbar
     # A right-hand colorbar takes its panel's height, and a stacked panel is short -- nine
@@ -220,6 +277,8 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
     # the saved image at 4 rows against 5% at 20 -- exactly the row-count dependence this
     # removes. get_position() already reflects the aspect adjustment; the tight bbox is
     # preferred where a renderer is available because it also covers the panel titles.
+    if marked is not None:
+        _readtype_legend(fig, tdf, horizontal=horizontal)
     title = f'Heatmap of log2FC of tRNA read counts between groups \nsorted by {col}'
     if horizontal:
         # The stacked layout has no such gap to close -- its height is derived from the panels

@@ -202,7 +202,10 @@ def test_every_exported_color_is_parseable_by_matplotlib():
     # Note '_NAME'.isupper() is True, so the underscore check has to be explicit.
     # GRADIENT_ROLES lists the role KEYS a style file may set, not colors -- the same category
     # as the private _GRADIENT_DEFAULTS table, which the underscore check already drops.
-    non_color_tables = {'GRADIENT_ROLES'}
+    # READTYPE_MARKERS/_FALLBACK map a read type to a SHAPE (unicode glyph, matplotlib
+    # marker code, legend label) -- shapes are used precisely because colour is already
+    # spoken for wherever they are drawn, so there is no colour in them to parse.
+    non_color_tables = {'GRADIENT_ROLES', 'READTYPE_MARKERS', 'READTYPE_MARKER_FALLBACK'}
     names = [n for n in dir(plotsPalette)
              if n.isupper() and not n.startswith('_') and n not in non_color_tables
              and not n.endswith(('_ALPHA', '_KWARGS'))]

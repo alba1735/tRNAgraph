@@ -339,6 +339,9 @@ Only used by `-g compare`, which `all` does not include.
 - **`--diffrts`**: Read types for differential analysis (shared with volcano). Bare readtypes only (`total`, `wholecounts`, `fiveprime`, `threeprime`, `other`) — the read basis comes from `--allreads`, so a value carrying a `_unique` suffix is rejected. Default: all five.
 - **`--heatcutoff`**: Read count cutoff. Default: `80`.
 - **`--heatbound`**: How many features to show from each end of the ranking — the heatmap is bounded to the top and bottom N counts rather than rendering every feature. Default: `25`.
+> [!NOTE]
+> On the **combined** heatmap (`<grp>_combine_..._heatmap.pdf`), each row label carries a marker showing which read type it came from — ● 5′, ■ 3′, ▲ other, ◆ whole, ✕ pre-tRNA — with a legend below the panels. That file stacks every `--diffrts` read type except `total`, so one tRNA appears once per read type under the same name; sorting is by effect size, so the copies scatter. The per-read-type heatmaps carry no markers, since every row there is the same read type.
+
 - **`--heatorient`**: Heatmap layout: `vertical` (default) or `horizontal`. The default puts features on rows and comparisons on columns, with the log2FC and p-value panels side by side. `horizontal` transposes that — features to columns, comparisons to rows — and stacks the two panels, which fits a landscape page once the feature count grows. A horizontal run appends the orientation to its **PDF** filenames so both layouts can sit side by side; the CSV written alongside is the *data*, so it is neither renamed nor transposed and two runs of one analysis still produce exports that diff against each other.
 - **`--heatsubplots`**: Also save each individual comparison's heatmap as its own PDF, in an `individual/` subfolder next to the combined multi-page PDFs (which are unaffected). Default: `False`.
 
