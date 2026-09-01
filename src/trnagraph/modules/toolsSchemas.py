@@ -75,6 +75,10 @@ class GraphFilterConfig(BaseModel):
     obs_r: Optional[Dict[str, List[Any]]] = None
     var: Optional[Dict[str, List[Any]]] = None
     var_r: Optional[Dict[str, List[Any]]] = None
+    # `graph` options this config pins. Lives here rather than in --style because these are
+    # selection/analysis choices, not presentation: a style file is meant to be shared across
+    # differently-parameterized runs, which it could not be if it also fixed the cutoffs.
+    flags: Optional['GraphFlags'] = None
 
     @field_validator('name')
     @classmethod
@@ -85,6 +89,123 @@ class GraphFilterConfig(BaseModel):
         # -- reject path separators/traversal rather than letting a config write outside output.
         if '/' in v or '\\' in v or '..' in v:
             raise ValueError(f'Config "name" must not contain path separators or "..": got "{v}".')
+        return v
+
+
+# `graph` options a --config file may NOT set. Paths and process controls are excluded on
+# purpose: a config that redirects its own output, reopens itself, or picks a thread count is
+# a footgun rather than a saved analysis. `format` is excluded because --style already owns
+# it, which leaves exactly zero keys settable from two files and so no precedence rule to
+# document between them.
+GRAPH_FLAG_EXCLUSIONS = frozenset({
+    'anndata', 'output', 'config', 'style', 'format', 'threads', 'quiet', 'verbose',
+})
+
+# Flags whose value is a list. Declared once so the empty-list guard and the tests that pin
+# replace-not-append semantics agree on the set.
+GRAPH_LIST_FLAGS = ('graphtypes', 'diffrts', 'pcareadtypes', 'radarmethod', 'logomanualgrp')
+
+
+class GraphFlags(BaseModel):
+    '''
+    `graph` options settable from a --config file, so one file can carry a whole saved
+    analysis -- which subset of the data, under which grouping columns and cutoffs -- instead
+    of a shell line that has to be retyped correctly every time.
+
+    Every field is Optional and defaults to None, which is what makes "not configured"
+    distinguishable from "configured to the same value as the CLI default". A CLI flag the
+    user actually typed always wins; see adataGraph's merge and cli.py's ParameterSource
+    capture for how that is detected.
+
+    Written out by hand rather than derived from the typer command, because importing cli.py
+    here would invert the package's dependency direction (cli -> modules) and defeat
+    lazy_imports by dragging the whole CLI in whenever a schema is touched. A unit test
+    asserts this model's fields equal the graph command's eligible parameters, so the two
+    cannot drift apart.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    # Whole-command selection.
+    graphtypes: Optional[List[str]] = None
+    variant: Optional[str] = None
+    allreads: Optional[bool] = None
+    regen_uns: Optional[bool] = None
+
+    # cluster
+    clustergrp: Optional[str] = None
+    clusterlabels: Optional[str] = None
+    clusteroverview: Optional[bool] = None
+    clusternumeric: Optional[bool] = None
+    clustermask: Optional[bool] = None
+
+    # compare
+    comparegrp1: Optional[str] = None
+    comparegrp2: Optional[str] = None
+
+    # correlation
+    corrmethod: Optional[str] = None
+    corrgroup: Optional[str] = None
+
+    # coverage
+    covgrp: Optional[str] = None
+    covobs: Optional[str] = None
+    covtype: Optional[str] = None
+    covgap: Optional[bool] = None
+    covmethod: Optional[str] = None
+    combinedpdfonly: Optional[bool] = None
+
+    # heatmap (diffrts is shared with volcano)
+    heatgrp: Optional[str] = None
+    diffrts: Optional[List[str]] = None
+    heatcutoff: Optional[int] = None
+    heatbound: Optional[int] = None
+    heatsubplots: Optional[bool] = None
+
+    # pca
+    pcamarkers: Optional[str] = None
+    pcacolors: Optional[str] = None
+    pcareadtypes: Optional[List[str]] = None
+
+    # radar
+    radargrp: Optional[str] = None
+    radarmethod: Optional[List[str]] = None
+    radarscaled: Optional[bool] = None
+
+    # logo
+    logogrp: Optional[str] = None
+    logomanualgrp: Optional[List[str]] = None
+    logomanualname: Optional[str] = None
+    logopseudocount: Optional[int] = None
+    logosize: Optional[str] = None
+    ccatail: Optional[bool] = None
+    pseudogenes: Optional[bool] = None
+    logornamode: Optional[bool] = None
+
+    # mismatch
+    mismatchpseudocount: Optional[int] = None
+
+    # volcano
+    volgrp: Optional[str] = None
+    volcutoff: Optional[int] = None
+    lfcshrink: Optional[bool] = None
+    volxlim: Optional[float] = None
+    vollabels: Optional[int] = None
+
+    @field_validator(*GRAPH_LIST_FLAGS)
+    @classmethod
+    def _reject_empty_list(cls, v, info):
+        '''
+        A list REPLACES the default rather than extending it -- replacing is the only
+        semantics that lets a config narrow a list, which is the point. That makes an empty
+        list a request to draw nothing, so it is rejected: `"graphtypes": []` would otherwise
+        produce a run that renders no figures and reports success.
+        '''
+        if v is not None and len(v) == 0:
+            raise ValueError(
+                f"'{info.field_name}' is empty. A list here replaces the default rather than "
+                f"adding to it, so an empty list would select nothing at all. Remove the key "
+                f"to keep the default."
+            )
         return v
 
 

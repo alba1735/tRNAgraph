@@ -259,7 +259,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`-o`, `--output`**: Output directory. Default: `figures`.
 - **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
-- **`--config`**: JSON configuration file for filtering.
+- **`--config`**: JSON configuration file for filtering, and optionally a `flags` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...) so one file carries a whole saved analysis. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
 - **`--format`**: Output image format for every plot: `pdf`, `svg` or `png`. Overrides a `format` set in `--style`. Multi-page combined outputs stay PDF. Default: `pdf`.
 - **`--regen_uns`**: Force regeneration of calculated stats.
@@ -428,7 +428,7 @@ trnagraph tools merge -i1 <file1.h5ad> -i2 <file2.h5ad> [options]
 
 ### `template`
 
-Writes a blank, fully-enumerated JSON config template into the current directory. Every key the file format accepts is present and set to `null`, so the template is a valid no-op until you fill something in -- it documents the format, which JSON itself cannot do.
+Writes a blank, fully-enumerated JSON config template into the current directory. Every key the file format accepts is present and set to `null`, so the template is a valid no-op until you fill something in -- it documents the format, which JSON itself cannot do. (The config template's `name` is the one exception: it is a required field that becomes an output subdirectory, so it ships as `"default"`.)
 
 **Usage:**
 
@@ -438,7 +438,8 @@ trnagraph tools template [options]
 
 **Options:**
 
-- **`--style`**: Write the `--style` template (colors, gradients, categorical palette and presentation settings). Default: write every available template.
+- **`--style`**: Write the `--style` template (colors, gradients, categorical palette and presentation settings).
+- **`--config`**: Write the `--config` template (data filters and pinned graph options). With no selector, every available template is written.
 - **`-o, --output`**: Directory to write the template(s) into. Default: `.`.
 - **`--overwrite`**: Replace an existing template file instead of refusing. Default: `False` -- the expected workflow is emit, edit, then re-emit after an upgrade, so an edited file is never replaced silently.
 

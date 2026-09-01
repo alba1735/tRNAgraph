@@ -26,11 +26,11 @@ import shutil
 
 from . import toolsTG
 
-# Template name -> (packaged asset filename, what it configures). The `config` template is
-# added alongside the graph-flags work; keeping this a registry means the command's shape
-# does not change when it arrives.
+# Template name -> (packaged asset filename, what it configures). A registry rather than
+# two hardcoded paths, so the command's shape does not change as templates are added.
 TEMPLATES = {
     'style': ('style.template.json', 'colors, gradients and presentation settings (--style)'),
+    'config': ('config.template.json', 'data filters and pinned graph options (--config)'),
 }
 
 

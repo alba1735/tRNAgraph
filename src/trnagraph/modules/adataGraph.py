@@ -20,6 +20,13 @@ class anndataGrapher:
         self.logger = logging.getLogger(__name__)
         self.args = args
         self.quiet = getattr(args, 'quiet', False)
+        # Read and validate --config FIRST, and apply its `flags` block, because nearly
+        # everything below is derived from options that block can set: the variant view, the
+        # read basis, covtype, the resolved grouping columns, and the graphtypes expansion.
+        # Only the obs/var filtering is deferred to its original position further down, since
+        # that needs the variant view this parse precedes.
+        self.config = self._load_config()
+        self._apply_config_flags()
         self.adata_original = ad.read_h5ad(self.args.anndata)
         # Resolve the requested normalization:split-tag ONCE, into a working copy, so every
         # downstream plot module reads .X/.obs[...]/.uns[...] exactly as it does for the
@@ -54,15 +61,11 @@ class anndataGrapher:
                 self.args.threads = len(os.sched_getaffinity(0))
             except:
                 self.args.threads = multiprocessing.cpu_count()
-        # Load config file if specified
-        if self.args.config:
-            self.logger.info('Loading config file: ' + self.args.config)
-            with open(self.args.config, 'r') as f:
-                raw_config = json.load(f)
-            try:
-                config = GraphFilterConfig.model_validate(raw_config)
-            except ValidationError as e:
-                raise ValueError(f'Invalid config file {self.args.config}:\n{e}') from e
+        # Apply the config's obs/var filters. The file was already read and its `flags` block
+        # applied at the top of __init__; only the filtering waits until here, because it
+        # needs the variant view built above.
+        if self.config is not None:
+            config = self.config
             self.args.output += '/' + config.name
             self.config_name = config.name
             self.logger.info(toolsTG.builder(self.args.output))
@@ -118,6 +121,40 @@ class anndataGrapher:
         # Check for heatmap or volcano in graph types and if present check for readcount_cutoff in log2FC - Will precompute this and save it back to uns
         # This is done now to prevent saving issues later if multiprocessing is used
         self._precompute_and_persist_log2fc()
+
+    def _load_config(self):
+        '''Read and validate --config, or None when none was given.'''
+        if not getattr(self.args, 'config', None):
+            return None
+        self.logger.info('Loading config file: ' + self.args.config)
+        with open(self.args.config, 'r') as f:
+            raw_config = json.load(f)
+        try:
+            return GraphFilterConfig.model_validate(raw_config)
+        except ValidationError as e:
+            raise ValueError(f'Invalid config file {self.args.config}:\n{e}') from e
+
+    def _apply_config_flags(self):
+        '''
+        Lay the config's `flags` block over the args, skipping anything typed on the command
+        line so a CLI flag always wins -- the same precedence --style already promises.
+
+        `cli_specified` is a frozenset of parameter names built in cli.py from click's
+        ParameterSource. It is absent when a namespace is constructed directly (the Python
+        API, and tests), in which case nothing is treated as explicitly typed and the file
+        applies in full.
+        '''
+        if self.config is None or self.config.flags is None:
+            return
+        typed = getattr(self.args, 'cli_specified', None) or frozenset()
+        for key, value in self.config.flags.model_dump(exclude_none=True).items():
+            if key in typed:
+                self.logger.info(
+                    f'Config sets {key}, but --{key} was given on the command line; '
+                    f'keeping the command-line value.')
+                continue
+            setattr(self.args, key, value)
+            self.logger.info(f'Config sets {key} = {value!r}')
 
     def _precompute_and_persist_log2fc(self):
         '''

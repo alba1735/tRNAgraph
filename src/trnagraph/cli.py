@@ -112,6 +112,24 @@ def configure_logging(log_path: str, quiet: bool) -> logging.Logger:
 
     return logger
 
+def cli_specified_params(ctx) -> frozenset:
+    """
+    The parameter names the user actually typed on the command line.
+
+    A --config file may set most `graph` options, and a typed flag has to beat the file. That
+    cannot be detected by comparing against the default, because nearly every graph option has
+    a real default (`heatcutoff=80`, `covgrp='group'`) rather than a None sentinel, so
+    "explicitly set to 80" and "left alone" look identical. Click records where each value came
+    from, which answers it directly and leaves all 44 signatures and their --help text alone.
+    """
+    from click.core import ParameterSource
+
+    return frozenset(
+        name for name in ctx.params
+        if ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE
+    )
+
+
 @contextlib.contextmanager
 def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, name_suffix: Optional[str] = None):
     """
@@ -463,10 +481,11 @@ def cluster(
 
 @app.command("graph", help="Graph data from an existing h5ad AnnData object")
 def graph(
+    ctx: typer.Context,
     anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
     graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out, plus an optional 'flags' block pinning most `graph` options (grouping columns, cutoffs, readtypes, --variant, --allreads, ...) so one file carries a whole saved analysis. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file carrying both the color palette and presentation settings (figure size, marker/font size, dpi, alpha, output format). Structure: a 'colors' block (grouping column -> value -> color), a 'gradients' block setting the ordered/continuous scales by role, a 'categorical' fallback palette, a 'defaults' block applying to every graph, and optional per-graph-type blocks overriding it. Run `trnagraph tools template --style` for a blank file listing every key. A CLI flag always wins over the file. A file in the old --colormap shape is still accepted and read as its colors block"),
     format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
@@ -536,7 +555,10 @@ def graph(
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
             ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, mismatchpseudocount=mismatchpseudocount,
-            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, lfcshrink=lfcshrink
+            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, lfcshrink=lfcshrink,
+            # Which options were typed rather than defaulted, so a --config `flags` block
+            # can be applied without overriding anything the user asked for explicitly.
+            cli_specified=cli_specified_params(ctx),
         )
         
         print('Graphing data from database object...\n')
@@ -663,13 +685,14 @@ def merge(
 
 @tools_app.command("template", help="Write a blank, fully-enumerated JSON config template into the current directory")
 def template(
-    style: bool = typer.Option(False, "--style", help="Write the --style template (colors, gradients, categorical palette and presentation settings). Default: write every available template"),
+    style: bool = typer.Option(False, "--style", help="Write the --style template (colors, gradients, categorical palette and presentation settings)"),
+    config: bool = typer.Option(False, "--config", help="Write the --config template (data filters and pinned graph options). Default with no selector: write every available template"),
     output: str = typer.Option(".", "-o", "--output", help="Directory to write the template(s) into"),
     overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing template file instead of refusing"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     with handle_output(quiet, tool="template", destination=os.path.abspath(output)):
-        args = SimpleNamespace(mode='template', style=style, output=output, overwrite=overwrite, quiet=quiet)
+        args = SimpleNamespace(mode='template', style=style, config=config, output=output, overwrite=overwrite, quiet=quiet)
 
         for path in toolsTemplate.TemplateWriter(args).run():
             print(f'Wrote {path}')

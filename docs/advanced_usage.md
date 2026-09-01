@@ -113,9 +113,9 @@ Utility functions for specific data operations.
 
 You can control filtering and coloring in `trnagraph graph` using JSON files.
 
-### Filter Configuration (`--config`)
+### Run Configuration (`--config`)
 
-Used to filter data before plotting.
+Used to filter data before plotting, and to pin the `graph` options a run uses — so one file carries a whole saved analysis instead of a shell line that has to be retyped correctly each time.
 
 ```json
 {
@@ -129,13 +129,44 @@ Used to filter data before plotting.
   },
   "var": {
     "coverage": ["unique"]
+  },
+  "flags": {
+    "graphtypes": ["heatmap", "volcano"],
+    "variant": "norm:u60",
+    "heatgrp": "treatment",
+    "heatcutoff": 200,
+    "diffrts": ["fiveprime", "threeprime"]
   }
 }
 ```
 
-- `name`: Name for the filtering configuration. Will be used to create a subfolder in the output directory.
+- `name`: Name for the configuration. Will be used to create a subfolder in the output directory.
 - `obs`: Include only these values.
 - `obs_r`: **Reverse** filter (Exclude these values).
+- `var` / `var_r`: The same, applied to variables rather than observations.
+- `flags`: `graph` options this run pins. See below.
+
+Run `trnagraph tools template --config` to drop a blank `config.template.json` listing every settable key into the current directory.
+
+#### The `flags` block
+
+Almost every `graph` option can be set here, keyed by its long flag name without the leading dashes (`--heatcutoff` becomes `"heatcutoff"`). **A flag typed on the command line always beats the file**, so a saved config can be reused and adjusted in place:
+
+```bash
+trnagraph graph -i data.h5ad --config analysis.json --heatcutoff 50   # 50 wins
+```
+
+Each key that the file sets, and each one it sets that you overrode, is named in the run log.
+
+Not settable, on purpose:
+
+| Excluded | Why |
+| --- | --- |
+| `--input`, `--output`, `--config`, `--style` | A config that redirects its own output or reopens itself is a footgun rather than a saved analysis. |
+| `--threads`, `--quiet`, `--verbose` | Process controls belong to the invocation, not to the analysis. |
+| `--format` | `--style` already owns it. Keeping it in one file means there is no precedence rule between the two. |
+
+A list value **replaces** the default rather than adding to it, which is what lets a config narrow one — `"diffrts": ["fiveprime"]` plots that readtype alone. An empty list is rejected rather than silently selecting nothing.
 
 ### Style Files (`--style`)
 
