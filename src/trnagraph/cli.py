@@ -158,7 +158,7 @@ def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, nam
             tee = _Tee(log_fileobj, None if quiet else real_stdout)
             with contextlib.redirect_stdout(tee):
                 yield
-    except toolsTG.UnknownLabelError as usage:
+    except toolsTG.UsageError as usage:
         # A usage mistake, not a crash: the message is the whole story, so it goes into the log
         # as itself. exc_info here would put a stack trace of tRNAgraph's own frames both in the
         # file and on the console, where it would bury the one paragraph the user has to read.
@@ -208,7 +208,7 @@ def usage_error_guard():
     """
     try:
         yield
-    except toolsTG.UnknownLabelError as refusal:
+    except toolsTG.UsageError as refusal:
         typer.secho(f"ERROR: {refusal}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
 
@@ -530,8 +530,8 @@ def graph(
     clusteroverview: bool = typer.Option(False, "--clusteroverview", help="Specify wether to generate an overview of the clusters"),
     clusternumeric: bool = typer.Option(False, "--clusternumeric", help="Specify wether to the cluster category is numeric"),
     clustermask: bool = typer.Option(False, "--clustermask", help="Specify wether to mask the cluster plots to annotated HDBSCAN clusters"),
-    comparegrp1: str = typer.Option("group", "--comparegrp1", help="Specify AnnData column as main comparative group"),
-    comparegrp2: str = typer.Option("group", "--comparegrp2", help="Specify AnnData column to group by"),
+    comparegrp1: str = typer.Option("group", "--comparegrp1", help="AnnData obs column drawn as the coloured series within each compare plot. This is NOT the axis the fold change is taken along -- see --comparegrp2. Must name a different column than --comparegrp2"),
+    comparegrp2: str = typer.Option("group", "--comparegrp2", help="AnnData obs column the fold change is taken BETWEEN: one figure is written per pair of this column's values, and within each figure the bars are the --comparegrp1 series. Must name a different column than --comparegrp1"),
     corrmethod: str = typer.Option("pearson", "--corrmethod", help="Specify correlation method"),
     corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
     covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),

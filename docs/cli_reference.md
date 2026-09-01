@@ -270,7 +270,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would emit a skip warning on every ordinary run. See **Compare Options** below.
+> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. See **Compare Options** below.
 
 > [!IMPORTANT]
 > Every option below that names something inside the object -- a grouping column
@@ -296,11 +296,13 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 Only used by `-g compare`, which `all` does not include.
 
-- **`--comparegrp1`**: AnnData `obs` column used as the main comparative group. Default: `group`.
-- **`--comparegrp2`**: AnnData `obs` column to group by within each `--comparegrp1` value. Default: `group`.
+- **`--comparegrp1`**: AnnData `obs` column drawn as the coloured **series** within each figure. Default: `group`.
+- **`--comparegrp2`**: AnnData `obs` column the fold change is taken **between**. Default: `group`.
 
-> [!NOTE]
-> The two must name different columns to produce anything. A comparison needs a `--comparegrp2` value shared across every value of `--comparegrp1`; where none exists — always the case when `--comparegrp1` is a per-observation-unique column such as `sample` — the plot is skipped with a warning rather than failing.
+> [!IMPORTANT]
+> The direction is the opposite of what the names suggest, and this reference previously described it backwards. `plotsCompare` computes `log2(mean at comparegrp2 value B) - log2(mean at comparegrp2 value A)` **within each `--comparegrp1` value**. So `--comparegrp2` is the axis being compared, and `--comparegrp1` is the series the bars are coloured by. One figure is written per pair of `--comparegrp2` values, per count grouping (`amino` and `iso`).
+>
+> The two must name **different** columns: with one column for both, there is no comparison to make, and the run now aborts saying so rather than failing inside pandas with `Grouper for 'group' not 1-dimensional`. Because both flags default to `group`, reaching this plot always means setting at least one of them. A comparison also needs a `--comparegrp2` value shared across every value of `--comparegrp1`; where none exists — always the case when `--comparegrp1` is a per-observation-unique column such as `sample` — that count grouping is skipped with a warning rather than failing.
 
 **Correlation Options:**
 

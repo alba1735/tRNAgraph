@@ -67,14 +67,28 @@ def builder(directory: Union[str, Path]) -> str:
     return output
 
 
-class UnknownLabelError(Exception):
+class UsageError(Exception):
     '''
-    A CLI parameter names something the AnnData object does not contain.
+    The command as typed cannot work, for a reason the user can fix by retyping it.
 
-    A dedicated type rather than ValueError because cli.py renders it as a one-line usage
-    error and exits, the way toolsTestSuite.WorkspaceNotOwnedError is already handled -- a
-    typo in a column name is a usage mistake, and a traceback buries the one sentence that
-    tells the user what to type instead.
+    A dedicated hierarchy rather than ValueError because cli.py renders these as a one-line
+    usage error and exits, the way toolsTestSuite.WorkspaceNotOwnedError is already handled --
+    a mistake in a flag is a usage problem, and a traceback buries the one sentence that tells
+    the user what to type instead. usage_error_guard() catches this base, so a new kind of
+    usage mistake is rendered correctly by subclassing rather than by editing the CLI.
+    '''
+
+
+class UnknownLabelError(UsageError):
+    '''A parameter names something the AnnData object does not contain.'''
+
+
+class InvalidParameterError(UsageError):
+    '''
+    Parameters that each name something real, in a combination that cannot work.
+
+    Distinct from UnknownLabelError because the failure is different in kind: nothing is
+    missing, so there is no near match to suggest and no vocabulary to list.
     '''
 
 
@@ -151,13 +165,17 @@ def _label_candidates(adata: ad.AnnData, domain: str):
     raise ValueError(f"Unknown label domain '{domain}'.")
 
 
-def validate_labels(adata: ad.AnnData, requests) -> None:
+def validate_labels(adata: ad.AnnData, requests, extra_problems=()) -> None:
     '''
     Check every CLI label against the object up front, reporting all failures at once.
 
     `requests` is an iterable of (param_name, value, domain) triples. Batching matters: a
     command carries a dozen label-valued options, and aborting on the first bad one turns
     fixing a command line into as many round trips as there are typos.
+
+    `extra_problems` carries already-worded problems that are not unknown labels -- parameters
+    that name real things in a combination that cannot work -- so those are reported in the
+    same pass rather than after the user has fixed their typos and re-run.
     '''
     problems = []
     for param_name, value, domain in requests:
@@ -165,9 +183,15 @@ def validate_labels(adata: ad.AnnData, requests) -> None:
         if str(value) in candidates:
             continue
         problems.append((param_name, value, _near_matches(value, candidates), candidates))
-    if not problems:
+    extra_problems = list(extra_problems)
+    if not problems and not extra_problems:
         return
-    lines = [f'{len(problems)} unknown label{"s" if len(problems) > 1 else ""} for this AnnData object:']
+    total = len(problems) + len(extra_problems)
+    if extra_problems:
+        # Mixed batch: "unknown labels" would misdescribe half of it.
+        lines = [f'{total} problem{"s" if total > 1 else ""} with this command:']
+    else:
+        lines = [f'{total} unknown label{"s" if total > 1 else ""} for this AnnData object:']
     for param_name, value, matches, candidates in problems:
         if matches:
             hint = f'  did you mean: {", ".join(matches)}?'
@@ -181,8 +205,12 @@ def validate_labels(adata: ad.AnnData, requests) -> None:
                 shown += f' ... +{len(available) - _AVAILABLE_CAP} more'
             hint = f'  available: {shown}' if available else '  (this object carries none)'
         lines.append(f"  --{param_name} '{value}'{hint}")
+    lines.extend(f'  {problem}' for problem in extra_problems)
     lines.append('Run `trnagraph tools info -i <object.h5ad>` to list every obs/var column and its values.')
-    raise UnknownLabelError('\n'.join(lines))
+    # The type names what the batch actually contains, so a caller catching the narrower
+    # UnknownLabelError is not handed something else under that name.
+    error = InvalidParameterError if extra_problems else UnknownLabelError
+    raise error('\n'.join(lines))
 
 
 def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str) -> str:

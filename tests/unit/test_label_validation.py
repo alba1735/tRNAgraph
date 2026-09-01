@@ -109,7 +109,7 @@ def _valid_args(**overrides):
         heatgrp="group", volgrp="group", clustergrp="amino", clusterlabels=None,
         corrgroup="sample", logogrp="amino", pcamarkers="sample", pcacolors="group",
         radargrp="group", covtype="uniquecoverage",
-        diffrts=["total"], pcareadtypes=["total"],
+        diffrts=["total"], pcareadtypes=["total"], graphtypes=["compare"],
     )
     args.update(overrides)
     return SimpleNamespace(**args)
@@ -196,3 +196,57 @@ def test_a_label_with_no_plausible_match_lists_what_is_available_instead():
         toolsTG.validate_labels(adata, [("covgrp", "zzzzzzzzzz", "obs")])
     message = str(raised.value)
     assert "group" in message and "amino" in message
+
+
+def test_unknown_labels_and_invalid_parameters_share_a_usage_error_base():
+    """Both are usage mistakes the CLI renders as a message rather than a traceback, so the
+    guard catches one base type. They stay distinct types because they are distinct problems:
+    an unknown label names something absent, an invalid parameter names things that exist in
+    a combination that cannot work."""
+    assert issubclass(toolsTG.UnknownLabelError, toolsTG.UsageError)
+    assert issubclass(toolsTG.InvalidParameterError, toolsTG.UsageError)
+
+
+def test_the_two_compare_columns_must_name_different_columns():
+    """--comparegrp1 and --comparegrp2 both default to 'group'. log2fc_compare_df then pivots
+    on a duplicated column and pandas raises `Grouper for 'group' not 1-dimensional`, which
+    names neither flag. The fold change is taken BETWEEN comparegrp2 values WITHIN each
+    comparegrp1 value, so the two naming one column is not a comparison at all."""
+    grapher = _make_grapher(_valid_args(comparegrp1="group", comparegrp2="group"), _make_adata())
+
+    with pytest.raises(toolsTG.InvalidParameterError) as raised:
+        grapher._validate_label_args()
+    message = str(raised.value)
+    assert "--comparegrp1" in message and "--comparegrp2" in message
+    assert "group" in message
+
+
+def test_a_typo_and_the_compare_collision_are_reported_in_one_error():
+    """Both are found in the same up-front pass, so fixing a command line takes one round trip
+    rather than one per problem."""
+    args = _valid_args(comparegrp1="group", comparegrp2="group", volgrp="grp")
+    grapher = _make_grapher(args, _make_adata())
+
+    with pytest.raises(toolsTG.UsageError) as raised:
+        grapher._validate_label_args()
+    message = str(raised.value)
+    assert "2 problems" in message
+    assert "--volgrp" in message
+    assert "--comparegrp1" in message
+
+
+def test_the_compare_collision_is_only_a_problem_when_compare_was_requested():
+    """--comparegrp1 and --comparegrp2 BOTH DEFAULT to 'group', so treating the collision as
+    unconditional would abort every ordinary run of a command that never asked for a compare
+    plot. compare is excluded from `-g all` by design, so it is present in graphtypes only
+    when named explicitly -- which is exactly when the collision matters."""
+    adata = _make_adata()
+
+    ordinary = _make_grapher(_valid_args(comparegrp1="group", comparegrp2="group",
+                                         graphtypes=["all"]), adata)
+    ordinary._validate_label_args()
+
+    requested = _make_grapher(_valid_args(comparegrp1="group", comparegrp2="group",
+                                          graphtypes=["compare", "pca"]), adata)
+    with pytest.raises(toolsTG.InvalidParameterError):
+        requested._validate_label_args()

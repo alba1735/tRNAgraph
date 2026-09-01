@@ -261,7 +261,34 @@ class anndataGrapher:
                 continue
             values = value if isinstance(value, (list, tuple)) else [value]
             requests.extend((param_name, v, domain) for v in values if v is not None)
-        toolsTG.validate_labels(self.adata, requests)
+        toolsTG.validate_labels(self.adata, requests, extra_problems=self._parameter_problems())
+
+    def _parameter_problems(self):
+        '''
+        Combinations that cannot work even though every label in them exists.
+
+        Reported alongside the unknown labels rather than raised separately, so one pass finds
+        everything wrong with the command.
+        '''
+        problems = []
+        # Gated on compare actually being requested, because --comparegrp1 and --comparegrp2
+        # BOTH DEFAULT to 'group': an unconditional check would abort every ordinary run of a
+        # command that never asked for a compare plot. compare is excluded from `-g all` by
+        # design, and this runs before the 'all' expansion, so it appears in graphtypes only
+        # when named explicitly -- which is exactly when the collision matters.
+        graphtypes = getattr(self.args, 'graphtypes', []) or []
+        grp1 = getattr(self.args, 'comparegrp1', None)
+        if 'compare' in graphtypes and grp1 is not None and grp1 == getattr(self.args, 'comparegrp2', None):
+            # The compare plot takes a fold change BETWEEN --comparegrp2 values within each
+            # --comparegrp1 value, so one column for both is not a comparison. Left
+            # unchecked, log2fc_compare_df pivots on a duplicated column and pandas raises
+            # "Grouper for 'group' not 1-dimensional", which names neither flag.
+            problems.append(
+                f"--comparegrp1 and --comparegrp2 both name '{grp1}'; they must name different "
+                f"columns, since the fold change is taken between --comparegrp2 values within "
+                f"each --comparegrp1 value"
+            )
+        return problems
 
     def _compute_graph_weight(self, gt):
         '''

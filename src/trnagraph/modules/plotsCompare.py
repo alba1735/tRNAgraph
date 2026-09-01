@@ -46,8 +46,6 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
             continue
         # Sort the df by the mean of the log2 fold change
         df = df.loc[df.loc[:, ('log2')].abs().mean(axis=1).sort_values(ascending=True).index, :]
-        # create a stacked horizontal bar plot for each group 
-        fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (8, 12)))
         cgrp1list = df.columns.get_level_values('cgrp1').unique()
         cgrp2list = df.columns.get_level_values('cgrp2').unique()
         # Create a bar widths table for amount of values in cgrp1
@@ -57,6 +55,11 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
         # Enumerate the index of the dataframe so that the bar heights can be adjusted
         en_dict = dict(enumerate(df.index.values))
         for cgrp2 in cgrp2list:
+            # One figure per comparison, created INSIDE this loop. Created once outside it,
+            # the axes were reused for every pair, so the second figure carried the first
+            # pair's bars as well as its own and the third carried both -- every file after
+            # the first held cumulative content that looked like real data.
+            fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (8, 12)))
             xminmax = tuple([-np.abs(df.loc[:, ('log2')]).max().max()*1.1, np.abs(df.loc[:, ('log2')]).max().max()*1.1])
             for cgrp1 in cgrp1list:
                 for y,posname in en_dict.items():
@@ -92,12 +95,18 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
             # Add a title
             ax.set_title(f'{cgrp2} by {comparegrp1} {countgrp.capitalize()} Log2 Fold-Change')
             # Save the figure
-            toolsTG.save_current(f'{output}{comparegrp2}_{cgrp2}_by_{comparegrp1}_{countgrp}_log2fc.pdf', settings)
+            outpath = f'{output}{comparegrp2}_{cgrp2}_by_{comparegrp1}_{countgrp}_log2fc.pdf'
+            toolsTG.save_current(outpath, settings)
+            plt.close(fig)
+            # Accumulated, not returned: returning here ended the whole function after the
+            # first saved figure whenever `threaded` was truthy, so a pooled run produced one
+            # file where the serial run produced all of them.
             if threaded:
-                threaded += f'Saving figure to {output}...\n'
-                return threaded
+                threaded += f'Saving figure to {outpath}...\n'
             else:
-                logger.info(f'Saving figure to {output}...')
+                logger.info(f'Saving figure to {outpath}...')
+
+    return threaded
 
 if __name__ == '__main__':
     pass

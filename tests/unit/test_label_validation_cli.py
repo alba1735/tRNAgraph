@@ -114,3 +114,31 @@ def test_the_error_is_reported_once_not_twice(tmp_path):
     ])
 
     assert result.output.count("unknown label") == 1
+
+
+def test_compare_at_default_settings_reports_the_collision_without_a_traceback(tmp_path):
+    """`-g compare` with no grouping flags is the single most likely way to reach this plot,
+    and it used to die with `ValueError: Grouper for 'group' not 1-dimensional` from inside
+    pandas -- a message naming neither flag nor what to do about it."""
+    h5ad = _write_adata(tmp_path / "obj.h5ad")
+    result = runner.invoke(cli.app, [
+        "--skip-env-check", "--skip-update-check", "graph",
+        "-i", str(h5ad), "-o", str(tmp_path / "figures"), "-g", "compare",
+    ])
+
+    assert result.exit_code == 1
+    assert "--comparegrp1" in result.output and "--comparegrp2" in result.output
+    assert "Grouper" not in result.output
+    assert "Traceback" not in result.output
+
+
+def test_an_ordinary_run_is_unaffected_by_the_compare_defaults(tmp_path):
+    """The regression this guards: --comparegrp1/--comparegrp2 both default to 'group', so a
+    collision check that ignored which graph types were requested would abort every run."""
+    h5ad = _write_adata(tmp_path / "obj.h5ad")
+    result = runner.invoke(cli.app, [
+        "--skip-env-check", "--skip-update-check", "graph",
+        "-i", str(h5ad), "-o", str(tmp_path / "figures"), "-g", "count",
+    ])
+
+    assert "comparegrp" not in result.output
