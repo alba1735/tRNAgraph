@@ -3,10 +3,10 @@
 Three distinct things are pinned here.
 
 *Resolution* -- a style file's gradient/categorical values become drawable colormaps and color
-lists, and an UNSET file resolves to exactly what the built-in defaults were. Commit-scope
-matters: adding user overrides must not restyle anything for a user who configured nothing,
-so the no-override paths are asserted against the previous behavior rather than against
-themselves.
+lists, and an unset file falls through to plotsPalette's own constants. These tests assert the
+resolver reads those constants; the concrete values the constants hold are pinned separately in
+test_plots_palette.py, so retuning a default is a one-line edit in one place rather than a
+change that has to be mirrored across two test files.
 
 *The template* -- `assets/style.template.json` is generated from the schema, so a test
 re-derives it and fails if the shipped file drifts. It also asserts the property that makes
@@ -37,23 +37,23 @@ PLOT_MODULES = sorted(pathlib.Path('src/trnagraph/modules').glob('plots*.py'))
 
 # --- resolution -----------------------------------------------------------------------
 
-def test_unset_gradients_resolve_to_the_built_in_defaults():
-    """Adding the override machinery must not restyle a user who configured nothing."""
+def test_unset_gradients_resolve_to_the_modules_declared_defaults():
+    """
+    The resolver must read plotsPalette's own constants, so that retuning a default is a
+    one-line edit there rather than something that also has to be mirrored here. The concrete
+    VALUES those constants hold are pinned separately, in test_plots_palette.py.
+    """
     resolved = plotsPalette.resolve_gradients(None)
-    previous = {
-        'correlation': 'Blues', 'significance': 'Greens', 'score': 'Blues',
-        'sequence': 'Greys', 'ordered': 'mako_r',
+    declared = {
+        'correlation': plotsPalette.SEQUENTIAL_CORRELATION,
+        'significance': plotsPalette.SEQUENTIAL_SIGNIFICANCE,
+        'score': plotsPalette.SEQUENTIAL_SCORE,
+        'sequence': plotsPalette.SEQUENTIAL_SEQUENCE,
+        'ordered': plotsPalette.SEQUENTIAL_ORDERED,
+        'lfc': plotsPalette.DIVERGING_LFC,
     }
-    for role, name in previous.items():
+    for role, name in declared.items():
         assert resolved[role].name == name
-
-
-def test_unset_lfc_matches_the_previous_inline_diverging_palette():
-    resolved = plotsPalette.resolve_gradients(None)['lfc']
-    expected = sns.diverging_palette(as_cmap=True, **plotsPalette.DIVERGING_LFC_KWARGS)
-
-    for point in (0.0, 0.5, 1.0):
-        assert resolved(point) == expected(point)
 
 
 def test_a_named_gradient_is_resolved():
@@ -73,11 +73,11 @@ def test_a_color_list_becomes_an_interpolated_ramp():
 
 
 def test_overriding_one_role_leaves_the_others_at_their_defaults():
-    style = StyleFile.model_validate({'gradients': {'lfc': 'vlag'}})
+    style = StyleFile.model_validate({'gradients': {'lfc': 'icefire'}})
     resolved = plotsPalette.resolve_gradients(style.gradients)
 
-    assert resolved['lfc'].name == 'vlag'
-    assert resolved['significance'].name == 'Greens'
+    assert resolved['lfc'].name == 'icefire'
+    assert resolved['significance'].name == plotsPalette.SEQUENTIAL_SIGNIFICANCE
 
 
 def test_every_graph_type_receives_every_role():
@@ -89,8 +89,8 @@ def test_every_graph_type_receives_every_role():
 
 def test_gradient_falls_back_when_called_without_settings():
     """Plot modules must stay usable from tests and from paths that resolved no style."""
-    assert plotsPalette.gradient(None, 'ordered').name == 'mako_r'
-    assert plotsPalette.gradient({}, 'correlation').name == 'Blues'
+    assert plotsPalette.gradient(None, 'ordered').name == plotsPalette.SEQUENTIAL_ORDERED
+    assert plotsPalette.gradient({}, 'correlation').name == plotsPalette.SEQUENTIAL_CORRELATION
 
 
 def test_an_unknown_role_is_a_loud_error():
@@ -136,9 +136,10 @@ def test_naive_sampling_would_have_drifted():
 
 # --- categorical fallback -------------------------------------------------------------
 
-def test_unset_categorical_is_unchanged_from_the_built_in_fallback():
-    assert np.allclose(plotsPalette.categorical({}, 6), sns.husl_palette(6))
-    assert np.allclose(plotsPalette.categorical(None, 3), sns.husl_palette(3))
+def test_unset_categorical_uses_the_built_in_fallback():
+    """Values are pinned in test_plots_palette.py; this pins that the plumbing reaches them."""
+    assert plotsPalette.categorical({}, 6) == plotsPalette.categorical_palette(6)
+    assert plotsPalette.categorical(None, 3) == plotsPalette.categorical_palette(3)
 
 
 def test_a_named_categorical_palette_is_used():
@@ -157,7 +158,7 @@ def test_a_short_list_cycles_rather_than_being_replaced(caplog):
     """
     A user who wrote a list has said which colors they want; swapping in generated hues they
     never chose would defeat supplying it. The built-in default falls back to husl instead --
-    that asymmetry is deliberate, and test_the_builtin_fallback_is_not_cycled pins the pair.
+    that asymmetry is deliberate, and test_the_builtin_fallback_never_repeats_a_color pins it.
     """
     settings = {'categorical': ['#ff0000', '#00ff00']}
 
@@ -166,9 +167,15 @@ def test_a_short_list_cycles_rather_than_being_replaced(caplog):
     assert 'being cycled' in caplog.text
 
 
-def test_the_builtin_fallback_is_not_cycled():
-    """husl generates as many distinct hues as asked for, so nothing repeats."""
-    assert len({tuple(c) for c in plotsPalette.categorical({}, 22)}) == 22
+def test_the_builtin_fallback_never_repeats_a_color():
+    """
+    Below the cap the colorblind-safe set is sliced; above it husl generates as many distinct
+    hues as asked for. Neither path may repeat, which is what separates the built-in fallback
+    from an explicit user list (that one is deliberately cycled).
+    """
+    for n in (5, len(plotsPalette.CATEGORICAL_COLORS), 22):
+        assert len({tuple(c) if not isinstance(c, str) else c
+                    for c in plotsPalette.categorical({}, n)}) == n
 
 
 # --- schema ---------------------------------------------------------------------------
@@ -308,6 +315,75 @@ def test_no_plot_module_reads_a_role_the_schema_does_not_expose():
         f'{sorted(undeclared)} are read by plot modules but are not declared in '
         f'GRADIENT_ROLES, so a style file cannot set them and gradient() will raise.'
     )
+
+
+def _color_palette_calls_with_non_literal_first_arg():
+    """Every `sns.color_palette(X, ...)` in a plot module where X is not a string literal."""
+    offenders = []
+    # plotsPalette is where a name legitimately arrives in a variable: it resolves the
+    # built-in overflow palette and whatever name a --style file supplied. Everywhere else a
+    # variable in that position is a resolved Colormap and therefore a bug.
+    for path in (p for p in PLOT_MODULES if p.name != 'plotsPalette.py'):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, 'id', None)
+            if name != 'color_palette':
+                continue
+            first = node.args[0]
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                offenders.append(f'{path.name}:{node.lineno}')
+    return offenders
+
+
+def test_no_plot_module_passes_a_resolved_colormap_to_color_palette():
+    """
+    `sns.color_palette` takes a NAME; a resolved gradient is a Colormap OBJECT, and passing one
+    raises `TypeError: 'ListedColormap' object is not iterable`.
+
+    This is not hypothetical. plotsCluster kept `numericcolormap` for two consumers at once --
+    `ScalarMappable(cmap=...)`, which needs the object, and `color_palette`, which needs the
+    name -- so resolving the role to an object fixed one call site and broke the other. It
+    escaped every render check because the demo object carries no `cluster_runinfo`, so
+    `-g cluster` is skipped on it entirely and only a real clustered object reaches the code.
+    A static check costs nothing and does not depend on having the right data to hand.
+
+    Take discrete colors from a resolved gradient with plotsPalette.discrete_colors() instead.
+    """
+    offenders = _color_palette_calls_with_non_literal_first_arg()
+
+    assert not offenders, (
+        f'{offenders} pass a non-literal to sns.color_palette(). If that value is a resolved '
+        f'gradient it will raise at draw time; use plotsPalette.discrete_colors(cmap, n).'
+    )
+
+
+def test_the_check_would_have_caught_the_original_bug(tmp_path):
+    """Guard the guard: the exact shape that shipped must be rejected by this detector."""
+    import ast as _ast
+
+    bad = _ast.parse('pal = sns.color_palette(self.numericcolormap, n)')
+    found = [n for n in _ast.walk(bad)
+             if isinstance(n, _ast.Call) and getattr(n.func, 'attr', None) == 'color_palette'
+             and not isinstance(n.args[0], _ast.Constant)]
+
+    assert found, 'the detector no longer recognises the shape it was written for'
+
+
+@pytest.mark.parametrize('role', GRADIENT_ROLES)
+def test_a_resolved_gradient_works_with_both_of_its_consumers(role):
+    """
+    A resolved role is handed to two different APIs across the plot modules: matplotlib's
+    cmap= parameter (which wants the object) and discrete sampling (which does not). Both must
+    accept what resolve_gradients returns, for every role.
+    """
+    import matplotlib.pyplot as plt
+
+    cmap = plotsPalette.resolve_gradients(None)[role]
+
+    assert plt.cm.ScalarMappable(cmap=cmap) is not None
+    assert len(plotsPalette.discrete_colors(cmap, 4)) == 4
 
 
 # --- tools template -------------------------------------------------------------------

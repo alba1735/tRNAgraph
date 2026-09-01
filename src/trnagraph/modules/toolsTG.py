@@ -424,6 +424,21 @@ def resolve_plot_style(style, graph_type, **overrides):
     return resolved
 
 
+def figsize_for(settings, default):
+    '''
+    The --style figure size for an INDIVIDUAL plot, or the module's own tuned default.
+
+    style_context() puts `figsize` into rcParams, but every plot module passes an explicit
+    figsize= to plt.figure/plt.subplots, and an explicit argument beats the rcParam -- so the
+    setting silently did nothing anywhere. Individual plots go through here instead.
+
+    Combined and multi-page pages deliberately do NOT: they compute their geometry from how
+    many panels they are laying out, so a fixed size would clip panels or leave dead space.
+    '''
+    configured = (settings or {}).get('figsize')
+    return tuple(configured) if configured else default
+
+
 @contextlib.contextmanager
 def style_context(settings):
     '''

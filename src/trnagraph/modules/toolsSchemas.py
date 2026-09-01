@@ -382,10 +382,23 @@ def _validate_colormap_name(name, field):
     try:
         plt.get_cmap(name)
     except (ValueError, KeyError):
+        # Colormap names are case-sensitive ('Blues', not 'blues'), which is the easiest way to
+        # get this wrong, so point at the near match rather than leaving the user to guess.
+        import difflib
+
+        registered = list(plt.colormaps)
+        # A case-only difference is the common mistake, and difflib compares case-sensitively,
+        # so check that exactly before falling back to fuzzy matching.
+        folded = {c.lower(): c for c in registered}
+        match = folded.get(name.lower())
+        if match is None:
+            close = difflib.get_close_matches(name.lower(), list(folded), n=1, cutoff=0.7)
+            match = folded[close[0]] if close else None
+        suggestion = f" Did you mean '{match}'?" if match else ''
         raise ValueError(
-            f"'{field}' names colormap '{name}', which is not registered. Use a matplotlib or "
-            f"seaborn colormap name (e.g. 'mako_r', 'vlag', 'Blues'), or give a list of two or "
-            f"more colors to build your own ramp."
+            f"'{field}' names colormap '{name}', which is not registered.{suggestion} Names are "
+            f"case-sensitive. Use a matplotlib or seaborn colormap name (e.g. 'mako_r', 'vlag', "
+            f"'Blues'), or give a list of two or more colors to build your own ramp."
         ) from None
 
 

@@ -195,20 +195,24 @@ Run `trnagraph tools template --style` to drop a blank `style.template.json` lis
 
 `gradients` sets the ordered/continuous scales, keyed by **what they encode** rather than by which graph draws them — a heatmap draws two of these at once, a sequence logo draws two more, and one is shared between coverage and cluster, so there is no one-to-one mapping to graph types.
 
-| Role | Used by | Encodes |
-| --- | --- | --- |
-| `correlation` | `correlation` | Correlation R² |
-| `significance` | `heatmap` | −log10(p), drawn beside `lfc` |
-| `lfc` | `heatmap` | Log2 fold change, diverging and centered on zero |
-| `score` | `logo` | Per-position score, drawn beside `sequence` |
-| `sequence` | `logo` | Sequence heatmap background |
-| `ordered` | `coverage`, `cluster` | Ordered specificity / numeric cluster coloring |
+| Role | Used by | Encodes | Default |
+| --- | --- | --- | --- |
+| `correlation` | `correlation` | Correlation R² | `crest` |
+| `significance` | `heatmap` | −log10(p), drawn beside `lfc` | `rocket_r` |
+| `lfc` | `heatmap` | Log2 fold change, diverging and centered on zero | `vlag` |
+| `score` | `logo` | Per-position score, drawn beside `sequence` | `mako_r` |
+| `sequence` | `logo` | Sequence heatmap background | `Greys` |
+| `ordered` | `coverage`, `cluster` | Ordered specificity / numeric cluster coloring | `mako_r` |
+
+The defaults are perceptually uniform and colorblind-safe. Only two pairs are ever drawn in the same figure and so have to stay mutually distinguishable — `lfc` beside `significance`, and `score` beside `sequence`.
 
 Each takes either a Matplotlib or seaborn colormap name (`"mako_r"`, `"vlag"`, `"Blues"`) or a list of two or more colors to interpolate into your own ramp (`["#f7fbff", "#08306b"]`). A list for `lfc` wants an odd number of stops with a neutral middle, since that scale is centered on zero. An unknown name or an unparseable color fails when the file is read, not part-way through a long run.
 
 #### Categorical palette
 
-`categorical` sets the fallback for unordered categories that no `colors` entry names. It takes a seaborn palette name (`"colorblind"`, `"husl"`, `"tab10"`) or an explicit list of colors. A list shorter than the number of categories being drawn is **cycled**, with a warning — an explicit list states which colors you want, so nothing you did not choose is substituted for it. This is also the one key `preprocess trim --style` reads beyond `colors.trimtype`.
+`categorical` sets the fallback for unordered categories that no `colors` entry names. The default is a ten-color colorblind-safe set (Okabe–Ito extended, the same values as seaborn's `colorblind`). Above ten categories no colorblind-safe qualitative palette exists, so it falls back to `husl` and logs a warning naming the count — at that point color is not a reliable way to tell the categories apart, whatever palette is used.
+
+It takes a seaborn palette name (`"colorblind"`, `"husl"`, `"tab10"`) or an explicit list of colors. A list shorter than the number of categories being drawn is **cycled**, with a warning — an explicit list states which colors you want, so nothing you did not choose is substituted for it. This is also the one key `preprocess trim --style` reads beyond `colors.trimtype`.
 
 Settings:
 
@@ -217,7 +221,7 @@ Settings:
 | `format` | every graph type | `pdf`, `svg` or `png`. Also settable with `--format`. |
 | `dpi` | every graph type | Raster resolution; affects PNG size and embedded raster layers. |
 | `font_size` | every graph type | Base font size, applied while figures are built. |
-| `figsize` | every graph type | `[width, height]` in inches. **Individual plots only** — combined/multi-page pages compute their own geometry from how many panels they lay out. |
+| `figsize` | every graph type | `[width, height]` in inches. **Individual plots only** — combined/multi-page pages compute their own geometry from how many panels they lay out. PCA and correlation stay square whatever you set, so there `figsize` sets how big the square is; a standalone volcano given an explicit size is allowed to be non-square. Saved pages come out slightly smaller than requested because output is cropped to content. |
 | `marker_size` | `volcano`, `pca`, `cluster`, `mismatch` | Point size for scatter layers. |
 | `alpha` | `volcano`, `pca`, `cluster`, `mismatch` | Point opacity. |
 | `rasterize_over` | `volcano`, `pca`, `cluster`, `mismatch` | Rasterize the point layer above this many points, keeping text and axes vector — a vector file carrying tens of thousands of markers is slow to open and is often rejected on submission. |

@@ -53,6 +53,69 @@ VOLCANO_AXIS_MARGIN = 1.08
 OFFSCALE_MARKERS = {'right': '>', 'left': '<'}
 
 
+# Repulsion settings shared by both label passes. The library defaults are tuned for a handful
+# of labels; --vollabels defaults to 100. `expand` pads each label's bounding box so neighbours
+# push each other apart rather than merely off their own point, and the stronger text force
+# lets them actually travel to the space that makes.
+_ADJUST_KWARGS = dict(expand=(1.35, 1.6), force_text=(0.4, 0.6), max_move=(20, 20))
+LABEL_FONTSIZE = 6
+# Below this many pixels of travel a connector line is noise rather than guidance.
+MIN_CONNECTOR_PX = 6
+
+
+def _place_labels(ax, names, x_plot, y):
+    """
+    Label `names` (already ordered most-interesting first), dropping any that cannot be drawn
+    without landing on a better one.
+
+    Repulsion alone does not solve a dense plot: asked to fit 100 labels into a volcano whose
+    significant points are packed against the axis limits, adjust_text has nowhere to put them
+    and converges on a stack of overlapping text that is worse than no labels at all. So the
+    solve runs ONCE, and the labels that still collide afterwards are removed rather than left
+    piled up. The user still asks for N labels with --vollabels; what changes is that N is a
+    ceiling rather than a promise, and what gets drawn is the subset that is legible.
+
+    Culling has to come last, and the connector lines are therefore drawn here rather than by
+    adjust_text: letting it re-solve the survivors would move them again and could reintroduce
+    the very overlaps that were just culled. Greedy in priority order, so the features a reader
+    most wants named are the ones that survive.
+    """
+    texts = [ax.text(x_plot[n], y[n], str(n), fontsize=LABEL_FONTSIZE) for n in names]
+    # Repel from every point, not just the labelled ones, so a label never lands on a marker.
+    adjust_text(texts, x=x_plot.values, y=y.values, ax=ax, **_ADJUST_KWARGS)
+
+    fig = ax.get_figure()
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+
+    kept, boxes = [], []
+    for name, text in zip(names, texts):
+        # Padded, so survivors are separated rather than merely not intersecting.
+        box = text.get_window_extent(renderer).expanded(1.1, 1.25)
+        if any(box.overlaps(other) for other in boxes):
+            text.remove()
+            continue
+        boxes.append(box)
+        kept.append((name, text))
+
+    for name, text in kept:
+        anchor = (x_plot[name], y[name])
+        # Only connect a label that actually had to travel; a line under a label sitting on its
+        # own point is noise. Distance is measured in display space so the threshold means the
+        # same thing whatever the axis ranges are.
+        moved = np.hypot(*(ax.transData.transform(text.get_position())
+                           - ax.transData.transform(anchor)))
+        if moved > MIN_CONNECTOR_PX:
+            ax.annotate('', xy=anchor, xytext=text.get_position(), textcoords='data',
+                        arrowprops={'arrowstyle': '-', 'color': plotsPalette.REFERENCE_LINE,
+                                    'lw': 0.5, 'shrinkA': 2, 'shrinkB': 2})
+
+    if len(kept) < len(names):
+        logger.info(f'Labelled {len(kept)} of {len(names)} requested markers; the rest could '
+                    f'not be placed without overlapping a more significant one.')
+    return [name for name, _ in kept]
+
+
 def resolve_x_limit(values, explicit=None, percentile=VOLCANO_CAP_PERCENTILE,
                     minimum=VOLCANO_MIN_HALF_WIDTH, engage_ratio=VOLCANO_CAP_ENGAGE_RATIO):
     '''
@@ -104,8 +167,25 @@ def _resolve_pair_colors(colormap, pair):
     return up_color, down_color
 
 
+def _keep_square(standalone, settings):
+    """
+    Whether this volcano's axes should be forced square.
+
+    Square is the default and stays that way on a COMBINED page whatever the style file says:
+    those pages compute their own geometry from the panel count, and a grid of stretched panels
+    reads badly. The one exception is a STANDALONE plot the user gave an explicit figsize for --
+    there a forced square box would discard the extra width of a deliberately wide figure,
+    which bbox_inches='tight' then crops away, so asking for 9.75x6.5 produced something close
+    to square. An explicit size is the stronger statement of intent about that one plot.
+
+    Note this is not how PCA and correlation behave: those stay square always, and figsize sets
+    how big the square is. A correlation matrix is square because it is symmetric.
+    """
+    return not (standalone and (settings or {}).get('figsize'))
+
+
 def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, show_legend=True,
-                  xlim=None, settings=None):
+                  xlim=None, settings=None, standalone=False):
     '''
     Draw a single volcano comparison onto a provided axes. Shared by the standalone individual
     plots and the combined overview page so both use identical styling. `feature_types`, when
@@ -193,15 +273,13 @@ def _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title,
             # Labels follow the drawn (clipped) position, not the raw one -- otherwise a
             # capped feature's label is placed off-canvas and adjust_text drags a connector
             # line out of the axes chasing it.
-            texts = [ax.text(x_plot[name], y[name], str(name), fontsize=6) for name in label_idx]
-            # Repel labels from every point (not just labeled ones) and from each other; only
-            # draws a connector line back to its point if the label actually had to move.
-            adjust_text(texts, x=x_plot.values, y=y.values, ax=ax, arrowprops={'arrowstyle': '-', 'color': 'black', 'lw': 0.5})
+            _place_labels(ax, label_idx, x_plot, y)
 
     ax.set_xlabel('log2(fold change)')
     ax.set_ylabel('-log10(p-value)')
     ax.set_title(title)
-    ax.set_box_aspect(1)
+    if _keep_square(standalone, settings):
+        ax.set_box_aspect(1)
 
     if show_legend:
         legend_elements = [
@@ -224,9 +302,9 @@ def _save_individual_volcano(df_pairs, pair, cutoff, colormap, toplabels, output
     pair_name = f'{pair[0]}-{pair[1]}'
     title = f'{pair[0]} vs {pair[1]} ({variant_label})'
 
-    fig = plt.figure(figsize=(8, 8))
+    fig = plt.figure(figsize=toolsTG.figsize_for(settings, (8, 8)))
     ax = fig.gca()
-    _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, xlim=xlim, settings=settings)
+    _draw_volcano(ax, df_pairs, pair, colormap, toplabels, feature_types, title, xlim=xlim, settings=settings, standalone=True)
 
     filename = f'{output}{basename}_{pair_name}_{cutoff}_volcano.pdf'
     if threaded:

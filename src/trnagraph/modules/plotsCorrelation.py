@@ -37,8 +37,15 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
         logger.info(msg)
 
     df_corr = df_wide.corr(method=corr_method)
-    plt.figure(figsize=(6, 6))
-    ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.gradient(settings, 'correlation'), cbar_kws={'label': f'{corr_method} R^2'})
+    plt.figure(figsize=toolsTG.figsize_for(settings, (6, 6)))
+    # shrink/aspect: the matrix is square and set_box_aspect(1) below keeps it that way, so a
+    # default colorbar runs the full figure height and towers over the plot it annotates.
+    ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.gradient(settings, 'correlation'),
+                     cbar_kws={'label': f'{corr_method} R^2', 'shrink': 0.5, 'aspect': 30,
+                               'pad': 0.02})
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=8)
+    cbar.set_label(f'{corr_method} R^2', size=9)
     ax.set_xlabel('')
     ax.set_ylabel('')
     ax.set_title(f'{corr_method} {corr_group} {title} Correlation Matrix'.title())

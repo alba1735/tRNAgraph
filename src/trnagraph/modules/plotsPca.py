@@ -49,7 +49,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     df_pca = pd.DataFrame(pca.components_, columns=df.columns, index=pca_index).T
 
     # Plot the explained variance ratio
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=toolsTG.figsize_for(settings, (6, 6)))
     ax = sns.barplot(x=['PC{}'.format(x) for x in range(1, len(evr)+1)], y=evr, palette=plotsPalette.categorical(settings, len(evr)), hue=['PC{}'.format(x) for x in range(1, len(evr)+1)])
     # Set the x and y labels and title
     ax.set_xlabel('Principal Component')
@@ -68,7 +68,7 @@ def _generate_pca_plots(df, hue_dict, colormap, pcamarkers, pcacolors, output, b
     # Plot the data with seaborn
     settings = settings or {}
     marker_size = settings.get('marker_size') or 100
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=toolsTG.figsize_for(settings, (8, 8)))
     if colormap:
         ax = sns.scatterplot(data=df_pca, x='PC1', y='PC2', s=marker_size, palette=colormap, hue=hue_dict, legend='full')
     else:

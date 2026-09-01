@@ -28,6 +28,7 @@ class visualizer():
         self.colormap = colormap
         self.numericcolormap = plotsPalette.gradient(settings, 'ordered') # sns.diverging_palette(255, 85, s=255, l=70, sep=128, as_cmap=True)
         # --style's marker_size when set, otherwise the tuned default.
+        self.settings = settings
         self.point_size = (settings or {}).get('marker_size') or 20
         # --allreads can only change how an EXISTING embedding is coloured: the UMAP
         # coordinates and HDBSCAN labels were computed by `analyze cluster` and written into
@@ -125,7 +126,12 @@ class visualizer():
         mask = ~adata.obs[clustgrp].isna()
         # Create a palette for the categorical variable
         if numeric:
-            pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp])), sns.color_palette(self.numericcolormap, len(pd.unique(adata.obs[clustgrp])))))
+            # discrete_colors, not sns.color_palette: numericcolormap is a resolved Colormap
+            # object (so it can be handed straight to ScalarMappable below), and
+            # color_palette takes a NAME. Sampling here also has to match color_palette's
+            # own spacing, or these points shift colour against every other ordered plot.
+            levels = sorted(pd.unique(adata.obs[clustgrp]))
+            pal = dict(zip(levels, plotsPalette.discrete_colors(self.numericcolormap, len(levels))))
         else:
             pal = dict(zip(sorted(pd.unique(adata.obs[clustgrp][mask])), sns.color_palette("hls", len(pd.unique(adata.obs[clustgrp][mask])))))
         # Check if the user has defined a colormap
@@ -140,7 +146,7 @@ class visualizer():
         # Sort the adata object by the categorical variable for legend purposes
         adata = adata[adata.obs[clustgrp].sort_values().index, :]
         # Create the figure
-        fig, axs = plt.subplots(figsize=(8,8))
+        fig, axs = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (8, 8)))
         if masking:
             sns.scatterplot(x=adata.obs[umap1][~mask], y=adata.obs[umap2][~mask], s=self.point_size, linewidth=0.25, ax=axs, color=np.array([(0.5,0.5,0.5)]), alpha=0.5)
             sns.scatterplot(x=adata.obs[umap1][mask], y=adata.obs[umap2][mask], s=self.point_size, linewidth=0.25, ax=axs, hue=adata.obs[clustgrp][mask], palette=pal)

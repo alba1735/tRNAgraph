@@ -73,7 +73,7 @@ class visualizer:
         angles = np.linspace(0, 2*np.pi, num=len(list(tdf.T))+1)[:-1]
         angles = angles.tolist()
         # Create figure
-        fsize = (12,12) if not aminoacid else (6,6)
+        fsize = toolsTG.figsize_for(self.settings, (12, 12) if not aminoacid else (6, 6))
         fig, ax = plt.subplots(figsize=fsize, subplot_kw=dict(polar=True))
         # Set theta zero location so that anticodons are in the correct position
         ax.set_theta_zero_location('N')

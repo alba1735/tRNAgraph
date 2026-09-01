@@ -11,6 +11,7 @@ from . import toolsTG
 from . import plotsPalette
 
 from functools import partial
+import multiprocessing
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -27,6 +28,35 @@ logger = logging.getLogger(__name__)
 # Figure-fraction gap between the top of the subplot grid and the specificity overview's
 # legend -- just enough to clear the top row's axis titles without reopening a dead band.
 LEGEND_TITLE_CLEARANCE = 0.018
+
+# Pool tasks that reference a BOUND METHOD pickle `self` for every task -- and `self` carries
+# the whole AnnData. Measured on the hg38 object that is 549 MB per task, against 436 tasks for
+# the per-tRNA split and 28 per combined PDF, so a run spends its time shovelling gigabytes
+# through a pipe to do about 1.3 seconds of drawing per page. Under the `fork` start method a
+# worker already shares the parent's memory copy-on-write, so the visualizer is handed over
+# through this module global instead and nothing large is pickled at all.
+#
+# It has to be SET BEFORE the Pool is created, since that is when the fork happens.
+_WORKER_VISUALIZER = None
+
+
+def _share_with_workers(visualizer):
+    """Publish the visualizer for pool workers to pick up; returns False if they cannot."""
+    global _WORKER_VISUALIZER
+    _WORKER_VISUALIZER = visualizer
+    # Only `fork` gives a child the parent's globals. Under spawn/forkserver the worker would
+    # find None, so the caller runs the work serially rather than silently failing.
+    return multiprocessing.get_start_method(allow_none=False) == 'fork'
+
+
+def _combine_page_worker(args):
+    ulist, coverage_fill = args
+    return _WORKER_VISUALIZER.generate_combine_page(ulist, coverage_fill)
+
+
+def _split_single_worker(covobs):
+    return _WORKER_VISUALIZER.generate_split_single(covobs)
+
 
 class visualizer():
     '''
@@ -260,18 +290,24 @@ class visualizer():
         # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
         # Generate plots with confidence intervals
         outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci_{self.coverage_method}.pdf'
+        shared = _share_with_workers(self)
         with PdfPages(f'{self.category_output}{outend}') as pdf:
-            with Pool(self.threads) as p:
-                pages = p.map(partial(self.generate_combine_page, coverage_fill='ci'), ulist)
-            for page in pages:
+            for page in self._render_pages(ulist, 'ci', shared):
                 pdf.savefig(page, bbox_inches='tight')
+                plt.close(page)
         # Generate plots with fill
         outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill_{self.coverage_method}.pdf'
         with PdfPages(f'{self.category_output}{outend}') as pdf:
-            with Pool(self.threads) as p:
-                pages = p.map(partial(self.generate_combine_page, coverage_fill='fill'), ulist)
-            for page in pages:
+            for page in self._render_pages(ulist, 'fill', shared):
                 pdf.savefig(page, bbox_inches='tight')
+                plt.close(page)
+
+    def _render_pages(self, ulist, coverage_fill, shared):
+        '''Render the combined pages, in parallel where the workers can share this object.'''
+        if not shared or self.threads <= 1:
+            return [self.generate_combine_page(chunk, coverage_fill) for chunk in ulist]
+        with Pool(self.threads) as p:
+            return p.map(_combine_page_worker, [(chunk, coverage_fill) for chunk in ulist])
 
     def generate_combine_page(self, ulist, coverage_fill):
         '''
@@ -298,9 +334,19 @@ class visualizer():
         # it once per completed plot so it moves in lockstep with this, the one graph type that
         # can produce hundreds/thousands of plots, rather than only ticking atomically once the
         # whole "coverage" phase finishes.
+        shared = _share_with_workers(self)
+        if not shared or self.threads <= 1:
+            results = (self.generate_split_single(covobs) for covobs in ulist)
+            for _ in toolsTG.progress_iterator(
+                results, total=len(ulist), desc="Coverage plots", logger=self.logger,
+                quiet=self.quiet,
+            ):
+                if self.phase_tracker is not None:
+                    self.phase_tracker.advance(1)
+            return
         with Pool(self.threads) as p:
             for _ in toolsTG.progress_iterator(
-                p.imap_unordered(self.generate_split_single, ulist),
+                p.imap_unordered(_split_single_worker, ulist),
                 total=len(ulist), desc="Coverage plots", logger=self.logger, quiet=self.quiet,
             ):
                 if self.phase_tracker is not None:
@@ -321,7 +367,7 @@ class visualizer():
         for i in rslist:
             if not low_coverage:
                 # Generate plot with readstarts and readends
-                fig, ax = plt.subplots(figsize=(6,5.5))
+                fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
                 # Subset the df to the current group
                 df_grp = df[i]
                 if df_grp.sum().sum() != 0:
@@ -350,7 +396,7 @@ class visualizer():
 
     def _assemble_plot_(self, df, covobs, lgnd, cov_fill):
         # Generate plot with confidence intervals
-        fig, ax = plt.subplots(figsize=(6,5.5))
+        fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
         self.generate_plot(df, ax, covobs, coverage_fill=cov_fill, lgnd=lgnd)
         # Get max y value for plot
         outend = f'{covobs}_{self.coverage_type}_by_{self.coverage_grp}_with_{cov_fill}_{self.coverage_method}.pdf'
@@ -469,7 +515,10 @@ class visualizer():
         if lgnd:
             if coverage_fill == 'endstarts':
                 classes = ['Readstarts', 'Readends']
-                class_colours = ['magenta', 'cyan']
+                # Must come from the same constants the bars are drawn with; these swatches
+                # used to be hardcoded separately, so changing the palette recoloured the bars
+                # and left the legend claiming the old colors.
+                class_colours = [plotsPalette.READSTART_COLOR, plotsPalette.READEND_COLOR]
                 recs = []
                 for i in range(0, len(class_colours)):
                     recs.append(mpatches.Rectangle((0, 0), 1, 1, fc=class_colours[i]))

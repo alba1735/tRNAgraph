@@ -186,7 +186,7 @@ class visualizer():
         if df_consensus.empty:
             return
         # Create a figure with 4 subplots
-        fig = plt.figure(figsize=(20, 3))
+        fig = plt.figure(figsize=toolsTG.figsize_for(self.settings, (20, 3)))
         # Create 4 subplots with the first 3 stacked on top of each other and the last one spanning all 3 on the right
         gs = gridspec.GridSpec(3, 2, height_ratios=[1, 0.75, 0.25], width_ratios=[1, 0.025])
         # Create axes
@@ -208,15 +208,20 @@ class visualizer():
         sns.heatmap(scores_df, cmap=plotsPalette.gradient(self.settings, 'score'), cbar=False, square=True, linewidths=0, linecolor='black', ax=ax2)
         # Print the consensus horizontally aligned with the heatmap below it
         for i in df_consensus.iterrows():
-            ascore_color, rscore_color, fweight = 'black', 'black', 'normal'
-            if i[1]['actual_score'] > 0.7:
-                ascore_color = 'white'
-            if i[1]['ref_score'] > 0.7:
-                rscore_color = 'white'
+            # The score heatmap runs light at low scores and dark at high ones, so both the
+            # plain text and the mismatch highlight have to switch with the background rather
+            # than pick one color and hope. 0.7 is the same threshold for both.
+            a_dark = i[1]['actual_score'] > 0.7
+            r_dark = i[1]['ref_score'] > 0.7
+            ascore_color = plotsPalette.BACKGROUND if a_dark else plotsPalette.AXIS_TEXT
+            rscore_color = plotsPalette.BACKGROUND if r_dark else plotsPalette.AXIS_TEXT
+            fweight = 'normal'
             if i[1]['actual_base'] != i[1]['ref_base']:
                 if i[1]['actual_base'] != ' ' or i[1]['ref_base'] != ' ':
-                    ascore_color = 'red'
-                    rscore_color = 'red'
+                    ascore_color = (plotsPalette.CONSENSUS_MISMATCH_ON_DARK if a_dark
+                                    else plotsPalette.CONSENSUS_MISMATCH_ON_LIGHT)
+                    rscore_color = (plotsPalette.CONSENSUS_MISMATCH_ON_DARK if r_dark
+                                    else plotsPalette.CONSENSUS_MISMATCH_ON_LIGHT)
                     fweight='bold'
             ax2.text(i[0]+0.1, 0.55, i[1]['actual_base'], fontsize=12, verticalalignment='center', color=ascore_color, weight=fweight)
             ax2.text(i[0]+0.1, 1.55, i[1]['ref_base'], fontsize=12, verticalalignment='center', color=rscore_color, weight=fweight)

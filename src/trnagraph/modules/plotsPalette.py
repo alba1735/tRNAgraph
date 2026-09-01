@@ -9,9 +9,15 @@ its own nucleotide dict, and eight modules each called `sns.husl_palette(n)` (or
 fallback. Making the look uniform meant finding and matching all of them by hand.
 
 This module holds the values only -- no plotting logic and no matplotlib import at module
-scope, so it stays cheap to import and safe to read from anywhere. The values here are exactly
-what the modules used before centralization: this is a refactor, not a restyle. Changing the
-defaults is a separate, deliberate piece of work (see docs/roadmap.md).
+scope, so it stays cheap to import and safe to read from anywhere.
+
+The defaults have since been retuned for colorblind safety and perceptual uniformity. Two sets
+were deliberately NOT changed, because they are inherited conventions rather than choices this
+project gets to make: the tRNA arm/loop bands come from gtRNAdb's own palette, and the
+nucleotide colors follow the sequence-logo convention that Logomaker calls `classic` (G orange,
+T/U red, C blue, A green), which readers decode by memory. Both contain red/green pairs that an
+accessibility pass will flag; leave them alone. A --style file can override every ramp and the
+categorical fallback per run, so a user who needs different values is not blocked on these.
 
 Naming is by ROLE rather than by appearance -- `REFERENCE_LINE` not `BLACK` -- so that a later
 pass can change what a role looks like without every call site reading as a lie.
@@ -19,36 +25,61 @@ pass can change what a role looks like without every call site reading as a lie.
 
 # --- Categorical fallback ------------------------------------------------------------
 # Used whenever a plot needs N visually distinct colors for unordered categories and the user
-# supplied no palette for that column. One name for what were two spellings of the same call.
-CATEGORICAL_PALETTE = 'husl'
+# supplied no palette for that column.
+#
+# Okabe-Ito extended to ten, the same values as seaborn's 'colorblind', written out rather than
+# named so the default is legible here (this module being the documented control point) and so
+# it cannot shift if seaborn retunes that palette. Ten is not arbitrary: the columns tRNAgraph
+# actually colors by are `group` (3), `sample` (9-10), `amino` (22-24) and `iso`/anticodon
+# (33-54), so ten spans every one of them except the two that no qualitative palette can serve.
+CATEGORICAL_COLORS = (
+    '#0173b2', '#de8f05', '#029e73', '#d55e00', '#cc78bc',
+    '#ca9161', '#fbafe4', '#949494', '#ece133', '#56b4e9',
+)
+
+# Above CATEGORICAL_COLORS' length no colorblind-safe qualitative set exists, so the fallback
+# switches to husl. This is a trade, not a win: husl is not colorblind-safe, but cycling ten
+# colors across 22 amino acids would give four groups the same color and make the plot actively
+# misleading, whereas husl at least keeps them nominally distinct. The real answer at that count
+# is to stop encoding the dimension in color at all -- a plot-design change, tracked separately.
+CATEGORICAL_OVERFLOW_PALETTE = 'husl'
 
 
 def categorical_palette(n):
     '''N distinct colors for unordered categories -- the shared fallback when --style sets none.'''
+    import logging
+
     import seaborn as sns
 
-    return sns.husl_palette(n)
+    n = int(n)
+    if n <= len(CATEGORICAL_COLORS):
+        return list(CATEGORICAL_COLORS[:n])
+    logging.getLogger(__name__).warning(
+        f'{n} categories exceeds the {len(CATEGORICAL_COLORS)}-color colorblind-safe palette; '
+        f'falling back to {CATEGORICAL_OVERFLOW_PALETTE}, which is not colorblind-safe at this '
+        f'count. Consider grouping the categories or distinguishing them by something other '
+        f'than color.'
+    )
+    return sns.color_palette(CATEGORICAL_OVERFLOW_PALETTE, n)
 
 
 # --- Continuous / ordered scales -----------------------------------------------------
 # Named by what they encode, so a future pass can retune one without disturbing the others.
-SEQUENTIAL_CORRELATION = 'Blues'    # correlation R^2 heatmap
-SEQUENTIAL_SIGNIFICANCE = 'Greens'  # -log10(p) heatmap panel
-SEQUENTIAL_SCORE = 'Blues'          # seqlogo per-position score heatmap and its colorbar
-SEQUENTIAL_SEQUENCE = 'Greys'       # seqlogo sequence heatmap background
+# Only two pairs of these are ever drawn in one figure, and those are the only pairs that must
+# be mutually distinguishable: `lfc` beside `significance` (heatmap's two panels), and `score`
+# beside `sequence` (seqlogo). `correlation` and `ordered` each appear alone.
+SEQUENTIAL_CORRELATION = 'crest'    # correlation R^2 heatmap
+SEQUENTIAL_SIGNIFICANCE = 'rocket_r'  # -log10(p) heatmap panel; warm, against lfc's cool diverging
+SEQUENTIAL_SCORE = 'mako_r'         # seqlogo per-position score heatmap and its colorbar
+SEQUENTIAL_SEQUENCE = 'Greys'       # seqlogo sequence background: deliberately neutral, not data
 # Ordered specificity scale (coverage partition) and cluster numeric coloring: light = least,
 # dark = most, which is why it is a sequential ramp rather than categorical hues.
 SEQUENTIAL_ORDERED = 'mako_r'
 
-# Diverging scale for log2 fold change, centered on zero.
-DIVERGING_LFC_KWARGS = dict(h_neg=255, h_pos=85, s=255, l=70, sep=20)
-
-
-def diverging_lfc_cmap():
-    '''Diverging colormap for log2 fold change, centered on zero.'''
-    import seaborn as sns
-
-    return sns.diverging_palette(as_cmap=True, **DIVERGING_LFC_KWARGS)
+# Diverging scale for log2 fold change, centered on zero. Blue-white-red: the previous
+# blue-to-green ramp put the two ends of the scale on a deuteranopia confusion pair, which made
+# the sign of a fold change -- the whole point of the plot -- the hardest thing to read on it.
+DIVERGING_LFC = 'vlag'
 
 
 # --- Differential-expression direction -----------------------------------------------
@@ -56,6 +87,19 @@ def diverging_lfc_cmap():
 DE_UP = '#d62728'
 DE_DOWN = '#1f77b4'
 DE_NONSIGNIFICANT = '#7f7f7f'
+
+# --- Consensus mismatch emphasis -----------------------------------------------------
+# The seqlogo's consensus row prints a base in a highlight color where the read consensus
+# disagrees with the reference. This is a SEMANTIC emphasis color, unrelated to the nucleotide
+# convention below -- it marks disagreement, not identity, so it is free to change.
+#
+# Two values because the text sits on the score heatmap, which runs light at low scores and
+# dark at high ones; a single color cannot stay readable across both, which is why the plain
+# consensus text already switches between black and white at the same threshold. Orange rather
+# than red: red on a dark ramp is close to unreadable and is the worst hue to pair with the
+# green in the nucleotide set for a colorblind reader.
+CONSENSUS_MISMATCH_ON_LIGHT = '#b35900'
+CONSENSUS_MISMATCH_ON_DARK = '#ffa600'
 
 # --- Nucleotides ---------------------------------------------------------------------
 # Seqlogo letter colors. U shares T's color: the same base, differing only by whether the
@@ -80,10 +124,14 @@ ARM_INNER_WASH = 'white'
 ARM_INNER_WASH_ALPHA = 0.8
 
 # --- Read-end emphasis ---------------------------------------------------------------
-# Read starts and ends overlaid on a coverage trace; deliberately loud, since they mark
-# fragment boundaries against the coverage fill behind them.
-READSTART_COLOR = 'magenta'
-READEND_COLOR = 'cyan'
+# Read starts and ends, drawn as semi-transparent bars over a coverage trace. They must stand
+# out against the fill behind them AND against each other, but the previous magenta/cyan pair
+# was loud at the cost of being unpleasant and low-contrast once alpha-blended onto white.
+# ColorBrewer PRGn's endpoints instead: a colorblind-safe pair that stays legible at alpha, and
+# that is deliberately outside CATEGORICAL_COLORS, since the trace behind them is colored from
+# that set and the overlay must not be mistaken for another group.
+READSTART_COLOR = "#2dc0ff"  # 5' end
+READEND_COLOR = "#9bff38"    # 3' end
 
 # --- Neutral furniture ---------------------------------------------------------------
 # Non-data ink: reference lines, shaded regions, bar outlines, placeholder swatches.
@@ -111,8 +159,7 @@ BACKGROUND = 'white'
 # came from: modules call gradient()/categorical() with the `settings` dict they are already
 # given, and get back a drawable value whether or not the user configured anything.
 
-# Role -> the default this module defines for it. `lfc` is built rather than named, so the
-# mapping holds a callable there; _default_gradient() collapses the difference.
+# Role -> the colormap name this module defaults it to.
 GRADIENT_ROLES = ('correlation', 'significance', 'score', 'sequence', 'ordered', 'lfc')
 
 _GRADIENT_DEFAULTS = {
@@ -121,7 +168,7 @@ _GRADIENT_DEFAULTS = {
     'score': SEQUENTIAL_SCORE,
     'sequence': SEQUENTIAL_SEQUENCE,
     'ordered': SEQUENTIAL_ORDERED,
-    'lfc': diverging_lfc_cmap,
+    'lfc': DIVERGING_LFC,
 }
 
 
@@ -133,10 +180,7 @@ def _default_gradient(role):
     is `mako_r`, which seaborn registers on import -- resolving it without that import raises
     'not a valid value for name' on any path that has not already pulled seaborn in.
     '''
-    default = _GRADIENT_DEFAULTS[role]
-    if callable(default):
-        return default()
-    return build_colormap(default)
+    return build_colormap(_GRADIENT_DEFAULTS[role])
 
 
 def build_colormap(value):

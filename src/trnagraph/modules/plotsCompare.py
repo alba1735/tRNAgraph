@@ -47,7 +47,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
         # Sort the df by the mean of the log2 fold change
         df = df.loc[df.loc[:, ('log2')].abs().mean(axis=1).sort_values(ascending=True).index, :]
         # create a stacked horizontal bar plot for each group 
-        fig, ax = plt.subplots(figsize=(8, 12))
+        fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (8, 12)))
         cgrp1list = df.columns.get_level_values('cgrp1').unique()
         cgrp2list = df.columns.get_level_values('cgrp2').unique()
         # Create a bar widths table for amount of values in cgrp1

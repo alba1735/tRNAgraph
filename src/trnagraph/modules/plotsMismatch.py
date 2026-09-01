@@ -202,9 +202,9 @@ class visualizer():
         # stripplot's `size` is a diameter in points where scatter's `s` is an area, so the
         # shared marker_size is square-rooted to keep one number meaning the same visual
         # weight across plot types.
-        marker_size = (settings['marker_size'] ** 0.5) if settings.get('marker_size') else 2
+        marker_size = (settings['marker_size'] ** 0.5) if settings.get('marker_size') else 4
         rasterize = bool(settings.get('rasterize_over')) and len(df) > settings['rasterize_over']
-        fig, ax = plt.subplots(figsize=(20, 7))
+        fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (20, 7)))
         with _seeded_jitter():
             sns.stripplot(data=df, x='position', y='rate', hue=hue, palette=palette,
                           size=marker_size, jitter=0.25, ax=ax, legend='brief',

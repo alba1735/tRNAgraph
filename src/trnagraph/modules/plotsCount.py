@@ -118,7 +118,7 @@ def split_barplots(df, count_type, level, output, colormap=None, percent=False, 
     X-axis is type (amino/type), Hue is group (which is columns from df, i.e., sample or group).
     '''
     df['type'] = df.index
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (12, 8)))
     df = df.melt(id_vars='type', var_name='group', value_name='count')
     
     if colormap:
@@ -164,7 +164,7 @@ def stacked_barplots(df, count_type, level, output, colormap=None, percent=False
     Create stacked barplots for readtypes.
     X-axis is sample/group (columns), Hue is amino/type (index).
     '''
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (12, 8)))
     bar_bottom = len(df.columns) * [0]
     
     # Keyed by label, not by position. The bars are drawn in reverse index order while the
