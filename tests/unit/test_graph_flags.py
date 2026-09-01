@@ -193,7 +193,7 @@ def test_flags_are_merged_before_anything_derived_from_them():
         if isinstance(node, ast.Call):
             name = getattr(node.func, 'attr', None)
             if name in ('_apply_config_flags', 'parse_variant', 'read_basis',
-                        'resolve_covtype', '_resolve_grp_args'):
+                        'resolve_covtype', '_validate_label_args'):
                 order.append((node.lineno, name))
     order.sort()
     names = [n for _, n in order]

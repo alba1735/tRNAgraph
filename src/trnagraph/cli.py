@@ -16,7 +16,7 @@ from types import SimpleNamespace
 try:
     from .modules.lazy_imports import (
         toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, toolsTemplate, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsTemplate, toolsUpdate, toolsInfo, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from .modules import env_check
@@ -29,7 +29,7 @@ except ImportError:
 
     from tRNAgraph.modules.lazy_imports import (
         toolsMap, toolsDedup, toolsTDatabase, toolsTrim, toolsTG,
-        toolsTestSuite, toolsTemplate, toolsUpdate, adataGraph, adataMerge, adataCluster, adataBuild,
+        toolsTestSuite, toolsTemplate, toolsUpdate, toolsInfo, adataGraph, adataMerge, adataCluster, adataBuild,
         anndata, matplotlib
     )
     from tRNAgraph.modules import env_check
@@ -158,6 +158,20 @@ def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, nam
             tee = _Tee(log_fileobj, None if quiet else real_stdout)
             with contextlib.redirect_stdout(tee):
                 yield
+    except toolsTG.UnknownLabelError as usage:
+        # A usage mistake, not a crash: the message is the whole story, so it goes into the log
+        # as itself. exc_info here would put a stack trace of tRNAgraph's own frames both in the
+        # file and on the console, where it would bury the one paragraph the user has to read.
+        #
+        # Written to the FILE handlers only. usage_error_guard() is what puts this on the
+        # terminal, unconditionally and even under --quiet; logging it through the console
+        # handler as well printed the whole paragraph twice, reading as two failures.
+        failed = True
+        record = logger.makeRecord(logger.name, logging.ERROR, __file__, 0, str(usage), (), None)
+        for handler in logger.handlers:
+            if isinstance(handler, logging.FileHandler):
+                handler.handle(record)
+        raise
     except Exception:
         failed = True
         # Must happen here, before `finally` detaches the FileHandler below -- whatever renders
@@ -181,6 +195,23 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True
 )
+
+@contextlib.contextmanager
+def usage_error_guard():
+    """
+    Render a label/usage mistake as a message, not a traceback.
+
+    toolsTG.UnknownLabelError already carries everything the user needs -- which flags were
+    wrong, the near matches, and how to list the real values. A traceback of tRNAgraph's own
+    call stack pushes that off the top of the screen and tells them nothing they can act on.
+    Same treatment toolsTestSuite.WorkspaceNotOwnedError gets: one ERROR line, exit 1.
+    """
+    try:
+        yield
+    except toolsTG.UnknownLabelError as refusal:
+        typer.secho(f"ERROR: {refusal}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
 
 def validate_environment():
     """
@@ -459,7 +490,7 @@ def cluster(
 ):
     output_path = os.path.abspath(output)
     output_dir = os.path.dirname(output_path)
-    with handle_output(quiet, tool="cluster", destination=output_dir or ".", name_suffix=_log_suffix(anndata, variant)):
+    with usage_error_guard(), handle_output(quiet, tool="cluster", destination=output_dir or ".", name_suffix=_log_suffix(anndata, variant)):
         if not os.path.isfile(anndata):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -536,7 +567,7 @@ def graph(
     vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many"),
 ):
     output_path = os.path.abspath(output)
-    with handle_output(quiet, tool="graph", destination=output_path, name_suffix=_log_suffix(anndata, variant)):
+    with usage_error_guard(), handle_output(quiet, tool="graph", destination=output_path, name_suffix=_log_suffix(anndata, variant)):
         # Set matplotlib backend to Agg to avoid display issues
         matplotlib.use('Agg')
 
@@ -593,7 +624,7 @@ def log2fc(
     # log2fc always writes back into its own input file in place -- that file's directory is
     # the destination.
     destination = os.path.dirname(os.path.abspath(anndata_path))
-    with handle_output(quiet, tool="log2fc", destination=destination, name_suffix=_log_suffix(anndata_path, variant)):
+    with usage_error_guard(), handle_output(quiet, tool="log2fc", destination=destination, name_suffix=_log_suffix(anndata_path, variant)):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -618,6 +649,9 @@ def log2fc(
         # toolsTG.build_variant_view() for why this view must never be written back directly.
         variant_spec = toolsTG.parse_variant(adata, variant)
         adata_view = toolsTG.build_variant_view(adata, variant_spec)
+
+        toolsTG.validate_labels(adata_view, [('group', group, 'obs')]
+                                + [('readtypes', i, 'readtype_with_basis') for i in readtypes])
 
         for readtype in [f'nreads_{i}_norm' for i in readtypes]:
             for c in cutoff:
@@ -682,6 +716,22 @@ def merge(
         print('Merging database objects...\n')
         adataMerge.anndataMerger(args).merge()
         print('Done!\n')
+
+@tools_app.command("info", help="Report an AnnData object's columns, keys and the values they contain")
+def info(
+    anndata_path: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
+    column: Optional[str] = typer.Option(None, "--column", help="Print one obs/var column's unique values in full instead of the whole object. Values are capped in the default report because a column like 'trna' can carry hundreds"),
+    json_output: bool = typer.Option(False, "--json", help="Emit the report as JSON instead of text, for scripting"),
+):
+    # Deliberately NOT wrapped in handle_output(): this is a read-only query answering "what
+    # can I type after --covgrp", and creating a timestamped .log/ entry every time someone
+    # asks that would litter the working directory for no diagnostic value.
+    if not os.path.isfile(anndata_path):
+        raise Exception('Error: h5ad file does not exist.')
+
+    args = SimpleNamespace(mode='info', anndata=anndata_path, column=column, json=json_output)
+    with usage_error_guard():
+        print(toolsInfo.AnnDataInspector(args).run())
 
 @tools_app.command("template", help="Write a blank, fully-enumerated JSON config template into the current directory")
 def template(

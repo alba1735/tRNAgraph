@@ -59,6 +59,7 @@ toolsGetCoverage = LazyLoader('toolsGetCoverage')
 toolsTrackHub = LazyLoader('toolsTrackHub')
 toolsTestSuite = LazyLoader('toolsTestSuite')
 toolsTemplate = LazyLoader('toolsTemplate')
+toolsInfo = LazyLoader('toolsInfo')
 toolsUpdate = LazyLoader('toolsUpdate')
 
 # Adata modules

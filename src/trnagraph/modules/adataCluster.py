@@ -21,6 +21,9 @@ class anndataCluster():
         # variant so it never clobbers another variant's stored cluster results.
         self.variant_spec = toolsTG.parse_variant(self.adata_original, getattr(args, 'variant', 'norm:full'))
         self.adata = toolsTG.build_variant_view(self.adata_original, self.variant_spec)
+        # --coveragetype names adata.var['coverage'] values. Unvalidated, a typo simply
+        # selected no features and the failure surfaced inside UMAP, far from its cause.
+        toolsTG.validate_labels(self.adata, [('coveragetype', v, 'coverage') for v in args.coveragetype])
         self.overwrite = args.overwrite
         self.output = args.output
         self.randomstate = args.randomstate

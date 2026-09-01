@@ -67,18 +67,142 @@ def builder(directory: Union[str, Path]) -> str:
     return output
 
 
-def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str, default: str = 'sample') -> str:
+class UnknownLabelError(Exception):
     '''
-    Validate that a user-specified grouping column exists in adata.obs; fall back to `default`
-    (warning on stderr) instead of raising, so a typo'd/absent grouping parameter degrades a
-    graph command to a sane default rather than aborting it outright.
+    A CLI parameter names something the AnnData object does not contain.
+
+    A dedicated type rather than ValueError because cli.py renders it as a one-line usage
+    error and exits, the way toolsTestSuite.WorkspaceNotOwnedError is already handled -- a
+    typo in a column name is a usage mistake, and a traceback buries the one sentence that
+    tells the user what to type instead.
+    '''
+
+
+def _near_matches(value: str, candidates, limit: int = 3):
+    '''
+    The candidates a mistyped label most plausibly meant, best first.
+
+    Case-only differences are checked before fuzzy matching, exactly as the --style colormap
+    validator does: difflib compares case-sensitively, so 'Group' against 'group' would
+    otherwise score as a near miss rather than the certain match it is.
+    '''
+    import difflib
+
+    candidates = list(candidates)
+    folded = {str(c).lower(): c for c in candidates}
+    exact_fold = folded.get(str(value).lower())
+    if exact_fold is not None:
+        return [exact_fold]
+    # 0.7, not difflib's 0.6 default, and the same threshold the --style colormap validator
+    # uses. Measured on real labels from the vibrChol1 object, every genuine typo scores >=
+    # 0.75 ('grp'/'group' 0.750, 'goup'/'group' 0.889) and every misleading pairing <= 0.667
+    # ('treatement'/'fragment' 0.667) -- and a confident suggestion of an unrelated column is
+    # worse than offering none.
+    close = difflib.get_close_matches(str(value).lower(), list(folded), n=limit, cutoff=0.7)
+    return [folded[c] for c in close]
+
+
+#: Values listed when a label has no near match, before eliding. Bounded so a column with
+#: hundreds of values cannot turn one error line into a wall of text.
+_AVAILABLE_CAP = 12
+
+
+def _label_candidates(adata: ad.AnnData, domain: str):
+    '''
+    The valid values for one kind of label, sorted.
+
+    A label is not always an obs column: --covtype names an adata.var['coverage'] value, so
+    checking it against obs columns would reject every valid coverage type and suggest
+    nonsense for the invalid ones.
+    '''
+    if domain == 'obs':
+        return sorted(str(c) for c in adata.obs.columns)
+    if domain == 'column':
+        # Any column of the object, either frame -- `tools info --column` accepts both, since
+        # a user asking "what is in this column" has no reason to know which frame holds it.
+        return sorted({str(c) for c in adata.obs.columns} | {str(c) for c in adata.var.columns})
+    if domain == 'coverage':
+        if 'coverage' not in adata.var.columns:
+            return []
+        return sorted({str(v) for v in adata.var['coverage']})
+    if domain == 'readtype':
+        # Bare readtypes, recovered from the count columns this object actually carries --
+        # the same source resolve_readtype() consults, so a readtype that validates here is
+        # one it can resolve. The basis component is stripped because --diffrts/--pcareadtypes
+        # deliberately do not carry it; --allreads sets it once for the whole command.
+        readtypes = set()
+        for column in adata.obs.columns:
+            match = re.fullmatch(r'nreads_(.+?)(_unique)?_norm', str(column))
+            if match:
+                readtypes.add(match.group(1))
+        return sorted(readtypes)
+    if domain == 'readtype_with_basis':
+        # `tools log2fc -r` builds 'nreads_{rt}_norm' directly, so its readtypes DO carry the
+        # basis ('total_unique') -- the opposite of `graph --diffrts`, where --allreads sets
+        # the basis once for the command and a basis-carrying readtype is rejected outright.
+        # Two vocabularies, deliberately: validating either against the other's would reject
+        # every correct value.
+        readtypes = set()
+        for column in adata.obs.columns:
+            match = re.fullmatch(r'nreads_(.+)_norm', str(column))
+            if match:
+                readtypes.add(match.group(1))
+        return sorted(readtypes)
+    raise ValueError(f"Unknown label domain '{domain}'.")
+
+
+def validate_labels(adata: ad.AnnData, requests) -> None:
+    '''
+    Check every CLI label against the object up front, reporting all failures at once.
+
+    `requests` is an iterable of (param_name, value, domain) triples. Batching matters: a
+    command carries a dozen label-valued options, and aborting on the first bad one turns
+    fixing a command line into as many round trips as there are typos.
+    '''
+    problems = []
+    for param_name, value, domain in requests:
+        candidates = _label_candidates(adata, domain)
+        if str(value) in candidates:
+            continue
+        problems.append((param_name, value, _near_matches(value, candidates), candidates))
+    if not problems:
+        return
+    lines = [f'{len(problems)} unknown label{"s" if len(problems) > 1 else ""} for this AnnData object:']
+    for param_name, value, matches, candidates in problems:
+        if matches:
+            hint = f'  did you mean: {", ".join(matches)}?'
+        else:
+            # No near match leaves the message saying only "that is wrong", with nothing to
+            # act on -- so fall back to the vocabulary itself, capped so a 436-value column
+            # cannot turn one error line into a wall of text.
+            available = candidates
+            shown = ', '.join(available[:_AVAILABLE_CAP])
+            if len(available) > _AVAILABLE_CAP:
+                shown += f' ... +{len(available) - _AVAILABLE_CAP} more'
+            hint = f'  available: {shown}' if available else '  (this object carries none)'
+        lines.append(f"  --{param_name} '{value}'{hint}")
+    lines.append('Run `trnagraph tools info -i <object.h5ad>` to list every obs/var column and its values.')
+    raise UnknownLabelError('\n'.join(lines))
+
+
+def resolve_grp_column(adata: ad.AnnData, grp: str, param_name: str) -> str:
+    '''
+    Validate that a user-specified grouping column exists in adata.obs, raising if it does not.
+
+    This used to fall back to 'sample' with a warning, on the reasoning that a typo should
+    degrade a command rather than abort it. That was the wrong trade: the fallback produced a
+    complete, plausible set of figures grouped by a column the user never asked for, and a
+    warning on stderr does not survive a redirected log or a long run. A grouping column is
+    not something to guess at.
+
+    anndataGrapher validates every label up front (see GRAPH_LABEL_PARAMS), so in the CLI
+    path this is a second line of defence. It still matters for the plots*.py modules used
+    standalone and for the Python API, which reach them without the grapher.
     '''
     if grp in adata.obs.columns:
         return grp
-    logger.warning(
-        f'specified {param_name} "{grp}" not found in AnnData object; falling back to "{default}".'
-    )
-    return default
+    validate_labels(adata, [(param_name, grp, 'obs')])
+    return grp
 
 
 def is_trna_feature(feature_name: str) -> bool:

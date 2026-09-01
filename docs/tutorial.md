@@ -355,6 +355,25 @@ processed/trimmed/liver_alkb_1_trimmed.fastq.gz	liver_alkb_1	AlkB	demethylated	l
 processed/trimmed/liver_mock_1_trimmed.fastq.gz	liver_mock_1	untreated	mock	liver
 ```
 
+### Checking what you can group by
+
+Every grouping option below names a column that lives inside the `.h5ad`. Rather than guessing
+one, ask the object:
+
+```bash
+trnagraph tools info -i mm10_armseq/mm10_armseq.h5ad
+```
+
+That lists every `obs` and `var` column with the values it holds, the `uns` keys, and the
+`--variant` strings the object can resolve, so you can see that `treatment` really is a column
+and that its values are `demethylated` and `mock`. Add `--column treatment` to print one
+column's values in full, or `--json` to read it from a script.
+
+This matters because a grouping option that names a column the object does not have **aborts
+the run** rather than falling back to something else -- the run reports every bad label at once,
+with near matches. A silently substituted column would give you a complete, plausible set of
+figures grouped by the wrong thing.
+
 ### Graphing with grouping and colour
 
 ```bash

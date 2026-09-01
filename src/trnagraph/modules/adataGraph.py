@@ -12,6 +12,29 @@ from .lazy_imports import (
     plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
 )
 
+#: Every `graph` option whose value names something inside the AnnData object, with the
+#: vocabulary it is drawn from. Kept as one table so a newly added option is validated by
+#: being listed here rather than by remembering to call a validator at its use site.
+GRAPH_LABEL_PARAMS = (
+    ('clustergrp', 'obs'),
+    ('clusterlabels', 'obs'),
+    ('comparegrp1', 'obs'),
+    ('comparegrp2', 'obs'),
+    ('corrgroup', 'obs'),
+    ('covgrp', 'obs'),
+    ('covobs', 'obs'),
+    ('heatgrp', 'obs'),
+    ('logogrp', 'obs'),
+    ('pcamarkers', 'obs'),
+    ('pcacolors', 'obs'),
+    ('radargrp', 'obs'),
+    ('volgrp', 'obs'),
+    ('covtype', 'coverage'),
+    ('diffrts', 'readtype'),
+    ('pcareadtypes', 'readtype'),
+)
+
+
 class anndataGrapher:
     '''
     Class to generate graphs from an AnnData object by calling the appropriate graphing functions
@@ -45,7 +68,7 @@ class anndataGrapher:
         # Resolve grouping-column args before anything below reads them -- the log2FC
         # precompute a few lines down reads self.args.heatgrp/volgrp directly, ahead of the
         # plots*.py modules that separately validate their own grp argument.
-        self._resolve_grp_args()
+        self._validate_label_args()
         # Load cmap dict for each graph type
         self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
@@ -213,17 +236,32 @@ class anndataGrapher:
         '''
         return [toolsTG.resolve_readtype(rt, self.read_basis, self.adata) for rt in self.args.diffrts]
 
-    def _resolve_grp_args(self):
+    def _validate_label_args(self):
         '''
-        Validate the CLI's grouping-column parameters against the resolved AnnData object
-        once, up front, before any downstream code reads them -- self.args.covgrp/comparegrp1/
-        comparegrp2/heatgrp/volgrp are each read directly (and more than once: the log2FC
-        precompute above, cmap_dict, and the per-plot-type calls in plot()), so resolving them
-        here keeps every call site consistent instead of only patching the plots*.py modules
-        that happen to validate their own grp argument.
+        Check every label-valued option against the resolved AnnData object once, up front,
+        before any downstream code reads them.
+
+        This replaces a fallback that substituted 'sample' for an unrecognised column and
+        carried on: a typo'd --covgrp then produced a complete, plausible set of figures
+        grouped by the wrong thing, which is worse than an error because nothing about the
+        output says so. It also covers every option rather than the five that had a
+        fallback -- --clustergrp, --clusterlabels, --corrgroup, --logogrp, --pcamarkers,
+        --pcacolors and --radargrp were validated nowhere and failed at first use inside
+        pandas, with a message naming neither the flag nor the alternatives.
+
+        Batched deliberately: a graph command carries a dozen of these, so reporting them one
+        at a time turns fixing a command line into as many round trips as there are typos.
         '''
-        for param_name in ('covgrp', 'comparegrp1', 'comparegrp2', 'heatgrp', 'volgrp'):
-            setattr(self.args, param_name, toolsTG.resolve_grp_column(self.adata, getattr(self.args, param_name), param_name))
+        requests = []
+        for param_name, domain in GRAPH_LABEL_PARAMS:
+            value = getattr(self.args, param_name, None)
+            # An unset optional (e.g. --clusterlabels) means "no such dimension", not a
+            # column named None.
+            if value is None:
+                continue
+            values = value if isinstance(value, (list, tuple)) else [value]
+            requests.extend((param_name, v, domain) for v in values if v is not None)
+        toolsTG.validate_labels(self.adata, requests)
 
     def _compute_graph_weight(self, gt):
         '''

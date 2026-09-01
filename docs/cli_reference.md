@@ -272,6 +272,18 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > [!NOTE]
 > `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would emit a skip warning on every ordinary run. See **Compare Options** below.
 
+> [!IMPORTANT]
+> Every option below that names something inside the object -- a grouping column
+> (`--covgrp`, `--volgrp`, `--heatgrp`, `--clustergrp`, `--corrgroup`, `--radargrp`,
+> `--logogrp`, `--pcamarkers`, `--pcacolors`, `--covobs`, `--comparegrp1`/`--comparegrp2`,
+> `--clusterlabels`), a coverage type (`--covtype`), or a readtype (`--diffrts`,
+> `--pcareadtypes`) -- is checked against the object before any plotting begins. An
+> unrecognised value **aborts the run**, reporting every bad label at once with its near
+> matches. It is not substituted for a default: a mistyped grouping column would otherwise
+> produce a complete, plausible set of figures grouped by a column you did not ask for, with
+> nothing in the output to say so. Run [`trnagraph tools info`](#info) to list the valid
+> values for any of them.
+
 **Cluster Plot Options:**
 
 - **`--clustergrp`**: Grouping variable. Default: `amino`.
@@ -377,6 +389,35 @@ Only used by `-g compare`, which `all` does not include.
 
 The `tools` module contains utility functions for specific analysis tasks or testing.
 
+### `info`
+
+Reports what an AnnData object contains: every `obs` and `var` column with its dtype, its
+number of unique values and those values, the `uns` keys, the `layers`/`obsm`/`obsp` slots, and
+the `--variant` strings the object can actually resolve. This is the command to run when you
+need to know what to type after a grouping option such as `--covgrp`, `--volgrp` or `--covtype`
+-- those vocabularies live inside the `.h5ad` and nowhere else.
+
+**Usage:**
+
+```bash
+trnagraph tools info -i <input.h5ad> [options]
+```
+
+**Options:**
+
+- **`-i`, `--input`** (Required): Input `.h5ad` file.
+- **`--column`**: Print one `obs` or `var` column's unique values in full, instead of the whole
+  object. In the default report each column's values are capped at 20 and each individual value
+  is elided past 32 characters, because a column such as `trna` (hundreds of values) or
+  `refseq` (75-90nt sequences) would otherwise bury every column you would actually type.
+- **`--json`**: Emit the report as JSON rather than text, for scripting.
+
+> [!NOTE]
+> Columns that hold measurements rather than labels -- a numeric column with more than 20
+> distinct values, such as `nreads_total_norm` -- are reported as a range instead of an
+> enumeration. A low-cardinality numeric column (an ordered timepoint or dose) keeps its values,
+> since that is a label and is exactly the sort of column a grouping option gets pointed at.
+
 ### `log2fc`
 
 Computes log2 fold change for specified groups and read types.
@@ -388,7 +429,7 @@ trnagraph tools log2fc -i <input.h5ad> [options]
 ```
 
 - **`-i`, `--anndata`** (Required): Input file.
-- **`-g`, `--group`**: Grouping variable from obs. Default: `group`.
+- **`-g`, `--group`**: Grouping variable from obs. Default: `group`. A column that does not exist in the object aborts the run (see the note under [`graph`](#graph)).
 - **`-r`, `--readtypes`**: List of read types to analyze.
 - **`-x`, `--cutoff`**: Read count cutoff(s). Default: `80`.
 - **`-c`, `--config`**: Config file for filtering.
