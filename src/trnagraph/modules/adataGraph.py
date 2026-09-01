@@ -161,7 +161,11 @@ class anndataGrapher:
         try:
             return GraphFilterConfig.model_validate(raw_config)
         except ValidationError as e:
-            raise ValueError(f'Invalid config file {self.args.config}:\n{e}') from e
+            from .toolsSchemas import explain_rejected_keys
+
+            detail = '\n'.join([f'Invalid config file {self.args.config}:', str(e)]
+                               + explain_rejected_keys(e, 'config'))
+            raise toolsTG.InvalidParameterError(detail) from e
 
     def _apply_config_flags(self):
         '''
@@ -302,6 +306,12 @@ class anndataGrapher:
             problems.append(
                 f"--corrmask '{corrmask}' is not one of "
                 f"{', '.join(plotsCorrelation.CORR_MASK_CHOICES)}"
+            )
+        heatorient = getattr(self.args, 'heatorient', None)
+        if heatorient is not None and heatorient not in plotsHeatmap.HEAT_ORIENT_CHOICES:
+            problems.append(
+                f"--heatorient '{heatorient}' is not one of "
+                f"{', '.join(plotsHeatmap.HEAT_ORIENT_CHOICES)}"
             )
         return problems
 
@@ -499,7 +509,7 @@ class anndataGrapher:
             self.logger.info('Generating coverage specificity overview pdf...')
             pcV.generate_partition_overview()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings)
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings, orientation=getattr(self.args, 'heatorient', 'vertical'))
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis, settings=settings).generate_plots()
         if gt == 'mismatch':

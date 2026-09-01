@@ -1,24 +1,5 @@
 {
-  "colors": null,
-  "gradients": {
-    "correlation": null,
-    "significance": null,
-    "score": null,
-    "sequence": null,
-    "ordered": null,
-    "lfc": null
-  },
   "categorical": null,
-  "defaults": {
-    "alpha": null,
-    "dpi": null,
-    "figsize": null,
-    "font_size": null,
-    "format": null,
-    "line_width": null,
-    "marker_size": null,
-    "rasterize_over": null
-  },
   "cluster": {
     "alpha": null,
     "dpi": null,
@@ -28,6 +9,7 @@
     "marker_size": null,
     "rasterize_over": null
   },
+  "colors": null,
   "compare": {
     "dpi": null,
     "figsize": null,
@@ -54,6 +36,24 @@
     "font_size": null,
     "format": null,
     "line_width": null
+  },
+  "defaults": {
+    "alpha": null,
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null,
+    "line_width": null,
+    "marker_size": null,
+    "rasterize_over": null
+  },
+  "gradients": {
+    "correlation": null,
+    "lfc": null,
+    "ordered": null,
+    "score": null,
+    "sequence": null,
+    "significance": null
   },
   "heatmap": {
     "dpi": null,
@@ -93,6 +93,12 @@
     "format": null,
     "line_width": null
   },
+  "trimming": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
   "volcano": {
     "alpha": null,
     "dpi": null,
@@ -101,11 +107,5 @@
     "format": null,
     "marker_size": null,
     "rasterize_over": null
-  },
-  "trimming": {
-    "dpi": null,
-    "figsize": null,
-    "font_size": null,
-    "format": null
   }
 }

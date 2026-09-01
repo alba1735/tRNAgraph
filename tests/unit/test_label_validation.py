@@ -109,7 +109,7 @@ def _valid_args(**overrides):
         heatgrp="group", volgrp="group", clustergrp="amino", clusterlabels=None,
         corrgroup="sample", logogrp="amino", pcamarkers="sample", pcacolors="group",
         radargrp="group", covtype="uniquecoverage",
-        diffrts=["total"], pcareadtypes=["total"], graphtypes=["compare"], corrmask="none",
+        diffrts=["total"], pcareadtypes=["total"], graphtypes=["compare"], corrmask="none", heatorient="vertical",
     )
     args.update(overrides)
     return SimpleNamespace(**args)
@@ -269,3 +269,15 @@ def test_an_unrecognised_corrmask_is_reported_up_front_with_everything_else():
 def test_a_valid_corrmask_passes():
     for value in ("none", "upper", "lower"):
         _make_grapher(_valid_args(corrmask=value, graphtypes=["all"]), _make_adata())._validate_label_args()
+
+
+def test_an_unrecognised_heatorient_is_reported_up_front():
+    """Same reasoning as --corrmask: heatmap is one of ten graph types, and a run should not
+    reach it before rejecting a typo."""
+    grapher = _make_grapher(_valid_args(heatorient="sideways", graphtypes=["all"]), _make_adata())
+
+    with pytest.raises(toolsTG.InvalidParameterError) as raised:
+        grapher._validate_label_args()
+    message = str(raised.value)
+    assert "--heatorient" in message
+    assert "vertical" in message and "horizontal" in message

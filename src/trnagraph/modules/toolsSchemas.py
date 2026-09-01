@@ -161,6 +161,7 @@ class GraphFlags(BaseModel):
     heatcutoff: Optional[int] = None
     heatbound: Optional[int] = None
     heatsubplots: Optional[bool] = None
+    heatorient: Optional[Literal['vertical', 'horizontal']] = None
 
     # pca
     pcamarkers: Optional[str] = None
@@ -566,3 +567,37 @@ class StyleFile(BaseModel):
         if not self.colors or column is None:
             return None
         return self.colors.get(column)
+
+def explain_rejected_keys(exc, file_kind: str):
+    '''
+    Turn pydantic's `extra_forbidden` reports into a sentence naming where the key belongs.
+
+    `--config` and `--style` deliberately share no keys, which is what lets a style file be
+    reused across differently-parameterized runs. The cost is that reaching for the wrong file
+    produces "Extra inputs are not permitted" and nothing else -- true, and useless. A key that
+    is valid in the OTHER file is by far the likeliest mistake, so it is named first; anything
+    else falls back to the nearest valid spelling.
+
+    `file_kind` is 'style' or 'config'. Returns a list of lines to append to the error.
+    '''
+    import difflib
+
+    style_keys = set(StyleBlock.model_fields)
+    flag_keys = set(GraphFlags.model_fields)
+    lines = []
+    for error in exc.errors():
+        if error.get('type') != 'extra_forbidden':
+            continue
+        key = str(error['loc'][-1])
+        if file_kind == 'style' and key in flag_keys:
+            lines.append(f"  '{key}' is a `graph` option, not a presentation setting: put it "
+                         f"in the `flags` block of your --config file instead.")
+        elif file_kind == 'config' and key in style_keys:
+            lines.append(f"  '{key}' is a presentation setting, not a `graph` option: put it "
+                         f"in your --style file instead.")
+        else:
+            valid = style_keys if file_kind == 'style' else flag_keys
+            close = difflib.get_close_matches(key, sorted(valid), n=3, cutoff=0.7)
+            if close:
+                lines.append(f"  '{key}' is not a valid key; did you mean: {', '.join(close)}?")
+    return lines

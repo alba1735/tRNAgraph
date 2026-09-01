@@ -67,7 +67,7 @@ def builder(directory: Union[str, Path]) -> str:
     return output
 
 
-class UsageError(Exception):
+class UsageError(ValueError):
     '''
     The command as typed cannot work, for a reason the user can fix by retyping it.
 
@@ -76,6 +76,9 @@ class UsageError(Exception):
     a mistake in a flag is a usage problem, and a traceback buries the one sentence that tells
     the user what to type instead. usage_error_guard() catches this base, so a new kind of
     usage mistake is rendered correctly by subclassing rather than by editing the CLI.
+
+    Subclasses ValueError so that callers (and tests) written before this hierarchy existed,
+    which catch ValueError from the config/style loaders, keep working unchanged.
     '''
 
 
@@ -538,7 +541,13 @@ def load_style_file(path, logger=None):
     try:
         return StyleFile.model_validate(raw)
     except ValidationError as exc:
-        raise ValueError(f'Invalid style file {path}:\n{exc}') from exc
+        from .toolsSchemas import explain_rejected_keys
+
+        # The pydantic report is kept in full -- it names the exact location, which matters
+        # when several keys are wrong at once -- and the guidance is appended to it.
+        detail = '\n'.join([f'Invalid style file {path}:', str(exc)]
+                           + explain_rejected_keys(exc, 'style'))
+        raise InvalidParameterError(detail) from exc
 
 
 # Built-in presentation defaults, used when a --style file does not set a key. dpi/fonttype

@@ -534,7 +534,7 @@ def graph(
     comparegrp2: str = typer.Option("group", "--comparegrp2", help="AnnData obs column the fold change is taken BETWEEN: one figure is written per pair of this column's values, and within each figure the bars are the --comparegrp1 series. Must name a different column than --comparegrp1"),
     corrmethod: str = typer.Option("pearson", "--corrmethod", help="Specify correlation method"),
     corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
-    corrmask: str = typer.Option("none", "--corrmask", help="Hide one half of each correlation matrix: 'none' (default, the full symmetric matrix), 'upper' or 'lower'. The diagonal is kept either way -- it carries no information, but it anchors each row to its axis label. A masked run writes its files with the mask name appended, so a masked and an unmasked run of the same data can sit side by side"),
+    corrmask: str = typer.Option("none", "--corrmask", help="Hide one half of each correlation matrix: none (default), upper or lower. The diagonal is kept"),
     covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),
     covobs: str = typer.Option("trna", "--covobs", help="Specify the basis for each individual coverage plot"),
     covtype: Optional[str] = typer.Option(None, "--covtype", help="Coverage category to plot. tRAX's four-way read-specificity partition: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino' -- plus 'total' for their sum. Any other adata.var coverage value (readstarts, mismatchedbases, ...) is also accepted. Defaults to 'unique', or to 'total' under --allreads. Each category is written to its own subfolder; the stacked overview of all four sits above them"),
@@ -546,6 +546,7 @@ def graph(
     heatcutoff: int = typer.Option(80, "--heatcutoff", help="Specify readcount cutoff to use for heatmap"),
     heatbound: int = typer.Option(25, "--heatbound", help="Specify range to use for bounding the heatmap to top and bottom counts"),
     heatsubplots: bool = typer.Option(False, "--heatsubplots", help="Specify wether to generate subplots for each comparasion in addition to the sum"),
+    heatorient: str = typer.Option("vertical", "--heatorient", help="Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page"),
     pcamarkers: str = typer.Option("sample", "--pcamarkers", help="Specify AnnData column to use for PCA markers"),
     pcacolors: str = typer.Option("group", "--pcacolors", help="Specify AnnData column to color PCA markers by"),
     pcareadtypes: List[str] = typer.Option(['total'], "--pcareadtypes", help="Specify read types to use for PCA markers. Bare readtypes only -- the read basis is set once for the whole command by --allreads. The combined overview page always compares both bases regardless"),
@@ -583,7 +584,7 @@ def graph(
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, corrmask=corrmask, covgrp=covgrp, covobs=covobs, covtype=covtype,
             covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
-            heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, pcamarkers=pcamarkers, pcacolors=pcacolors,
+            heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, heatorient=heatorient, pcamarkers=pcamarkers, pcacolors=pcacolors,
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
             ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, mismatchpseudocount=mismatchpseudocount,
@@ -721,7 +722,7 @@ def merge(
 @tools_app.command("info", help="Report an AnnData object's columns, keys and the values they contain")
 def info(
     anndata_path: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
-    column: Optional[str] = typer.Option(None, "--column", help="Print one obs/var column's unique values in full instead of the whole object. Values are capped in the default report because a column like 'trna' can carry hundreds"),
+    column: Optional[str] = typer.Option(None, "--column", help="Print one obs/var column's values in full instead of the whole object"),
     json_output: bool = typer.Option(False, "--json", help="Emit the report as JSON instead of text, for scripting"),
 ):
     # Deliberately NOT wrapped in handle_output(): this is a read-only query answering "what
