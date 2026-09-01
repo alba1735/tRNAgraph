@@ -145,6 +145,7 @@ class GraphFlags(BaseModel):
     # correlation
     corrmethod: Optional[str] = None
     corrgroup: Optional[str] = None
+    corrmask: Optional[Literal['none', 'upper', 'lower']] = None
 
     # coverage
     covgrp: Optional[str] = None

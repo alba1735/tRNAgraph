@@ -16,7 +16,33 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title, threaded, settings=None):
+#: Accepted --corrmask values. 'none' draws the full symmetric matrix (the default, and what
+#: every earlier version did); 'upper'/'lower' hide that triangle.
+CORR_MASK_CHOICES = ('none', 'upper', 'lower')
+
+
+def _triangle_mask(df_corr, corr_mask):
+    '''
+    The boolean mask hiding one triangle, or None for the full matrix.
+
+    k=1/k=-1 rather than k=0: the diagonal stays. It is R^2 = 1 by construction and carries
+    no information, but it is the visual anchor tying a row to its axis label, and removing
+    it turns the triangle into a stair-step that is harder to read, not cleaner.
+    '''
+    import numpy as np
+
+    if corr_mask in (None, 'none'):
+        return None
+    if corr_mask == 'upper':
+        return np.triu(np.ones(df_corr.shape, dtype=bool), k=1)
+    if corr_mask == 'lower':
+        return np.tril(np.ones(df_corr.shape, dtype=bool), k=-1)
+    raise toolsTG.InvalidParameterError(
+        f"--corrmask '{corr_mask}' is not one of {', '.join(CORR_MASK_CHOICES)}."
+    )
+
+
+def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title, threaded, settings=None, corr_mask=None):
     '''
     Compute and plot a correlation matrix (R^2 heatmap) from a wide (feature x sample/group)
     dataframe. Only plots when more than 20 samples/groups' worth of signal is present, matching
@@ -37,10 +63,12 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
         logger.info(msg)
 
     df_corr = df_wide.corr(method=corr_method)
+    mask = _triangle_mask(df_corr, corr_mask)
     plt.figure(figsize=toolsTG.figsize_for(settings, (6, 6)))
     # shrink/aspect: the matrix is square and set_box_aspect(1) below keeps it that way, so a
     # default colorbar runs the full figure height and towers over the plot it annotates.
     ax = sns.heatmap(df_corr**2, square=True, cmap=plotsPalette.gradient(settings, 'correlation'),
+                     mask=mask,
                      cbar_kws={'label': f'{corr_method} R^2', 'shrink': 0.5, 'aspect': 30,
                                'pad': 0.02})
     cbar = ax.collections[0].colorbar
@@ -50,6 +78,11 @@ def _plot_corr_matrix(df_wide, corr_method, corr_group, output, filename, title,
     ax.set_ylabel('')
     ax.set_title(f'{corr_method} {corr_group} {title} Correlation Matrix'.title())
     plt.gca().set_box_aspect(1)
+    # A masked and an unmasked run render the same data, so without a token in the name the
+    # second would silently overwrite the first. The DEFAULT keeps its existing filename
+    # exactly, so adding this option relocates nobody's existing output.
+    if mask is not None:
+        filename = f'{filename}_{corr_mask}'
     outpath = f'{output}{filename}.pdf'
     toolsTG.save_current(outpath, settings)
     msg = f'Correlation matrix for {title} saved to {outpath}'
@@ -69,7 +102,7 @@ def _collapse_to_corr_group(df_wide, sample_to_group, corr_group):
         return df_wide
     return df_wide.rename(columns=lambda c: sample_to_group.get(str(c), c)).T.groupby(level=0, observed=True).mean().T
 
-def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
+def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_variant=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None, corr_mask=None):
     '''
     Generate correlation graphs for each sample in an AnnData object.
 
@@ -95,7 +128,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
         df_corr = df.pivot_table(index='trna', columns=corr_group, values=i, observed=True)
         title = i.split('_')[1]
         filename = f'{corr_method}_{corr_group}_{title}_correlation_matrix'
-        threaded = _plot_corr_matrix(df_corr, corr_method, corr_group, output, filename, title, threaded, settings=settings)
+        threaded = _plot_corr_matrix(df_corr, corr_method, corr_group, output, filename, title, threaded, settings=settings, corr_mask=corr_mask)
 
     # Non-tRNA and combined tRNA + non-tRNA correlation matrices. These run automatically
     # alongside the per-readtype matrices above (no separate flag), but only when non-tRNA
@@ -116,7 +149,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
         nontrna_grouped = _collapse_to_corr_group(nontrna_df, sample_to_group, corr_group)
         threaded = _plot_corr_matrix(nontrna_grouped, corr_method, corr_group, output,
                                       f'{corr_method}_{corr_group}_nontrna_correlation_matrix',
-                                      'Non-tRNA RNAs', threaded, settings=settings)
+                                      'Non-tRNA RNAs', threaded, settings=settings, corr_mask=corr_mask)
 
         # Combined correlation: all tRNA reads (total, not unique-only) + non-tRNA RNAs, both
         # normalized against the all-feature-controlled size factors so the two feature sets
@@ -170,7 +203,7 @@ def visualizer(adata, corr_method, corr_group, output, threaded=True, is_full_va
                 combined_grouped = _collapse_to_corr_group(combined_df, sample_to_group, corr_group)
                 threaded = _plot_corr_matrix(combined_grouped, corr_method, corr_group, output,
                                               f'{corr_method}_{corr_group}_allrna_correlation_matrix',
-                                              'All tRNA + Non-tRNA RNAs', threaded, settings=settings)
+                                              'All tRNA + Non-tRNA RNAs', threaded, settings=settings, corr_mask=corr_mask)
 
     if threaded:
         return threaded

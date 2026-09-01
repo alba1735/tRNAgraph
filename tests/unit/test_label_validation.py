@@ -109,7 +109,7 @@ def _valid_args(**overrides):
         heatgrp="group", volgrp="group", clustergrp="amino", clusterlabels=None,
         corrgroup="sample", logogrp="amino", pcamarkers="sample", pcacolors="group",
         radargrp="group", covtype="uniquecoverage",
-        diffrts=["total"], pcareadtypes=["total"], graphtypes=["compare"],
+        diffrts=["total"], pcareadtypes=["total"], graphtypes=["compare"], corrmask="none",
     )
     args.update(overrides)
     return SimpleNamespace(**args)
@@ -250,3 +250,22 @@ def test_the_compare_collision_is_only_a_problem_when_compare_was_requested():
                                           graphtypes=["compare", "pca"]), adata)
     with pytest.raises(toolsTG.InvalidParameterError):
         requested._validate_label_args()
+
+
+def test_an_unrecognised_corrmask_is_reported_up_front_with_everything_else():
+    """--corrmask is checked in the same pass as the labels rather than when the correlation
+    module first draws: a run that plots six graph types before rejecting a typo has already
+    spent the expensive part of the command."""
+    grapher = _make_grapher(_valid_args(corrmask="top", volgrp="grp"), _make_adata())
+
+    with pytest.raises(toolsTG.InvalidParameterError) as raised:
+        grapher._validate_label_args()
+    message = str(raised.value)
+    assert "--corrmask" in message
+    assert "upper" in message and "lower" in message
+    assert "--volgrp" in message, "reported in the same batch as the label problems"
+
+
+def test_a_valid_corrmask_passes():
+    for value in ("none", "upper", "lower"):
+        _make_grapher(_valid_args(corrmask=value, graphtypes=["all"]), _make_adata())._validate_label_args()

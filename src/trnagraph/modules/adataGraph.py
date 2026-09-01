@@ -35,6 +35,12 @@ GRAPH_LABEL_PARAMS = (
 )
 
 
+#: Graph types whose FILENAMES already record the read basis, so a basis directory segment
+#: would only duplicate identical output into a second place. Coverage's filenames carry
+#: --covtype's category; PCA's carry the readtype label, which differs by basis.
+BASIS_IN_FILENAME_TYPES = frozenset({'coverage', 'pca'})
+
+
 class anndataGrapher:
     '''
     Class to generate graphs from an AnnData object by calling the appropriate graphing functions
@@ -288,6 +294,15 @@ class anndataGrapher:
                 f"columns, since the fold change is taken between --comparegrp2 values within "
                 f"each --comparegrp1 value"
             )
+        corrmask = getattr(self.args, 'corrmask', None)
+        if corrmask is not None and corrmask not in plotsCorrelation.CORR_MASK_CHOICES:
+            # Checked here rather than where the matrix is drawn: correlation is one of ten
+            # graph types, so a run can spend most of its time before reaching it, and a typo
+            # should cost nothing.
+            problems.append(
+                f"--corrmask '{corrmask}' is not one of "
+                f"{', '.join(plotsCorrelation.CORR_MASK_CHOICES)}"
+            )
         return problems
 
     def _compute_graph_weight(self, gt):
@@ -340,6 +355,30 @@ class anndataGrapher:
         except Exception:
             pass
         return 1
+
+    def _output_dir_for(self, gt):
+        '''
+        Where one graph type's files go.
+
+        The path names CONTENT, not the flags that were typed: a segment is added only when
+        nothing already in the path distinguishes that output. `--variant` always qualifies,
+        since the same plot of a different normalization is a different picture and no
+        filename records which one it was.
+
+        The read basis qualifies every graph type in BASIS_IN_FILENAME_TYPES, which are the
+        ones whose filenames already name it. Coverage is there because `--covtype` names the
+        category. PCA is there because every filename carries plotsPca._readtype_label()
+        ('total' against 'total_unique') -- and because plotsPca pins the both-bases
+        comparison in OVERVIEW_TRNA_READTYPES so it survives whatever --pcareadtypes asks
+        for, which meant a default run and an --allreads run emitted exactly the same two
+        files into two directories.
+        '''
+        output = self.args.output + '/' + gt + '/'
+        if self.variant_spec.raw != 'norm:full':
+            output += self.variant_spec.raw.replace(':', '_') + '/'
+        if gt not in BASIS_IN_FILENAME_TYPES and self.read_basis != toolsTG.READ_BASIS_UNIQUE:
+            output += self.read_basis + '/'
+        return output
 
     def _plot_wrapper(self, args):
         gt, threaded = args
@@ -426,18 +465,7 @@ class anndataGrapher:
         if self.args.colormap:
             if cmappar in self.args.colormap:
                 colormap = self.args.colormap[cmappar]
-        # Create the output directory (namespaced by --variant when non-default, so different
-        # --variant runs into the same --output don't overwrite each other's files)
-        # The path names CONTENT, not the flags that were typed: a segment is added only when
-        # nothing already in the path distinguishes that output. --variant always qualifies.
-        # The read basis qualifies every graph type EXCEPT coverage, where --covtype already
-        # names the category -- an extra 'allreads/' there would regenerate byte-identical
-        # (and, for coverage, very expensive) plots into a second directory.
-        output = self.args.output + '/' + gt + '/'
-        if self.variant_spec.raw != 'norm:full':
-            output += self.variant_spec.raw.replace(':', '_') + '/'
-        if gt != 'coverage' and self.read_basis != toolsTG.READ_BASIS_UNIQUE:
-            output += self.read_basis + '/'
+        output = self._output_dir_for(gt)
         if threaded:
             threaded += toolsTG.builder(output) + '\n'
         else:
@@ -454,7 +482,7 @@ class anndataGrapher:
         if gt == 'compare':
             threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings)
         if gt == 'correlation':
-            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis, settings=settings)
+            threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis, settings=settings, corr_mask=getattr(self.args, 'corrmask', None))
         if gt == 'count':
             threaded = plotsCount.visualizer(adata_c, self.args.colormap if self.args.colormap else {}, output, threaded=threaded, settings=settings)
         if gt == 'coverage':

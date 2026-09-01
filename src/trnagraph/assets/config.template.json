@@ -48,6 +48,7 @@
     "volcutoff": null,
     "lfcshrink": null,
     "volxlim": null,
-    "vollabels": null
+    "vollabels": null,
+    "corrmask": null
   }
 }
