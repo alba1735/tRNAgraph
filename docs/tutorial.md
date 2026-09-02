@@ -6,13 +6,13 @@ you can download and reproduce exactly, the other two are templates you point at
 
 If you only want to confirm your installation works, stop here and run `trnagraph tools test`,
 which downloads a small bacterial dataset and runs everything end to end without any setup. This
-document is about running the pipeline on *your* data.
+document is about running the pipeline on _your_ data.
 
-| Example | Organism | Method | What it adds |
-| --- | --- | --- | --- |
-| [1](#example-1-the-basic-run) | *S. cerevisiae* (sacCer3) | ARM-seq | The five core commands, start to finish |
-| [2](#example-2-a-more-considered-run) | *M. musculus* (mm10) | ARM-seq | Reference choice, non-tRNA features, grouped comparisons, styling |
-| [3](#example-3-the-full-treatment) | *H. sapiens* (hg38) | OTTR-seq | UMIs and deduplication, read-length splits, config-driven figures |
+| Example                               | Organism                  | Method   | What it adds                                                      |
+| ------------------------------------- | ------------------------- | -------- | ----------------------------------------------------------------- |
+| [1](#example-1-the-basic-run)         | _S. cerevisiae_ (sacCer3) | ARM-seq  | The five core commands, start to finish                           |
+| [2](#example-2-a-more-considered-run) | _M. musculus_ (mm10)      | ARM-seq  | Reference choice, non-tRNA features, grouped comparisons, styling |
+| [3](#example-3-the-full-treatment)    | _H. sapiens_ (hg38)       | OTTR-seq | UMIs and deduplication, read-length splits, config-driven figures |
 
 ---
 
@@ -23,12 +23,12 @@ folded. Both interfere with reverse transcription, so a standard small-RNA proto
 systematically under-reports exactly the molecules you care about. Different methods attack this
 differently, and which one produced your data changes which tRNAgraph outputs are worth reading.
 
-| Method | Approach | What it means for your run |
-| --- | --- | --- |
-| Plain small RNA-seq | No special treatment | Modified positions cause reverse transcription to stop, so tRNA fragments are under-counted and 3′-biased. Nothing in tRNAgraph needs changing; just do not read the fragment landscape as biology. |
-| **ARM-seq** ([DOI](https://doi.org/10.1038/nmeth.3508)) | AlkB demethylase pretreatment removes m¹A, m³C and m¹G before library prep | Run demethylated and untreated samples as two groups. The comparison *is* the experiment, so put it in your metadata and give it to `--volgrp`. `-g mismatch` is the readout. Protocol chapter: [DOI](https://doi.org/10.1007/978-1-4939-6807-7_15) |
-| **DM-tRNA-seq** ([DOI](https://doi.org/10.1038/nmeth.3478)) | Demethylase *plus* a thermostable group II intron reverse transcriptase (TGIRT) | Same as ARM-seq from tRNAgraph's point of view, but the processive RT also reads through structure, so expect more full-length reads. Worth a read-length split (Example 3) to separate them. |
-| **OTTR-seq** ([DOI](https://doi.org/10.1073/pnas.2107900118)) | A retroelement RT that jumps templates, fusing both adapters in one reaction | Low bias and genuinely end-to-end, so 3′ ends are captured faithfully — the CCA end-type breakdown is trustworthy. Often carries UMIs, so see Example 3. |
+| Method                                                        | Approach                                                                        | What it means for your run                                                                                                                                                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plain small RNA-seq                                           | No special treatment                                                            | Modified positions cause reverse transcription to stop, so tRNA fragments are under-counted and 3′-biased. Nothing in tRNAgraph needs changing; just do not read the fragment landscape as biology.                                                 |
+| **ARM-seq** ([DOI](https://doi.org/10.1038/nmeth.3508))       | AlkB demethylase pretreatment removes m¹A, m³C and m¹G before library prep      | Run demethylated and untreated samples as two groups. The comparison _is_ the experiment, so put it in your metadata and give it to `--volgrp`. `-g mismatch` is the readout. Protocol chapter: [DOI](https://doi.org/10.1007/978-1-4939-6807-7_15) |
+| **DM-tRNA-seq** ([DOI](https://doi.org/10.1038/nmeth.3478))   | Demethylase _plus_ a thermostable group II intron reverse transcriptase (TGIRT) | Same as ARM-seq from tRNAgraph's point of view, but the processive RT also reads through structure, so expect more full-length reads. Worth a read-length split (Example 3) to separate them.                                                       |
+| **OTTR-seq** ([DOI](https://doi.org/10.1073/pnas.2107900118)) | A retroelement RT that jumps templates, fusing both adapters in one reaction    | Low bias and genuinely end-to-end, so 3′ ends are captured faithfully — the CCA end-type breakdown is trustworthy. Often carries UMIs, so see Example 3.                                                                                            |
 
 These are four common choices, not a complete list. Every RNA-seq method and every experiment
 differs; treat the table as a starting point for deciding which outputs mean something for your
@@ -42,12 +42,12 @@ A review covering the demethylase-based methods together: [DOI](https://doi.org/
 
 Every run needs four reference inputs for `preprocess makedb`:
 
-| Input | Flag | Where it comes from |
-| --- | --- | --- |
-| Genome FASTA | `-g` | UCSC, Ensembl, ENCODE, NCBI |
+| Input                   | Flag | Where it comes from                |
+| ----------------------- | ---- | ---------------------------------- |
+| Genome FASTA            | `-g` | UCSC, Ensembl, ENCODE, NCBI        |
 | tRNAscan-SE predictions | `-t` | gtRNAdb, in the per-genome tarball |
-| tRNA FASTA | `-r` | gtRNAdb, same tarball |
-| Name map | `-m` | gtRNAdb, same tarball |
+| tRNA FASTA              | `-r` | gtRNAdb, same tarball              |
+| Name map                | `-m` | gtRNAdb, same tarball              |
 
 Three of the four come from one gtRNAdb download, e.g.
 `https://gtrnadb.ucsc.edu/genomes/eukaryota/Scere3/sacCer3-tRNAs.tar.gz`. Unpack it and you have
@@ -58,11 +58,11 @@ everything except the genome.
 gtRNAdb does not use one filename across genomes, and the variants are not interchangeable.
 Look in the tarball before assuming:
 
-| Genome | File to pass to `-t` |
-| --- | --- |
-| sacCer3 | `sacCer3-tRNAs.out-noChrM` |
-| hg38 | `hg38-tRNAs-detailed.out` |
-| mm10 | `mm10-tRNAs-confidence-set.out` — **not** the detailed one; see Example 2 |
+| Genome  | File to pass to `-t`                                                      |
+| ------- | ------------------------------------------------------------------------- |
+| sacCer3 | `sacCer3-tRNAs.out-noChrM`                                                |
+| hg38    | `hg38-tRNAs-detailed.out`                                                 |
+| mm10    | `mm10-tRNAs-confidence-set.out` — **not** the detailed one; see Example 2 |
 
 ### Gotcha 2: chromosome names must match between genome and GTF
 
@@ -75,7 +75,7 @@ Mixing them is easy and the consequences are quiet:
 > and then no read ever matches one — so every non-tRNA count comes back zero and the non-tRNA
 > volcano and PCA panels silently disappear. The only hint is a message at graph time saying
 > "No non-tRNA feature counts found … re-run with `--gtf`", which is actively misleading, because
-> you *did* pass `--gtf`. The tRNA side of the pipeline is driven by the gtRNAdb database rather
+> you _did_ pass `--gtf`. The tRNA side of the pipeline is driven by the gtRNAdb database rather
 > than the GTF, so it looks perfectly healthy throughout.
 
 The fix is to pick one convention and stay in it. Check before you run:
@@ -102,9 +102,9 @@ what fastp infers from a given batch of reads.
 For libraries prepared with the standard Illumina small-RNA chemistry — which covers ARM-seq and
 the OTTR libraries in Example 3 — the sequences are:
 
-| Read | Sequence | Flag |
-| --- | --- | --- |
-| R1 / single-end | `AGATCGGAAGAGCACACGTC` | `-a1` |
+| Read                 | Sequence                | Flag  |
+| -------------------- | ----------------------- | ----- |
+| R1 / single-end      | `AGATCGGAAGAGCACACGTC`  | `-a1` |
 | R2 (paired-end only) | `GATCGTCGGACTGTAGAACTC` | `-a2` |
 
 These are tRAX's own defaults (`trimadapters.py`), which is good provenance: tRAX comes from the
@@ -130,7 +130,7 @@ A wrong pinned adapter is worse than autodetection, so confirm before assuming t
 
 ## Example 1: the basic run
 
-**Dataset:** *Saccharomyces cerevisiae* BY4741, ARM-seq, from the paper that introduced the
+**Dataset:** _Saccharomyces cerevisiae_ BY4741, ARM-seq, from the paper that introduced the
 method (Cozen et al., [DOI](https://doi.org/10.1038/nmeth.3508)). Six runs under SRA accession
 **SRP056032**: three AlkB-treated, three untreated.
 
@@ -157,7 +157,7 @@ done
 
 ### Write the two input files
 
-`config/manifest.tsv` drives trimming. First column is the sample name *and* the output
+`config/manifest.tsv` drives trimming. First column is the sample name _and_ the output
 location; second is the FASTQ:
 
 ```text
@@ -294,14 +294,14 @@ rather than by sample name.
 This is the part worth reading even if you are not working in mouse.
 
 Rodent genomes contain enormous numbers of SINEs — short interspersed elements — that are
-*derived from tRNA genes* and still look like them to tRNAscan-SE. Passing the full prediction
+_derived from tRNA genes_ and still look like them to tRNAscan-SE. Passing the full prediction
 set builds a database mostly composed of things that are not tRNAs, and every real tRNA read then
 multi-maps across hundreds of decoys. Counted in the gtRNAdb mm10 tarball:
 
-| File | Predictions |
-| --- | --- |
-| `mm10-tRNAs-detailed.out` (all) | **40,912** |
-| `mm10-tRNAs-confidence-set.out` (high confidence) | **408** |
+| File                                              | Predictions |
+| ------------------------------------------------- | ----------- |
+| `mm10-tRNAs-detailed.out` (all)                   | **40,912**  |
+| `mm10-tRNAs-confidence-set.out` (high confidence) | **408**     |
 
 A hundredfold difference. The composition says where it comes from: **25,655 of the 40,912 —
 63% — are annotated Ser**, which is the signature of the mouse B2 SINE family, itself derived
@@ -473,7 +473,7 @@ trnagraph analyze build \
 ```
 
 `-c 60` adds `u60` and `o60` variants — fragments under 60 nt and full-length molecules over it —
-into the *same* `.h5ad` as extra layers, each with independently fitted size factors. No separate
+into the _same_ `.h5ad` as extra layers, each with independently fitted size factors. No separate
 files are produced. This is what lets you ask whether a change is in the mature tRNA pool, in the
 fragment pool, or both. Add further cutoffs later with `analyze addsplit -c 50` without
 disturbing what is already there.
@@ -556,15 +556,15 @@ Whichever example you followed, the run leaves you with the same shape of output
 
 Where to look first, by question:
 
-| Question | Where |
-| --- | --- |
-| Did mapping work? | `results/<exp>-mapinfo.txt`; the overall alignment rate printed by `map` |
-| What are my reads? | `graphs/count/` — tRNA versus everything else, per sample |
-| Do replicates agree? | `graphs/pca/` and `graphs/correlation/` — check before trusting anything downstream |
-| What changed between groups? | `graphs/volcano/` and `graphs/heatmap/` |
+| Question                         | Where                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Did mapping work?                | `results/<exp>-mapinfo.txt`; the overall alignment rate printed by `map`                          |
+| What are my reads?               | `graphs/count/` — tRNA versus everything else, per sample                                         |
+| Do replicates agree?             | `graphs/pca/` and `graphs/correlation/` — check before trusting anything downstream               |
+| What changed between groups?     | `graphs/volcano/` and `graphs/heatmap/`                                                           |
 | Where on the tRNA are the reads? | `graphs/coverage/` — the stacked overview at the top shows how much signal is transcript-specific |
-| Are modifications visible? | `graphs/mismatch/` — the payoff for demethylase protocols |
-| Which tRNAs behave alike? | `graphs/cluster/` — requires `analyze cluster` first |
+| Are modifications visible?       | `graphs/mismatch/` — the payoff for demethylase protocols                                         |
+| Which tRNAs behave alike?        | `graphs/cluster/` — requires `analyze cluster` first                                              |
 
 By default every plot is drawn from **unique** reads — reads assigned to exactly one tRNA
 transcript. `--allreads` switches the whole command to all reads at once, deliberately, so two

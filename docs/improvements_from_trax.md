@@ -16,30 +16,30 @@ What changes when you move a tRAX workflow to tRNAgraph. Skim the tables; read t
 
 Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 
-| What | tRAX | tRNAgraph |
-| --- | --- | --- |
-| **Read classification order** | A read overlapping several features was assigned via Python `set` iteration — hash-order dependent, so results varied between runs | Candidates sorted deterministically; same input always gives the same answer |
-| **`avgs.txt` columns** | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast | `baseMean` emitted once under its own name; the per-group means moved to `groupavgs.txt`, one column per group |
-| **`combine.txt` trailing columns** | Per-group medians, labelled with bare group names | Same — previously per-group means under the same labels, so a column-aligned diff compared a mean against a median |
-| **`padjs.txt`** | Holds *unadjusted* p-values despite the name — `analyzecounts.R` takes column 5 of each `results()` object, and column 5 of a DESeq2 results table is `pvalue` | Holds genuine Benjamini-Hochberg `padj` |
-| **`--mincoverage` scope** | Dropped low-count genes from the coverage file, which silently removed them from *every* downstream output | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row |
-| **`mismatch/<exp>-sigmismatch.txt`** | Held BED rows from `getgenomicmismatches.py` — a script tRAX never runs — under the name of a different script's output, with genomic coordinates computed from alignment columns, so they ran past the end of the feature | Split in two: `-sigmismatch.txt` is tRAX's own coverage-row filter, `-sigmismatch.bed` is the positions track with coordinates in sequence space |
-| **`aminocounts` / `anticodoncounts`** | Held unique-read counts, duplicating `unique/` — so no all-reads view existed | Main files hold all reads; `unique/` keeps the unique breakdown and still matches tRAX exactly |
+| What                                  | tRAX                                                                                                                                                                                                                       | tRNAgraph                                                                                                                                        |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Read classification order**         | A read overlapping several features was assigned via Python `set` iteration — hash-order dependent, so results varied between runs                                                                                         | Candidates sorted deterministically; same input always gives the same answer                                                                     |
+| **`avgs.txt` columns**                | Labelled per comparison (`A_B`, `A_C`, `B_C`) but every column holds the same value — DESeq2's `baseMean`, which ignores the contrast                                                                                      | `baseMean` emitted once under its own name; the per-group means moved to `groupavgs.txt`, one column per group                                   |
+| **`combine.txt` trailing columns**    | Per-group medians, labelled with bare group names                                                                                                                                                                          | Same — previously per-group means under the same labels, so a column-aligned diff compared a mean against a median                               |
+| **`padjs.txt`**                       | Holds _unadjusted_ p-values despite the name — `analyzecounts.R` takes column 5 of each `results()` object, and column 5 of a DESeq2 results table is `pvalue`                                                             | Holds genuine Benjamini-Hochberg `padj`                                                                                                          |
+| **`--mincoverage` scope**             | Dropped low-count genes from the coverage file, which silently removed them from _every_ downstream output                                                                                                                 | Renamed `--minfeaturereads`; affects only the VST dispersion-trend fit. Every gene keeps a full coverage row                                     |
+| **`mismatch/<exp>-sigmismatch.txt`**  | Held BED rows from `getgenomicmismatches.py` — a script tRAX never runs — under the name of a different script's output, with genomic coordinates computed from alignment columns, so they ran past the end of the feature | Split in two: `-sigmismatch.txt` is tRAX's own coverage-row filter, `-sigmismatch.bed` is the positions track with coordinates in sequence space |
+| **`aminocounts` / `anticodoncounts`** | Held unique-read counts, duplicating `unique/` — so no all-reads view existed                                                                                                                                              | Main files hold all reads; `unique/` keeps the unique breakdown and still matches tRAX exactly                                                   |
 
 ---
 
 ## Improvements
 
-| Area | tRAX | tRNAgraph | Why |
-| --- | --- | --- | --- |
-| Differential expression | R `DESeq2` via subprocess | `PyDESeq2`, in-process | Drops the R dependency, and results land straight in the AnnData object instead of being parsed back from text |
-| Variance stabilisation | `rlog` | VST | DESeq2's own documentation recommends VST over rlog for anything but small sample counts, because rlog costs far more to compute |
-| Trimming | `cutadapt` / `SeqPrep` | `fastp` | One tool covering adapter and quality trimming instead of two |
-| Size factors | Computed from all features | Computed from tRNAs only. The all-feature set is still written, as `<exp>-allfeature_SizeFactors.txt` | Non-tRNA abundance can shift independently of tRNAs, which distorts tRNA normalisation when both go into the same reference set |
-| Mismatch data | Per-position detail only via an R script | Stored at full per-position granularity in the AnnData object, and plotted natively by `graph -g mismatch` | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary |
-| Misincorporation rate | `mismatchedbases / (coverage + 10)` computed from size-factor-normalized coverage | Same formula, computed from raw counts; the pseudocount is tunable with `--mismatchpseudocount` | The size factor cancels in `m/c` but not in `m/(c + 10)`, so on normalized values the pseudocount is worth `10 x sizefactor` — a tenfold range across a real dataset — and, since the rate is maximized across samples, that biased the plot toward whichever sample had the smallest size factor |
-| Fold-change shrinkage | DESeq2's `betaPrior=TRUE` | apeGLM, on by default; `--shrink none` turns it off | Shrunk fold changes were tRAX's behaviour, so unshrunken estimates were a silent divergence as well as noisier for low-count features. PyDESeq2 implements apeGLM rather than `betaPrior`, so the estimator differs even though both shrink |
-| Read basis in plots | Each plot picked its own — some unique reads, some all reads, with nothing on the figure saying which | Every graph type uses unique (transcript-specific) reads by default; `--allreads` switches the whole command at once | Two plots of one dataset can no longer rest on different denominators without saying so |
+| Area                    | tRAX                                                                                                  | tRNAgraph                                                                                                            | Why                                                                                                                                                                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Differential expression | R `DESeq2` via subprocess                                                                             | `PyDESeq2`, in-process                                                                                               | Drops the R dependency, and results land straight in the AnnData object instead of being parsed back from text                                                                                                                                                                                    |
+| Variance stabilisation  | `rlog`                                                                                                | VST                                                                                                                  | DESeq2's own documentation recommends VST over rlog for anything but small sample counts, because rlog costs far more to compute                                                                                                                                                                  |
+| Trimming                | `cutadapt` / `SeqPrep`                                                                                | `fastp`                                                                                                              | One tool covering adapter and quality trimming instead of two                                                                                                                                                                                                                                     |
+| Size factors            | Computed from all features                                                                            | Computed from tRNAs only. The all-feature set is still written, as `<exp>-allfeature_SizeFactors.txt`                | Non-tRNA abundance can shift independently of tRNAs, which distorts tRNA normalisation when both go into the same reference set                                                                                                                                                                   |
+| Mismatch data           | Per-position detail only via an R script                                                              | Stored at full per-position granularity in the AnnData object, and plotted natively by `graph -g mismatch`           | Keeps the per-position detail queryable for misincorporation work, rather than only as a rendered summary                                                                                                                                                                                         |
+| Misincorporation rate   | `mismatchedbases / (coverage + 10)` computed from size-factor-normalized coverage                     | Same formula, computed from raw counts; the pseudocount is tunable with `--mismatchpseudocount`                      | The size factor cancels in `m/c` but not in `m/(c + 10)`, so on normalized values the pseudocount is worth `10 x sizefactor` — a tenfold range across a real dataset — and, since the rate is maximized across samples, that biased the plot toward whichever sample had the smallest size factor |
+| Fold-change shrinkage   | DESeq2's `betaPrior=TRUE`                                                                             | apeGLM, on by default; `--shrink none` turns it off                                                                  | Shrunk fold changes were tRAX's behaviour, so unshrunken estimates were a silent divergence as well as noisier for low-count features. PyDESeq2 implements apeGLM rather than `betaPrior`, so the estimator differs even though both shrink                                                       |
+| Read basis in plots     | Each plot picked its own — some unique reads, some all reads, with nothing on the figure saying which | Every graph type uses unique (transcript-specific) reads by default; `--allreads` switches the whole command at once | Two plots of one dataset can no longer rest on different denominators without saying so                                                                                                                                                                                                           |
 
 ---
 
@@ -58,41 +58,41 @@ Cases where tRAX's behaviour was wrong and tRNAgraph does not reproduce it.
 
 ### Flag changes
 
-| tRAX / old tRNAgraph | Now | Note |
-| --- | --- | --- |
-| `--uniqueonly` | *(removed)* | Multi-mapped reads are always excluded from coverage, which is what tRAX did in practice |
-| `--mincoverage` | `--minfeaturereads` | Also re-scoped — see Bug fixes |
-| `--dumpother` | `--filterother` | Rename only |
-| `--lazy` | `--force-remap` | Sense inverted: remapping is now the thing you opt into |
-| `--nofrag` | *(removed)* | |
-| `--nosizefactors` | *(removed)* | Was broken |
-| `--maponly` | *(removed)* | From `tools test` |
-| `--diffrts total_unique` | `--diffrts total` + `--allreads` | The read basis moved out of the readtype and onto one command-wide flag, so graph types cannot disagree |
-| `--pcareadtypes total_unique total` | `--pcareadtypes total` | Same change. The PCA and volcano overview pages still show both bases side by side |
-| `--lfcshrink` / `--no-lfcshrink` | `--shrink apeGLM\|none` | One flag naming the estimator instead of a boolean pair, so a further method can be added without changing its shape |
-| manual `umi_tools dedup` + `--lazyremap` | `preprocess map --dedup` | Deduplication is now a phase of mapping rather than a step outside the pipeline |
+| tRAX / old tRNAgraph                     | Now                              | Note                                                                                                                 |
+| ---------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--uniqueonly`                           | _(removed)_                      | Multi-mapped reads are always excluded from coverage, which is what tRAX did in practice                             |
+| `--mincoverage`                          | `--minfeaturereads`              | Also re-scoped — see Bug fixes                                                                                       |
+| `--dumpother`                            | `--filterother`                  | Rename only                                                                                                          |
+| `--lazy`                                 | `--force-remap`                  | Sense inverted: remapping is now the thing you opt into                                                              |
+| `--nofrag`                               | _(removed)_                      |                                                                                                                      |
+| `--nosizefactors`                        | _(removed)_                      | Was broken                                                                                                           |
+| `--maponly`                              | _(removed)_                      | From `tools test`                                                                                                    |
+| `--diffrts total_unique`                 | `--diffrts total` + `--allreads` | The read basis moved out of the readtype and onto one command-wide flag, so graph types cannot disagree              |
+| `--pcareadtypes total_unique total`      | `--pcareadtypes total`           | Same change. The PCA and volcano overview pages still show both bases side by side                                   |
+| `--lfcshrink` / `--no-lfcshrink`         | `--shrink apeGLM\|none`          | One flag naming the estimator instead of a boolean pair, so a further method can be added without changing its shape |
+| manual `umi_tools dedup` + `--lazyremap` | `preprocess map --dedup`         | Deduplication is now a phase of mapping rather than a step outside the pipeline                                      |
 
 **Read names carry UMIs with an underscore.** `preprocess trim -u N` now pins fastp's UMI delimiter to `_` (fastp's own default is `:`), matching what `umi_tools` produces on the `--umi3` path and what `umi_tools dedup` expects. FASTQs trimmed by an earlier version keep their colons and still deduplicate — the separator is detected from the BAM — but read names differ between versions, so do not mix trimmed output from both in one experiment.
 
-`--skip-env-check` and `--skip-update-check` are *global* options — they go before the subcommand (`trnagraph --skip-env-check analyze build ...`).
+`--skip-env-check` and `--skip-update-check` are _global_ options — they go before the subcommand (`trnagraph --skip-env-check analyze build ...`).
 
 ### Outputs tRAX produces that tRNAgraph does not
 
-| File | Why |
-| --- | --- |
-| `trimindex.txt` | fastp uses a different manifest convention |
-| `Rlog-<exp>.txt` | Captured R subprocess output; there is no R subprocess |
+| File                     | Why                                                                     |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `trimindex.txt`          | fastp uses a different manifest convention                              |
+| `Rlog-<exp>.txt`         | Captured R subprocess output; there is no R subprocess                  |
 | `positionmismatches.txt` | Was generated by an R script. The data is in the AnnData object instead |
 
 ### Where numbers differ
 
-| Output | Difference | Why |
-| --- | --- | --- |
-| `typecounts`, `readlengths`, `anticodoncounts`, `aminocounts` | ~0.1–0.5% of reads | Deterministic classification replacing tRAX's hash-order-dependent version |
-| `dispersions`, some `combine.txt` values | Small | PyDESeq2 vs. R DESeq2 |
-| `SizeFactors.txt` | Different basis | tRNA-controlled rather than all-feature. Compare against `<exp>-allfeature_SizeFactors.txt` for a like-for-like check |
-| `coverage`, `pretRNAcoverage` | Extra features present | tRAX dropped genes below `--mincoverage`; tRNAgraph keeps them |
-| BAMs and everything downstream | Varies | fastp vs. cutadapt/SeqPrep produce slightly different read sets |
+| Output                                                        | Difference             | Why                                                                                                                   |
+| ------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `typecounts`, `readlengths`, `anticodoncounts`, `aminocounts` | ~0.1–0.5% of reads     | Deterministic classification replacing tRAX's hash-order-dependent version                                            |
+| `dispersions`, some `combine.txt` values                      | Small                  | PyDESeq2 vs. R DESeq2                                                                                                 |
+| `SizeFactors.txt`                                             | Different basis        | tRNA-controlled rather than all-feature. Compare against `<exp>-allfeature_SizeFactors.txt` for a like-for-like check |
+| `coverage`, `pretRNAcoverage`                                 | Extra features present | tRAX dropped genes below `--mincoverage`; tRNAgraph keeps them                                                        |
+| BAMs and everything downstream                                | Varies                 | fastp vs. cutadapt/SeqPrep produce slightly different read sets                                                       |
 
 ---
 

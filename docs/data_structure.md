@@ -93,11 +93,11 @@ tRNAgraph inherits normalization logic from DESeq2.
 
 To ensure reproducibility and allow for on-the-fly re-normalization, data is stored in multiple states:
 
-| Layer                            | Accessor                           | Description                                                                                                                |
-| :------------------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
-| **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default. |
-| **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.      |
-| **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                               |
+| Layer                            | Accessor                           | Description                                                                                                                      |
+| :------------------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| **Normalized (tRNA-controlled)** | `adata.X`                          | Float32. Coverage depth normalized by tRNA/tRX-controlled sample size factors (default). Used for all plotting by default.       |
+| **Normalized (all-feature)**     | `adata.layers["norm_allfeatures"]` | Float32. Coverage depth normalized by all-feature-controlled sample size factors, for comparison against the default.            |
+| **Raw**                          | `adata.layers["raw"]`              | Int64. Raw alignment counts derived directly from BAM files.                                                                     |
 | **VST**                          | `adata.layers["vst"]`              | Float32 (if built, see `--vst`). Variance-stabilized coverage, every feature always gets a value; see `--minfeaturereads` below. |
 
 `--minfeaturereads` (default `30`) affects **only** `adata.layers["vst"]`: a tRNA gene whose total raw read count (summed across all its samples) falls below this threshold is excluded from influencing the VST dispersion-trend fit itself (so a handful of noisy, low-coverage features can't distort the trend curve used for every other feature), but the resulting fit is still applied to that gene's own counts like any other, so it still gets a full VST value — nothing is ever dropped from `adata.X`/`adata.layers["raw"]`/`adata.obs`, or from any counting/DE/volcano/heatmap path. Which genes were excluded from the fit is recorded per-obs-row on `adata.obs['vst_fit_excluded']` (`True`/`False`).
@@ -106,7 +106,7 @@ To ensure reproducibility and allow for on-the-fly re-normalization, data is sto
 
 A tRNAgraph object can hold the full (unsplit) dataset alongside one or more **read-length split variants** — e.g. reads under 60bp and reads 60bp-and-over — all within the same object. `trnagraph analyze build --readlengthsplit N` adds an under/over cutoff pair (tagged `u<N>`/`o<N>`) at build time; `trnagraph analyze addsplit -c N` adds further cutoffs to an existing object later, without disturbing variants already present. See [CLI Reference: addsplit](cli_reference.md#addsplit).
 
-Because a length split only changes *which reads* contribute to coverage — it doesn't add a new tRNA or sample — each variant reuses the object's existing `obs`/`var` shape and is stored as a set of additional, tag-suffixed entries:
+Because a length split only changes _which reads_ contribute to coverage — it doesn't add a new tRNA or sample — each variant reuses the object's existing `obs`/`var` shape and is stored as a set of additional, tag-suffixed entries:
 
 - **Layers**: each of `raw`/`norm` (the default-normalized data — this can't reuse `adata.X`, since `.X` is singular and already holds the full/unsplit default)/`vst` (if built) has a `_<tag>` suffixed sibling per variant, e.g. `adata.layers['raw_u60']`, `adata.layers['norm_u60']`, `adata.layers['vst_u60']`. `<tag>` is `u<N>` (under) or `o<N>` (over). There is deliberately **no** `norm_allfeatures_<tag>`: see the note on split variants and non-tRNA features below.
 - **`adata.obsm['size_split_<tag>']`**: a single DataFrame, indexed identically to `adata.obs`, holding every per-obs numeric column that variant needs (`deseq2_sizefactor`, `nreads_<readtype>_raw`/`_norm`, etc.) under the exact same (unsuffixed) column names used in the default `adata.obs` — and, once `analyze cluster --variant norm:<tag>` has been run for that variant, its cluster labels/UMAP coordinates too. `adata.obs` itself holds only the full/default variant's numeric columns; identity columns (`trna`, `sample`, `group`, `amino`, ...) are shared across all variants.
@@ -128,18 +128,18 @@ A single `--variant <norm>:<tag>` flag (default `norm:full`) on `graph`, `analyz
 
 `trnagraph analyze build` always runs DESeq2 twice on the main feature matrix and writes both sets of outputs to disk before they're loaded into the `.h5ad`. The default (tRNA-controlled) run's files keep their original, unprefixed names at the top of `results/<exp>/`; the secondary (all-feature-controlled) run's files live in an `allfeature/` subdirectory with an `allfeature_` filename prefix:
 
-| Output                           | Default (tRNA-controlled) — `results/<exp>/` | Secondary (all-feature) — `results/<exp>/allfeature/` |
-| :------------------------------- | :------------------------------------------- | :---------------------------------------------------- |
-| Size factors                     | `<exp>-SizeFactors.txt`                      | `<exp>-allfeature_SizeFactors.txt`                    |
-| Normalized counts                | `<exp>-normalizedreadcounts.txt`             | `<exp>-allfeature_normalizedreadcounts.txt`           |
-| Dispersions                      | `<exp>-dispersions.txt`                      | `<exp>-allfeature_dispersions.txt`                    |
-| Mean normalized count (`baseMean`) | `<exp>-avgs.txt`                           | `<exp>-allfeature_avgs.txt`                          |
-| Per-group avgs                   | `<exp>-groupavgs.txt`                        | `<exp>-allfeature_groupavgs.txt`                      |
-| Per-group medians                | `<exp>-medians.txt`                          | `<exp>-allfeature_medians.txt`                        |
-| Adjusted p-values                | `<exp>-padjs.txt`                            | `<exp>-allfeature_padjs.txt`                          |
-| Log2 fold changes                | `<exp>-logvals.txt`                          | `<exp>-allfeature_logvals.txt`                        |
-| Combined DE summary              | `<exp>-combine.txt`                          | `<exp>-allfeature_combine.txt`                        |
-| Pairwise DE (if `--pairs` given) | `de_results/<cond1>_vs_<cond2>.txt`          | `allfeature/de_results/<cond1>_vs_<cond2>.txt`        |
+| Output                             | Default (tRNA-controlled) — `results/<exp>/` | Secondary (all-feature) — `results/<exp>/allfeature/` |
+| :--------------------------------- | :------------------------------------------- | :---------------------------------------------------- |
+| Size factors                       | `<exp>-SizeFactors.txt`                      | `<exp>-allfeature_SizeFactors.txt`                    |
+| Normalized counts                  | `<exp>-normalizedreadcounts.txt`             | `<exp>-allfeature_normalizedreadcounts.txt`           |
+| Dispersions                        | `<exp>-dispersions.txt`                      | `<exp>-allfeature_dispersions.txt`                    |
+| Mean normalized count (`baseMean`) | `<exp>-avgs.txt`                             | `<exp>-allfeature_avgs.txt`                           |
+| Per-group avgs                     | `<exp>-groupavgs.txt`                        | `<exp>-allfeature_groupavgs.txt`                      |
+| Per-group medians                  | `<exp>-medians.txt`                          | `<exp>-allfeature_medians.txt`                        |
+| Adjusted p-values                  | `<exp>-padjs.txt`                            | `<exp>-allfeature_padjs.txt`                          |
+| Log2 fold changes                  | `<exp>-logvals.txt`                          | `<exp>-allfeature_logvals.txt`                        |
+| Combined DE summary                | `<exp>-combine.txt`                          | `<exp>-allfeature_combine.txt`                        |
+| Pairwise DE (if `--pairs` given)   | `de_results/<cond1>_vs_<cond2>.txt`          | `allfeature/de_results/<cond1>_vs_<cond2>.txt`        |
 
 The default (tRNA-controlled) size factors and normalized counts are what get read back into the `.h5ad` (`adata.uns['deseq2_sizefactors_trna']`, `adata.X`); the all-feature-controlled size factors are also read back in as `adata.uns['deseq2_sizefactors_allfeatures']` and used to derive `adata.layers['norm_allfeatures']`. The rest of the `allfeature/`-prefixed files (dispersions, avgs, groupavgs, medians, padjs, logvals, combine, pairwise DE) are written to disk for reference/comparison but are not loaded into the `.h5ad` object. This mirrors the existing pattern used for the tRNA-only-matrix DESeq2 run, whose outputs live under `results/<exp>/trna/`.
 
@@ -236,38 +236,38 @@ Keeping this data in `obsm`/`obsp` rather than as additional `obs` columns keeps
 
 The `var` dataframe defines the **dimensions of the coverage tracks**. It represents the canonical structural positions of the tRNA molecule.
 
-| Column      | Type     | Description                                                                                                                 |
-| :---------- | :------- | :-------------------------------------------------------------------------------------------------------------------------- |
-| `positions` | Int      | Canonical [Sprinzl Coordinates](http://trna.ucsc.edu/tRNAscan-SE/Sprinzl.html) (Standardized 1-76 numbering).               |
-| `gap`       | Boolean  | `True` if the position is a gap in the standard alignment (e.g., variable loop region in a short tRNA). Used to mask plots. |
-| `coverage`  | Category | The specific data track type (see below).                                                                                   |
-| `half`      | Category | Which half of the tRNA the position falls in: `fiveprime`, `center`, or `threeprime`.                                        |
-| `location`  | Category | Structural region (see [Structural Regions](#structural-regions) below).                                                    |
-| `location_code` | Category | The region's short code from the same scheme, e.g. `5P1`, `L4`, `P4`. Unset only for position `-1`.                     |
+| Column          | Type     | Description                                                                                                                 |
+| :-------------- | :------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| `positions`     | Int      | Canonical [Sprinzl Coordinates](http://trna.ucsc.edu/tRNAscan-SE/Sprinzl.html) (Standardized 1-76 numbering).               |
+| `gap`           | Boolean  | `True` if the position is a gap in the standard alignment (e.g., variable loop region in a short tRNA). Used to mask plots. |
+| `coverage`      | Category | The specific data track type (see below).                                                                                   |
+| `half`          | Category | Which half of the tRNA the position falls in: `fiveprime`, `center`, or `threeprime`.                                       |
+| `location`      | Category | Structural region (see [Structural Regions](#structural-regions) below).                                                    |
+| `location_code` | Category | The region's short code from the same scheme, e.g. `5P1`, `L4`, `P4`. Unset only for position `-1`.                         |
 
 ### Structural Regions
 
 `location` and `location_code` follow tRNAscan-SE's own region definitions, so tRNAgraph's annotation agrees with tRNAscan-SE, tRAX and tDRnamer rather than using a parallel vocabulary. The acceptor stem is positions 1-7 paired with 66-72; the discriminator base and CCA tail are a separate region, not part of the stem.
 
-| `location` | `location_code` | Positions | Region |
-| --- | --- | --- | --- |
-| `fiveprime_extra` | *(unset)* | -1 | 5' extra base (e.g. the G-1 of tRNA-His). Absent from bacterial position tables. |
-| `fiveprime_acceptorstem` | `5P1` | 1-7 | 5' acceptor stem |
-| `a_to_d_internal` | `L1` | 8-9 | Acceptor-arm to D-arm linker |
-| `fiveprime_dstem` | `5P2` | 10-13 | 5' D-arm |
-| `dloop` | `L2` | 14-21, 17a, 20a, 20b | D-loop |
-| `threeprime_dstem` | `3P2` | 22-25 | 3' D-arm |
-| `d_to_anticodon_internal` | `L3` | 26 | D-arm to anticodon-arm linker |
-| `fiveprime_anticodonstem` | `5P3` | 27-31 | 5' anticodon stem |
-| `anticodonloop` | `L4` | 32-38 | Anticodon loop |
-| `threeprime_anticodonstem` | `3P3` | 39-43 | 3' anticodon stem |
-| `variableloop` | `L5` | 44-48 | Variable loop |
-| `variablestem` | `P4` | e-series | Variable stem |
-| `fiveprime_tstem` | `5P5` | 49-53 | 5' T-arm |
-| `tloop` | `L6` | 54-60 | T-psi-C loop |
-| `threeprime_tstem` | `3P5` | 61-65 | 3' T-arm |
-| `threeprime_acceptorstem` | `3P1` | 66-72 | 3' acceptor stem |
-| `threeprime_end` | `L7` | 73-76 | Discriminator base (73) and CCA tail (74-76) |
+| `location`                 | `location_code` | Positions            | Region                                                                           |
+| -------------------------- | --------------- | -------------------- | -------------------------------------------------------------------------------- |
+| `fiveprime_extra`          | _(unset)_       | -1                   | 5' extra base (e.g. the G-1 of tRNA-His). Absent from bacterial position tables. |
+| `fiveprime_acceptorstem`   | `5P1`           | 1-7                  | 5' acceptor stem                                                                 |
+| `a_to_d_internal`          | `L1`            | 8-9                  | Acceptor-arm to D-arm linker                                                     |
+| `fiveprime_dstem`          | `5P2`           | 10-13                | 5' D-arm                                                                         |
+| `dloop`                    | `L2`            | 14-21, 17a, 20a, 20b | D-loop                                                                           |
+| `threeprime_dstem`         | `3P2`           | 22-25                | 3' D-arm                                                                         |
+| `d_to_anticodon_internal`  | `L3`            | 26                   | D-arm to anticodon-arm linker                                                    |
+| `fiveprime_anticodonstem`  | `5P3`           | 27-31                | 5' anticodon stem                                                                |
+| `anticodonloop`            | `L4`            | 32-38                | Anticodon loop                                                                   |
+| `threeprime_anticodonstem` | `3P3`           | 39-43                | 3' anticodon stem                                                                |
+| `variableloop`             | `L5`            | 44-48                | Variable loop                                                                    |
+| `variablestem`             | `P4`            | e-series             | Variable stem                                                                    |
+| `fiveprime_tstem`          | `5P5`           | 49-53                | 5' T-arm                                                                         |
+| `tloop`                    | `L6`            | 54-60                | T-psi-C loop                                                                     |
+| `threeprime_tstem`         | `3P5`           | 61-65                | 3' T-arm                                                                         |
+| `threeprime_acceptorstem`  | `3P1`           | 66-72                | 3' acceptor stem                                                                 |
+| `threeprime_end`           | `L7`            | 73-76                | Discriminator base (73) and CCA tail (74-76)                                     |
 
 Which regions actually appear depends on `--orgmode`: bacterial position tables have no `-1`, and the number of variable-stem positions differs per domain.
 
@@ -278,7 +278,7 @@ The `coverage` column in `var` is critical for filtering `adata.X`. It distingui
 **Read specificity.** Every read is binned into exactly one of four categories by how specifically it could be assigned. They are mutually exclusive and sum to `coverage`, so they partition the signal rather than filtering it — plot them together with `graph -g coverage` (see `--covtype` in the [CLI reference](cli_reference.md)).
 
 - **`coverage`**: Total depth at this position — the sum of the four categories below.
-- **`uniquecoverage`**: Reads assigned to exactly one tRNA transcript ("Transcript Specific"). Note this is *transcript* specificity, not genome-level uniqueness; the genome MAPQ filter is applied separately and always.
+- **`uniquecoverage`**: Reads assigned to exactly one tRNA transcript ("Transcript Specific"). Note this is _transcript_ specificity, not genome-level uniqueness; the genome MAPQ filter is applied separately and always.
 - **`multitrnacoverage`**: Reads matching one anticodon but several transcripts ("Isodecoder Specific").
 - **`multianticodoncoverage`**: Reads matching one amino acid but several anticodons ("Isotype Specific").
 - **`multiaminocoverage`**: Reads matching several amino acids ("Not Amino Specific").
@@ -334,7 +334,7 @@ Diagnostics computed at `analyze build`. Each is also written as a tab-separated
 
 - `replicate_correlation`: Per-sample table — `sample`, `group`, `mean_r2_within_group`, `mean_r2_other_groups`, `n_replicates`. A sample whose within-group r² sits well below its peers' is the one to question before trusting anything downstream.
 - `replicate_correlation_pairs`: Every sample pair with its r² and whether the two share a group.
-- `replicate_correlation_summary`: `within_mean`, `between_mean`, `separation` (within − between), and the pair counts. **`separation` is the headline number**: it says whether the declared grouping is visible in the counts at all. It is also the objective test of whether a processing step helped — removing a technical artifact should *widen* it, since replicates become more alike while genuinely different conditions do not. `n_within_pairs` of 0 means every sample is its own group, which is the default `trim_metadata.tsv` mistake rather than a real design.
+- `replicate_correlation_summary`: `within_mean`, `between_mean`, `separation` (within − between), and the pair counts. **`separation` is the headline number**: it says whether the declared grouping is visible in the counts at all. It is also the objective test of whether a processing step helped — removing a technical artifact should _widen_ it, since replicates become more alike while genuinely different conditions do not. `n_within_pairs` of 0 means every sample is its own group, which is the default `trim_metadata.tsv` mistake rather than a real design.
 
 Computed on `log1p`-transformed normalized counts. tRNA abundance spans orders of magnitude, so on raw counts Pearson r would be dominated by whichever few transcripts are most abundant and every pair of samples would look near-identical regardless of grouping.
 

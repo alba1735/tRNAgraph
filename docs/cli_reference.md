@@ -116,7 +116,7 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 > - **`positions` and `reads_per_position`** together separate a deeply-sequenced library from a low-complexity one. Few positions with low reads each means the library itself was limited, which deduplication cannot fix and more sequencing will not either.
 > - **`max_umis_per_position`** read against your UMI's own ceiling (4ⁿ for an n-base UMI; 16,384 for 7 nt) says whether the tag space is saturating. As it approaches that ceiling, deduplicated counts at the deepest features measure UMI diversity rather than molecule count, and dynamic range compresses.
 >
-> Pair it with `results/<exp>-replicatecorrelation.txt` from `analyze build`: deduplication should *widen* the gap between within-group and between-group correlation, because it removes a technical artifact. A run where that gap narrows is a warning that it removed signal instead.
+> Pair it with `results/<exp>-replicatecorrelation.txt` from `analyze build`: deduplication should _widen_ the gap between within-group and between-group correlation, because it removes a technical artifact. A run where that gap narrows is a warning that it removed signal instead.
 
 > [!IMPORTANT]
 > The number of threads used for mapping is highly system dependent. Bowtie2 can be memory intensive, and using too many threads can cause the system to run out of memory or lose performance because of overhead. It is recommended to use a number of threads that is appropriate for your system's available memory and CPU cores although between 8-10 has been commonly used on high performance machines as an optimal range and starting point.
@@ -390,10 +390,11 @@ Only used by `-g compare`, which `all` does not include.
 - **`--diffrts`**: Read types for differential analysis (shared with volcano). Bare readtypes only (`total`, `wholecounts`, `fiveprime`, `threeprime`, `other`) — the read basis comes from `--allreads`, so a value carrying a `_unique` suffix is rejected. Default: all five.
 - **`--heatcutoff`**: Read count cutoff. Default: `80`.
 - **`--heatbound`**: How many features to show from each end of the ranking — the heatmap is bounded to the top and bottom N counts rather than rendering every feature. Default: `25`.
+
 > [!NOTE]
 > On the **combined** heatmap (`<grp>_combine_..._heatmap.pdf`), each row label carries a marker showing which read type it came from — ● 5′, ■ 3′, ▲ other, ◆ whole, ✕ pre-tRNA — with a legend below the panels. That file stacks every `--diffrts` read type except `total`, so one tRNA appears once per read type under the same name; sorting is by effect size, so the copies scatter. The per-read-type heatmaps carry no markers, since every row there is the same read type.
 
-- **`--heatorient`**: Heatmap layout: `vertical` (default) or `horizontal`. The default puts features on rows and comparisons on columns, with the log2FC and p-value panels side by side. `horizontal` transposes that — features to columns, comparisons to rows — and stacks the two panels, which fits a landscape page once the feature count grows. A horizontal run appends the orientation to its **PDF** filenames so both layouts can sit side by side; the CSV written alongside is the *data*, so it is neither renamed nor transposed and two runs of one analysis still produce exports that diff against each other.
+- **`--heatorient`**: Heatmap layout: `vertical` (default) or `horizontal`. The default puts features on rows and comparisons on columns, with the log2FC and p-value panels side by side. `horizontal` transposes that — features to columns, comparisons to rows — and stacks the two panels, which fits a landscape page once the feature count grows. A horizontal run appends the orientation to its **PDF** filenames so both layouts can sit side by side; the CSV written alongside is the _data_, so it is neither renamed nor transposed and two runs of one analysis still produce exports that diff against each other.
 - **`--heatsubplots`**: Also save each individual comparison's heatmap as its own PDF, in an `individual/` subfolder next to the combined multi-page PDFs (which are unaffected). Default: `False`.
 
 **Volcano Options:**
