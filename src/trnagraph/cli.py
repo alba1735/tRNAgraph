@@ -444,7 +444,10 @@ def build(
         )
         # Before the metadata check and before the builder is handed its arguments, so a
         # config-supplied --input is validated and used rather than the typed one shadowing it.
-        toolsTG.load_run_config(config, 'build', args, logging.getLogger('trnagraph.cli'))
+        # The RETURN value is kept, unlike elsewhere: `order` is a TOP-LEVEL config key rather
+        # than a `flags.build` one, so applying the flags block alone would not carry it.
+        run_config = toolsTG.load_run_config(config, 'build', args, logging.getLogger('trnagraph.cli'))
+        args.order = run_config.order if run_config else None
         toolsTG.require_options(args, 'build', ['input', 'database'])
 
         if not os.path.isfile(args.input):
@@ -496,6 +499,34 @@ def addsplit(
 
         print('Adding split variant to database object...\n')
         adataBuild.add_split(args)
+        print('Done!\n')
+
+@analyze_app.command("order", help="Write a config file's declared category order into an existing h5ad AnnData object")
+def order(
+    ctx: typer.Context,
+    anndata_path: str = typer.Option(..., "-i", "--anndata", help="Existing h5ad object to order"),
+    config: str = typer.Option(..., "--config", help="JSON file whose top-level `order` block declares each column's category order"),
+    output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
+):
+    destination = os.path.dirname(os.path.abspath(output or anndata_path))
+    with usage_error_guard(), handle_output(quiet, tool="order", destination=destination, name_suffix=_adata_basename(anndata_path)):
+        if not os.path.isfile(anndata_path):
+            raise Exception('Error: h5ad file does not exist.')
+
+        run_config = toolsTG.read_run_config(config)
+        if not run_config.order:
+            raise toolsTG.InvalidParameterError(
+                f'Config file {config} has no top-level "order" block, so there is nothing to '
+                f'apply. Declare it as {{"order": {{"<obs column>": ["<level>", ...]}}}}, listing '
+                f'every level of the column; the FIRST is the DESeq2 reference level.')
+
+        args = SimpleNamespace(
+            mode='order', anndata=anndata_path, order=run_config.order, output=output,
+            quiet=quiet, cli_specified=cli_specified_params(ctx),
+        )
+        print('Applying category order to database object...\n')
+        adataBuild.apply_order(args)
         print('Done!\n')
 
 @analyze_app.command("cluster", help="Cluster data from an existing h5ad AnnData object")

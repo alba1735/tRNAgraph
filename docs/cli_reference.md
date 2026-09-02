@@ -206,6 +206,38 @@ trnagraph analyze addsplit -i <input.h5ad> -c <cutoff> [options]
 
 - **`--config`**: JSON configuration file whose `flags.addsplit` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
 
+### `order`
+
+Writes a `--config` file's declared category order into an _existing_ AnnData object, as an ordered categorical on `adata.obs`. Order is otherwise alphabetical everywhere, which is wrong for any set of labels whose meaningful sequence is not its alphabet — `D0`, `D7`, `D14`, `D35` sorts to `D0`, `D14`, `D35`, `D7`.
+
+The order has two consumers, which is why it is stored on the object rather than passed per call: plot legend and axis order, and the DESeq2 reference level, which is the **first** listed level of each column. `build` applies the same block automatically when given a `--config`; this command exists so an object built before the order was declared can gain it without a rebuild.
+
+**Usage:**
+
+```bash
+trnagraph analyze order -i <input.h5ad> --config <config.json>
+```
+
+**Flags:**
+
+- **`-i`, `--anndata`** (Required): Path to the existing AnnData file to order.
+- **`--config`** (Required): JSON file whose top-level `order` block declares each column's category order.
+- **`-o`, `--output`**: Output path. Default: overwrite the input file in place.
+- **`-q`, `--quiet`**: Suppress output to stdout. Default: `False`.
+
+**Config block:**
+
+```json
+{
+  "name": "organoid_timecourse",
+  "order": { "timepoint": ["Day 0", "Day 35", "Day 70"] }
+}
+```
+
+`order` is a **top-level** key, a sibling of the `obs`/`var` filters rather than a member of `flags` — it describes what the experiment is, not how one command ran.
+
+Every level present in the data must be listed. A level left out is an error naming both what is missing and what was declared, rather than being appended silently, since an incomplete declaration would no longer describe the column's order. A declared level that is absent from the data is kept, so a filtered subset does not change the ordering.
+
 ### `cluster`
 
 Performs clustering (UMAP, HDBSCAN) on an existing AnnData object.

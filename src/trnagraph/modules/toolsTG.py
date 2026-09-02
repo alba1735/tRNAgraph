@@ -827,6 +827,42 @@ def resolve_covtype(covtype: Optional[str], basis: str) -> str:
     return COVTYPE_DEFAULTS[basis]
 
 
+def apply_category_order(obs, order):
+    '''
+    Turn each declared obs column into an ordered pd.Categorical, in the declared order.
+
+    `order` is the --config file's top-level `order` block: {column: [level, ...]}. The result is
+    the single source of truth for two consumers that must not disagree -- plot legend/axis order,
+    and the DESeq2 reference level, which is the FIRST listed level.
+
+    Returns the same frame, mutated. A level that is declared but absent from the data is kept as
+    an (empty) category: declaring a timepoint that a filtered subset happens not to contain is
+    legitimate, and dropping it would make the order depend on the subset.
+    '''
+    if not order:
+        return obs
+    for column, levels in order.items():
+        if column not in obs.columns:
+            raise InvalidParameterError(
+                f"Config 'order' names column '{column}', which is not in this object's obs. "
+                f"Available columns: {sorted(obs.columns)}."
+            )
+        # A level in the data but not in the declaration cannot be appended silently: the
+        # declaration would then no longer describe the order, and every figure drawn from it
+        # would be wrong with nothing to announce it.
+        present = set(obs[column].dropna().astype(str))
+        undeclared = sorted(present - set(levels))
+        if undeclared:
+            raise InvalidParameterError(
+                f"Config 'order' for column '{column}' does not list {undeclared}, which "
+                f"{'are' if len(undeclared) > 1 else 'is'} present in the data. Declared: "
+                f"{list(levels)}. Every level must be listed, so the declared order describes "
+                f"the whole column."
+            )
+        obs[column] = pd.Categorical(obs[column].astype(str), categories=list(levels), ordered=True)
+    return obs
+
+
 _VARIANT_LAYER_MAP = {'norm': 'norm', 'raw': 'raw', 'allfeatures': 'norm_allfeatures', 'vst': 'vst'}
 
 # Maps a `uns['size_splits'][tag]` key to the default/full uns key it stands in for

@@ -1141,6 +1141,16 @@ class AnnDataBuilder():
         # Add output name to adata object index
         adata.obs.index = [os.path.basename(self.output).split('.')[0] + '_' + str(x) for x in adata.obs.index]
 
+        # Declared category order, applied before the split so every variant shares one ordering
+        # (identity columns are shared across variants; only numeric columns are per-variant).
+        # Last, so it can name columns derived late in the build such as 'fragment'.
+        order = getattr(self.analysis_args, 'order', None) if self.analysis_args else None
+        if order:
+            toolsTG.apply_category_order(adata.obs, order)
+            for column, levels in order.items():
+                self.logger.info(f'Ordered obs column {column!r}: {list(levels)} '
+                                 f'(reference level: {levels[0]!r})')
+
         # Apply read-length split variants (added as layers/obsm/uns onto this SAME object,
         # rather than the old behavior of writing separate _u{N}.h5ad/_o{N}.h5ad files)
         if self.analysis_args and getattr(self.analysis_args, 'readlengthsplit', None):
@@ -1874,6 +1884,27 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
     target_adata.uns['size_splits'][tag]['log2FC'] = temp_view.uns.get('log2FC', {})
 
     return target_adata
+
+
+def apply_order(args):
+    '''
+    Write a declared category order into an object that already exists.
+
+    Sibling of add_split(): an explicit, in-place mutation of a built object, so that an object
+    predating the declaration can gain it without a rebuild -- which for the human dataset is
+    not practical, its inputs being treated as read-only.
+
+    Writes back over the input unless args.output names somewhere else.
+    '''
+    logger = logging.getLogger(__name__)
+    adata = ad.read_h5ad(args.anndata)
+    toolsTG.apply_category_order(adata.obs, args.order)
+    for column, levels in (args.order or {}).items():
+        logger.info(f'Ordered obs column {column!r}: {list(levels)} (reference level: {levels[0]!r})')
+    output_path = args.output or args.anndata
+    adata.write_h5ad(output_path)
+    logger.info(f'Wrote {output_path}')
+    return output_path
 
 
 def add_split(args):

@@ -78,6 +78,13 @@ class RunConfig(BaseModel):
     obs_r: Optional[Dict[str, List[Any]]] = None
     var: Optional[Dict[str, List[Any]]] = None
     var_r: Optional[Dict[str, List[Any]]] = None
+    # Explicit category order per obs column, e.g. {"timepoint": ["Day 0", "Day 35", "Day 70"]}.
+    # Top level rather than a `flags.build` key for the same reason the filters are: it says what
+    # the experiment IS, not how one command ran. It is also the single source of truth for two
+    # different consumers -- plot legend/axis order, and the DESeq2 reference level (the FIRST
+    # listed level) -- which a per-command flag could not be, since it would have to be
+    # re-supplied identically on every plotting and DE call to stay consistent.
+    order: Optional[Dict[str, List[str]]] = None
     # Per-command options this config pins, one block per command. They live here rather than
     # in --style because these are selection/analysis choices, not presentation: a style file
     # is meant to be shared across differently-parameterized runs, which it could not be if it

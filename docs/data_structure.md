@@ -177,6 +177,14 @@ These columns are imported from the user-provided `metadata.tsv` file.
 | `deseq2_sizefactor` | Float    | The tRNA/tRX-controlled (default) DESeq2 size factor for the sample. See `adata.uns["deseq2_sizefactors_trna"]` / `deseq2_sizefactors_allfeatures` for both sets. |
 | `dataset`           | Category | Label for the source dataset (useful after `merge` operations).                                                                                                   |
 
+> **Category order.** Categorical `obs` columns are unordered by default, so every plot and the
+> DESeq2 reference level fall back to alphabetical — wrong for any labels whose meaningful
+> sequence is not their alphabet (`D0`, `D7`, `D14`, `D35` sorts to `D0`, `D14`, `D35`, `D7`).
+> A `--config` file's top-level `order` block turns the named columns into **ordered**
+> categoricals, and the first listed level becomes the reference level for differential
+> expression. Stored on the object so plot order and the statistics cannot disagree. Applied at
+> `analyze build`, or added later with [`analyze order`](cli_reference.md#order).
+
 ### Read Count Aggregates
 
 tRNAgraph aggregates total read counts per tRNA into `obs`. These columns allow for bulk analysis (e.g., Differential Expression) without querying position-specific coverage.

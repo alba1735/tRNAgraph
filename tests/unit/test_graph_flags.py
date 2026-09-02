@@ -220,7 +220,10 @@ def test_the_config_template_enumerates_every_flag():
 
 
 def test_the_config_template_enumerates_every_filter_key():
-    assert set(_template()) == {'name', 'obs', 'obs_r', 'var', 'var_r', 'flags'}
+    """Derived from the model rather than listed, matching the flags test above. As a hardcoded
+    literal this guarded the template but not the correspondence: a top-level key added to
+    RunConfig and forgotten in the template passed, which is the drift it exists to catch."""
+    assert set(_template()) == set(GraphFilterConfig.model_fields)
 
 
 def test_every_config_template_flag_is_null():
