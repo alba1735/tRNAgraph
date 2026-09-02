@@ -301,7 +301,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`). Default: `all`. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
 - **`--config`**: JSON configuration file for filtering, and optionally a `flags.graph` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...). The same file carries a block per command, so one file can drive a whole run. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
@@ -314,7 +314,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `compare` is **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the compare plot is only produced when you ask for it by name (`-g compare`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. See **Compare Options** below.
+> `compare` and `venn` are **deliberately not** included in `all`, and should stay that way. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; each of the other two is only produced when you ask for it by name (`-g compare`, `-g venn`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. `venn` is excluded for a related but distinct reason: it needs a `multivariate` block in `--config` declaring the grouping and thresholds its sets are built from, and set-overlap figures produced from cutoffs nobody chose invite wrong conclusions. See **Compare Options** and **Venn Options** below.
 
 > [!IMPORTANT]
 > Every option below that names something inside the object -- a grouping column
@@ -349,6 +349,26 @@ Only used by `-g compare`, which `all` does not include.
 > Fold changes come from the same PyDESeq2 negative-binomial fit as the heatmap and volcano, taken over the `amino` or `iso` axis, with BH-adjusted p-values. Each `--comparegrp1` value is fitted separately on its own subset rather than as an interaction term. Because the fit re-derives size factors from the raw counts, a dataset in which every feature moves together is read as a library-size difference and reported as no change.
 >
 > The two must name **different** columns: with one column for both, there is no comparison to make, and the run now aborts saying so rather than failing inside pandas with `Grouper for 'group' not 1-dimensional`. Because both flags default to `group`, reaching this plot always means setting at least one of them. A comparison also needs a `--comparegrp2` value shared across every value of `--comparegrp1`; where none exists — always the case when `--comparegrp1` is a per-observation-unique column such as `sample` — that count grouping is skipped with a warning rather than failing. A count grouping is likewise skipped, naming both columns, when a `--comparegrp1` value has only one sample per `--comparegrp2` value: an unreplicated design leaves no residual variation to estimate dispersion from, so no fold change can be fitted.
+
+**Venn Options:**
+
+Only used by `-g venn`, which `all` does not include. The diagrams themselves are not declared — both are drawn automatically whenever the object supports them — but the block below must exist for the plot type to run at all.
+
+- **`multivariate.grouping`** (`--config`): `obs` column the analysis is taken over. Default: `group`.
+- **`multivariate.presence_cutoff`** (`--config`): mean normalized count, per group, for a feature to count as **present** in a circle. Default: `20`. Printed on the figure.
+
+Two diagrams are produced when the data allows:
+
+- **Fragment vs full-length** — needs a read-length split (`analyze build --readlengthsplit`, or [`analyze addsplit`](#addsplit)). Contrasts the `u<N>` and `o<N>` variants.
+- **5' vs 3'** — needs both end-specific read types.
+
+A missing prerequisite skips that diagram with a message naming what is absent; the other is still drawn.
+
+> [!NOTE]
+> Presence uses the same cutoff rule the differential-expression path applies, so a feature inside a circle and a point on a volcano passed the same test — but the mean is taken **per group** rather than once across all of them, since a tRNA present in one condition and absent in another is exactly what the diagram exists to show. Read types follow `--allreads` like every other graph type.
+
+> [!NOTE]
+> Figures are written under `venn/individual/`. Membership tables go to the build's `results/multivariate/`, a sibling of the per-variant result directories, since a diagram spanning variants belongs to none of them. Each table lists every exclusive region with its member features, under a header naming the parameters behind it. If the build directory recorded in the object no longer exists the tables are skipped with a warning — the membership is still stored in the object, which stays the source of truth. See [Data Structure: Multivariate Analyses](data_structure.md#multivariate-analyses-multivariate).
 
 **Correlation Options:**
 
@@ -441,8 +461,6 @@ Only used by `-g compare`, which `all` does not include.
 **Mismatch Options:**
 
 - **`--mismatchpseudocount`**: Pseudocount added to coverage when computing per-position misincorporation rates, damping positions with almost no reads behind them. Default: `10`. Graph-time only — the build-time `results/mismatch/` outputs keep tRAX's own constants so they stay directly comparable to a tRAX run.
-
----
 
 ## Tools Commands
 

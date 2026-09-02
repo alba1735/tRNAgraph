@@ -10,7 +10,7 @@ import re
 from typing import Any, Dict, List, Optional, Literal, Tuple, Union
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, RootModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 _TAG_PATTERN = re.compile(r'^(full|[uo]\d+)$')
 
@@ -61,6 +61,57 @@ class VariantContribution(BaseModel):
     mismatch_counts: Optional[pd.DataFrame] = None
 
 
+class VennSet(BaseModel):
+    '''
+    One circle of a Venn diagram: which population of features it contains.
+
+    A circle is identified by where its counts come from -- a read-length variant (`tag`) and a
+    read type -- and optionally by one level of a grouping column, which is what lets a complex
+    Venn cross timepoint with variant. `label` is what the reader sees on the figure.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    label: str
+    readtype: str
+    tag: str = 'full'
+    level: Optional[str] = None
+
+
+class VennPlan(BaseModel):
+    '''One Venn diagram to draw: its output name, its title, and its circles.'''
+    model_config = ConfigDict(extra='forbid')
+
+    name: str
+    title: str
+    sets: List[VennSet]
+
+
+class MultivariateConfig(BaseModel):
+    '''
+    The `multivariate` block: which analysis the set-membership plots describe.
+
+    Top level rather than a `flags.graph` key, for the reason the filters and `order` are: it
+    says what the experiment IS. It is also what GATES `-g venn` and `-g agreement`, which are
+    excluded from `-g all` -- the sets and thresholds are choices about a specific design, and
+    figures made from unchosen ones invite wrong conclusions.
+
+    Thresholds default to the project-wide pair (see plotsThresholds). Membership uses the
+    stricter of the two, since a set-overlap claim is stronger than a single volcano's.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    #: The obs column whose levels the analysis is taken over.
+    grouping: str = 'group'
+    #: The level every contrast is measured against. Defaults to the first category of an
+    #: ordered `order` declaration, and to the first level present otherwise.
+    reference: Optional[str] = None
+    #: Minimum mean normalized count, per group, for a feature to count as PRESENT.
+    presence_cutoff: float = 20.0
+    #: Significance thresholds for the DE-hit membership mode.
+    log2fc: float = 1.5
+    padj: float = 0.001
+
+
 class RunConfig(BaseModel):
     '''
     Validates the `--config` JSON, which describes one saved analysis: which subset of the
@@ -85,6 +136,9 @@ class RunConfig(BaseModel):
     # listed level) -- which a per-command flag could not be, since it would have to be
     # re-supplied identically on every plotting and DE call to stay consistent.
     order: Optional[Dict[str, List[str]]] = None
+    # Declares the multivariate analysis, and gates `-g venn`/`-g agreement`. Top level for the
+    # same reason `order` is: it describes the experiment, not one command's invocation.
+    multivariate: Optional['MultivariateConfig'] = None
     # Per-command options this config pins, one block per command. They live here rather than
     # in --style because these are selection/analysis choices, not presentation: a style file
     # is meant to be shared across differently-parameterized runs, which it could not be if it

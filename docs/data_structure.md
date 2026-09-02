@@ -348,6 +348,16 @@ Provenance metadata for reproducibility.
 - `deseq2_sizefactors_trna`: Per-sample DESeq2 size factors computed with tRNA/tRX features as the normalization reference (the default; identical to `adata.obs['deseq2_sizefactor']`).
 - `deseq2_sizefactors_allfeatures`: Per-sample DESeq2 size factors computed with all features (tRNAs + non-tRNA GTF features) as the normalization reference — the secondary set backing `adata.layers['norm_allfeatures']`, kept for comparison against the default.
 
+### Multivariate Analyses (`multivariate`)
+
+`adata.uns['multivariate'][<config name>][<analysis>][<entry>]` records the set membership behind each multivariate figure, and the parameters that produced it.
+
+- `<analysis>` is `venn` (and, once added, `agreement`).
+- `<entry>` identifies one result within that analysis. Each analysis chooses it: a Venn keys on the **diagram name** (`fragment_vs_full_length`), because a Venn spans read-length variants and so belongs to no single one; a per-variant analysis keys on the **variant tag**.
+- Each entry holds `sets` (`{label: [feature, ...]}`, sorted lists — Python sets do not survive the `.h5ad`) and `provenance` (the grouping column, thresholds, read types and variant tags used).
+
+The fold-change frames themselves are **not** duplicated here — they stay in [`log2FC`](#differential-expression-log2fc), so there is one place to invalidate when a fit is recomputed. A read whose stored provenance does not match what is being asked for misses and recomputes, rather than serving a set built under different thresholds.
+
 ### Split Variants (`size_splits`)
 
 `adata.uns['size_splits'][tag]` (`tag` = `u<N>`/`o<N>`) holds everything about one read-length split variant that isn't a flat layer/obsm/obsp entry (see [Split Variants](#split-variants---readlengthsplit) above). `'full'` is never a real key here — it's the reserved pseudo-tag meaning "read the unsuffixed/default location" used by `--variant`.

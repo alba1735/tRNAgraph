@@ -13,9 +13,6 @@ import logging
 import gzip
 import re
 import tempfile
-import subprocess
-import pysam
-from shutil import which
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 from typing import Generator, Iterable, Tuple, Union, TextIO, Dict, Optional, List, Any, Callable
@@ -903,14 +900,19 @@ def _as_plain(value):
     return value
 
 
-def write_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: str,
+def write_multivariate(adata: ad.AnnData, config_name: str, analysis: str, entry: str,
                        sets: Dict[str, Any], provenance: Dict[str, Any]) -> None:
     '''
     Record one multivariate analysis' membership and the parameters that produced it.
 
-    Stored at uns['multivariate'][config_name][analysis][tag]. `tag` is explicit and 'full' IS a
-    real key here, unlike in uns['size_splits'] where it is the reserved pseudo-tag for the
-    unsuffixed location -- membership for the full variant has to live somewhere.
+    Stored at uns['multivariate'][config_name][analysis][entry]. `entry` is whatever identifies
+    one result WITHIN an analysis, and each analysis chooses it: a variant tag where the analysis
+    is per-variant (the agreement volcano), the diagram name where it spans variants (a Venn).
+
+    It was originally specified as always being the variant tag, which collapsed every Venn in a
+    run onto the same 'full' key so that the second silently overwrote the first -- the figures
+    and tables on disk showed both while the object held one. Where a variant tag IS the entry,
+    'full' is a real key here, unlike in uns['size_splits'] where it is a reserved pseudo-tag.
 
     Deliberately holds NO copy of the fold-change frames: those stay authoritative in
     uns['log2FC'], leaving exactly one place to invalidate when a fit is recomputed.
@@ -918,15 +920,15 @@ def write_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: 
     Membership is normalised to SORTED LISTS. Python sets do not survive h5ad at all, and a
     sorted list keeps a regenerated object diffable against its predecessor.
     '''
-    entry = {'provenance': dict(provenance),
-             'sets': {str(label): sorted(str(f) for f in features)
-                      for label, features in sets.items()}}
+    record = {'provenance': dict(provenance),
+              'sets': {str(label): sorted(str(f) for f in features)
+                       for label, features in sets.items()}}
     adata.uns.setdefault('multivariate', {}) \
              .setdefault(config_name, {}) \
-             .setdefault(analysis, {})[tag] = entry
+             .setdefault(analysis, {})[entry] = record
 
 
-def read_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: str,
+def read_multivariate(adata: ad.AnnData, config_name: str, analysis: str, entry: str,
                       provenance: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
     '''
     Membership for one analysis, or None when nothing usable is stored.
@@ -936,12 +938,37 @@ def read_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: s
     would be worse than recomputing -- the figure would be captioned with parameters that did
     not produce it. Same reasoning that put `shrink` into uns['log2FC']'s cache key.
     '''
-    entry = adata.uns.get('multivariate', {}).get(config_name, {}).get(analysis, {}).get(tag)
-    if not entry:
+    record = adata.uns.get('multivariate', {}).get(config_name, {}).get(analysis, {}).get(entry)
+    if not record:
         return None
-    if _as_plain(entry.get('provenance')) != _as_plain(provenance):
+    if _as_plain(record.get('provenance')) != _as_plain(provenance):
         return None
-    return _as_plain(entry.get('sets'))
+    return _as_plain(record.get('sets'))
+
+
+def presence_sets(obs: pd.DataFrame, grouping: str, readtype: str, cutoff: float,
+                  index_col: str = 'trna') -> Dict[str, List[str]]:
+    '''
+    The features detectably present in each level of `grouping`: {level: [feature, ...]}.
+
+    Membership is the mean of `readtype` across that level's replicates clearing `cutoff`. The
+    rule is deliberately the same one adataLog2FC applies when deciding which features to fit,
+    so a feature inside a Venn circle and a point on a volcano passed the same test.
+
+    The AXIS differs, though, and that is the point. adataLog2FC takes one mean across all
+    groups, because a fold change only needs the feature present somewhere; presence is a
+    per-group question, and a tRNA detected in one condition and absent in another is exactly
+    what the Venn exists to show.
+
+    Every level gets a key even when nothing clears the cutoff: an empty circle says "nothing
+    was detected here", while a missing one would read as "this group was not analysed".
+    Ordering follows an ordered Categorical when one is declared, since these labels become the
+    circle labels.
+    '''
+    mdf = obs.pivot_table(index=index_col, columns=grouping, values=readtype,
+                          aggfunc='mean', observed=True)
+    return {str(level): sorted(str(f) for f in mdf.index[mdf[level] >= cutoff])
+            for level in mdf.columns}
 
 
 def variant_obs(adata: ad.AnnData, tag: str) -> pd.DataFrame:

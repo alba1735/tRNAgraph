@@ -2,7 +2,6 @@
 
 import os
 import sys
-import json
 import shutil
 import logging
 import contextlib
@@ -587,7 +586,7 @@ def graph(
     ctx: typer.Context,
     anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
-    graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
+    graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'venn', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="JSON file of obs/var filters plus a `flags.graph` block pinning this command's options, so one file can carry a whole run. A typed flag beats the file"),
     style: Optional[str] = typer.Option(None, "--style", help="JSON style file carrying the color palette and presentation settings. `trnagraph tools template --style` writes a blank one; a typed flag beats the file"),
     format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),

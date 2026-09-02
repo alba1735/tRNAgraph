@@ -37,6 +37,7 @@ plotsMismatch = LazyLoader('plotsMismatch')
 plotsSeqlogo = LazyLoader('plotsSeqlogo')
 plotsPca = LazyLoader('plotsPca')
 plotsRadar = LazyLoader('plotsRadar')
+plotsVenn = LazyLoader('plotsVenn')
 plotsVolcano = LazyLoader('plotsVolcano')
 
 # Legacy plot modules

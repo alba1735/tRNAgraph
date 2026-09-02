@@ -2,14 +2,12 @@ import anndata as ad
 import itertools
 import os
 import multiprocessing
-import json
 import logging
-from pydantic import ValidationError
 from . import toolsTG
-from .toolsSchemas import GraphFilterConfig, OUTPUT_FORMATS
+from .toolsSchemas import OUTPUT_FORMATS
 from .lazy_imports import (
     plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
-    plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVolcano
+    plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVenn, plotsVolcano
 )
 
 #: Every `graph` option whose value names something inside the AnnData object, with the
@@ -33,6 +31,17 @@ GRAPH_LABEL_PARAMS = (
     ('diffrts', 'readtype'),
     ('pcareadtypes', 'readtype'),
 )
+
+
+#: What `-g all` expands to. A named constant rather than an inline literal so that what is in
+#: it -- and what is deliberately out -- is assertable.
+#:
+#: `compare`, `venn` and `agreement` are excluded on purpose. They are deliberate analyses over
+#: a particular experimental design rather than descriptions of whatever was built, and each
+#: needs group arguments or a config block nobody chose by typing `-g all`. Producing them
+#: unasked would hand a user figures whose sets and thresholds they never selected.
+GRAPH_TYPES_ALL = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
+                   'logo', 'mismatch', 'pca', 'radar', 'volcano')
 
 
 #: Graph types whose FILENAMES already record the read basis, so a basis directory segment
@@ -81,14 +90,17 @@ class anndataGrapher:
                           'volcano':self.args.volgrp}
         # Load all graph types if specified
         if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = ['cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano']
+            self.args.graphtypes = list(GRAPH_TYPES_ALL)
             self.args.clusteroverview = True
         # Load max threads available unless specified
         if self.args.threads == 0:
             try:
                 # This is a linux only function but is less likely to cause problems than multiprocessing.cpu_count()
                 self.args.threads = len(os.sched_getaffinity(0))
-            except:
+            except (AttributeError, OSError):
+                # AttributeError off Linux, where sched_getaffinity does not exist; OSError if
+                # the call itself fails. Narrowed from a bare `except`, which also swallowed
+                # KeyboardInterrupt -- so an interrupt during startup was silently absorbed.
                 self.args.threads = multiprocessing.cpu_count()
         # Apply the config's obs/var filters. The file was already read and its `flags` block
         # applied at the top of __init__; only the filtering waits until here, because it
@@ -354,6 +366,9 @@ class anndataGrapher:
                 methods = self.args.radarmethod if isinstance(self.args.radarmethod, list) else [self.args.radarmethod]
                 aminos = int(self.adata.obs['amino'].nunique()) if 'amino' in self.adata.obs.columns else 20
                 return max(1, len(methods) * 2 * aminos)
+            if gt == 'venn':
+                # At most the two automatic diagrams; each is one figure over a whole object.
+                return 2
             if gt == 'volcano':
                 pairs = max(1, len(list(itertools.combinations(self.adata.obs[self.args.volgrp].dropna().unique(), 2))))
                 return max(1, len(self.args.diffrts) * pairs)
@@ -416,7 +431,8 @@ class anndataGrapher:
         # Generate graphs
         if self.args.verbose:
             self.logger.info('Generating graphs with the following parameters:\n')
-            for i in self.args.__dict__: self.logger.info(f'{i}: {self.args.__dict__[i]}')
+            for i in self.args.__dict__:
+                self.logger.info(f'{i}: {self.args.__dict__[i]}')
             self.logger.info('')
         # Remove coverage from self.args.graphtypes and add it to non_pooled_graphs
         non_pooled_graphs = []
@@ -500,7 +516,7 @@ class anndataGrapher:
             self.logger.info(toolsTG.builder(output))
         # Plot specific parameters
         if gt == 'cluster':
-            if not 'cluster_runinfo' in self.adata.uns:
+            if 'cluster_runinfo' not in self.adata.uns:
                 if threaded:
                     threaded += 'No cluster run information found in AnnData object. Please run the cluster command first.\n'
                 else:
@@ -544,6 +560,19 @@ class anndataGrapher:
             for radarmethod in self.args.radarmethod:
                 pRd = plotsRadar.visualizer(adata_c, self.args.radargrp, radarmethod, self.args.radarscaled, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings)
                 threaded = pRd.isotype_plots()
+        if gt == 'venn':
+            # Gated: refuses by name when --config carries no `multivariate` block. Membership is
+            # written onto the RESOLVED view, so it is copied back onto the original object here
+            # -- writing the view itself would overwrite the full variant's data with a split's
+            # overlaid values (see toolsTG.build_variant_view).
+            block = plotsVenn.require_multivariate_config(self.config)
+            threaded = plotsVenn.visualizer(adata_c, block, output, config_name=self.config_name,
+                                            settings=settings, read_basis=self.read_basis,
+                                            threaded=threaded)
+            membership = adata_c.uns.get('multivariate')
+            if membership:
+                self.adata_original.uns['multivariate'] = membership
+                self.adata_original.write(self.args.anndata)
         if gt == 'volcano':
             threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  

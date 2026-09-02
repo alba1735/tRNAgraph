@@ -24,6 +24,7 @@ dependencies = [
   "hdbscan==0.8.39",
   "logomaker==0.8.6",
   "matplotlib==3.9.1",
+  "matplotlib-venn==1.1.2",
   "numpy==2.3.5",
   "packaging==25.0",
   "pandas==2.3.3",
