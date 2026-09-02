@@ -14,7 +14,6 @@ import os
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 
 from trnagraph.modules import toolsTG
 

@@ -56,6 +56,34 @@ where = ["src"]
 [tool.setuptools.package-data]
 trnagraph = ["assets/**/*"]
 
+[tool.ruff]
+# Matches requires-python. Only meaningful for rules that suggest newer syntax, none of which
+# are selected yet.
+target-version = "py312"
+# Inert while E501 is unselected (see below); recorded so a future `ruff format` or E501 opt-in
+# has a stated value rather than inheriting a default.
+line-length = 120
+
+[tool.ruff.lint]
+# Selected EXPLICITLY rather than inheriting ruff's defaults, which are not stable across
+# versions: ruff 0.16 reports UP/C4/SIM/BLE/B/TRY findings that older defaults did not, so a
+# routine ruff upgrade would otherwise change what fails CI. This is the classic pyflakes plus
+# pycodestyle-errors set -- real defects (unused names, comparisons to None/True, bare except)
+# rather than style.
+select = ["F", "E4", "E7", "E9"]
+
+ignore = [
+    # module-import-not-at-top-of-file. This package defers heavy imports ON PURPOSE -- see
+    # modules/lazy_imports.py and the import-time cost it exists to avoid -- so 23 of these are
+    # the architecture working as designed, not findings.
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test modules bind values to document what a call returned even when the assertion only needs
+# part of it; that reads better than inlining and is not a defect.
+"tests/**" = ["F841"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 

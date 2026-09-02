@@ -14,7 +14,6 @@ library-size difference and normalized away. Same reasoning as test_compare_plot
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 
 from trnagraph.modules import toolsTG
 

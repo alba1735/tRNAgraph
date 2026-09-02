@@ -9,8 +9,6 @@ the obs/var filters.
 
 Top-level, therefore, as a sibling of `obs_r` rather than a key under `flags.build`.
 """
-import pytest
-from pydantic import ValidationError
 
 from trnagraph.modules.toolsSchemas import RunConfig
 

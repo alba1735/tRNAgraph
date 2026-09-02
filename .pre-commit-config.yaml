@@ -1,0 +1,31 @@
+# Formatting and linting hooks. Install once per clone:
+#
+#     pip install pre-commit && pre-commit install
+#
+# Hooks run against STAGED FILES ONLY, so pre-existing findings in files you are not touching
+# will not block a commit -- but a file you edit does have to come out clean.
+#
+# `ruff-format` is deliberately ABSENT. It would reformat 42 of 44 modules and rewrite roughly
+# 19,000 lines, which would erase `git blame` across the whole package. This repository is
+# Zenodo-archived and cited, so blame history is worth more than uniform formatting. If it is
+# ever wanted, it belongs in one dedicated commit listed in .git-blame-ignore-revs, not folded
+# into feature work.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff-check
+
+  # pre-commit/mirrors-prettier was archived in April 2024; this is the maintained fork.
+  # Prettier is what already formats markdown in the maintainer's editor, so pinning it here
+  # makes every machine agree rather than introducing a second, competing formatter.
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.6
+    hooks:
+      - id: prettier
+        types_or: [markdown, json, yaml]
+        # Use the Node already on PATH instead of letting pre-commit provision its own. The
+        # copy it downloads is linked against libatomic.so.1, which is absent on this WSL2
+        # image, so `node` exits 127 before prettier is ever reached. The prettier VERSION is
+        # still pinned by the `rev` above, so this costs nothing in reproducibility.
+        language_version: system
