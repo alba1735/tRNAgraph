@@ -241,24 +241,55 @@ class visualizer():
         palette = plotsPalette.discrete_colors(
             plotsPalette.gradient(self.settings, 'ordered'), len(toolsTG.COVERAGE_PARTITION))
         labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
-        for covobs, per_group in frames.items():
-            for group, frame in per_group.items():
-                fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
-                self.generate_partition_plot(frame, ax, covobs, palette)
-                ax.set_title(f'{covobs} read specificity ({group})')
-                # Each file needs its own key: unlike a grid page, there is nothing else on
-                # the canvas to name the four stacked categories.
-                handles = [mpatches.Patch(color=color, label=label)
-                           for color, label in zip(palette, labels)]
-                ax.legend(handles=handles[::-1], loc='upper left', bbox_to_anchor=(1, 1),
-                          borderaxespad=0, frameon=False, title='Read specificity')
-                outstart = f'{self.specificity_output}{self.coverage_obs}/'
-                if ax.get_ylim()[1] < LOW_COVERAGE_CEILING:
-                    outstart += 'low_coverage/'
-                toolsTG.save_current(
-                    f'{outstart}{covobs}_specificity_by_{self.coverage_grp}_{group}_'
-                    f'{self.coverage_method}.pdf', self.settings)
-                plt.close(fig)
+        # One plot per --covobs value PER GROUP, so this is the largest file count coverage
+        # produces -- 1308 on the human build, where it ran silently for over three minutes.
+        pairs = [(covobs, group, frame)
+                 for covobs, per_group in frames.items()
+                 for group, frame in per_group.items()]
+        for covobs, group, frame in toolsTG.progress_iterator(
+            pairs, total=len(pairs), desc="Specificity plots", logger=self.logger,
+            quiet=self.quiet,
+        ):
+            fig, ax = plt.subplots(figsize=toolsTG.figsize_for(self.settings, (6, 5.5)))
+            self.generate_partition_plot(frame, ax, covobs, palette)
+            ax.set_title(f'{covobs} read specificity ({group})')
+            # Each file needs its own key: unlike a grid page, there is nothing else on
+            # the canvas to name the four stacked categories.
+            handles = [mpatches.Patch(color=color, label=label)
+                       for color, label in zip(palette, labels)]
+            ax.legend(handles=handles[::-1], loc='upper left', bbox_to_anchor=(1, 1),
+                      borderaxespad=0, frameon=False, title='Read specificity')
+            outstart = f'{self.specificity_output}{self.coverage_obs}/'
+            if ax.get_ylim()[1] < LOW_COVERAGE_CEILING:
+                outstart += 'low_coverage/'
+            toolsTG.save_current(
+                f'{outstart}{covobs}_specificity_by_{self.coverage_grp}_{group}_'
+                f'{self.coverage_method}.pdf', self.settings)
+            plt.close(fig)
+            if self.phase_tracker is not None:
+                self.phase_tracker.advance(1)
+
+    def _check_partition_width(self, groups=None):
+        '''
+        Refuse a grid too wide to mean anything. Called by the caller of `_partition_pages`
+        rather than only from inside it: that method is a generator, so its body does not run
+        until the first page is requested, and a check that fires late is a check that fires
+        after the PDF has been opened.
+        '''
+        groups = self._partition_groups() if groups is None else groups
+        if len(groups) > MAX_PARTITION_COLUMNS:
+            raise toolsTG.InvalidParameterError(
+                f"--covgrp '{self.coverage_grp}' has {len(groups)} values, more than the "
+                f"{MAX_PARTITION_COLUMNS} the specificity grid can show. Group by a column "
+                f"with fewer values, or filter this one with --config."
+            )
+
+    def _partition_page_count(self):
+        '''How many grid pages `_partition_pages` will produce, without building any of them.'''
+        rows = len(self._covobs_list())
+        columns = len(self._partition_groups())
+        return (max(1, -(-rows // PARTITION_ROWS_PER_PAGE))
+                * max(1, -(-columns // PARTITION_COLUMNS_PER_PAGE)))
 
     def _partition_pages(self, frames):
         '''
@@ -269,12 +300,7 @@ class visualizer():
         nothing is readable.
         '''
         groups = self._partition_groups()
-        if len(groups) > MAX_PARTITION_COLUMNS:
-            raise toolsTG.InvalidParameterError(
-                f"--covgrp '{self.coverage_grp}' has {len(groups)} values, more than the "
-                f"{MAX_PARTITION_COLUMNS} the specificity grid can show. Group by a column "
-                f"with fewer values, or filter this one with --config."
-            )
+        self._check_partition_width(groups)
         palette = plotsPalette.discrete_colors(
             plotsPalette.gradient(self.settings, 'ordered'), len(toolsTG.COVERAGE_PARTITION))
         labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
@@ -283,8 +309,21 @@ class visualizer():
                      for i in range(0, len(covobs_list), PARTITION_ROWS_PER_PAGE)]
         column_pages = [groups[i:i + PARTITION_COLUMNS_PER_PAGE]
                         for i in range(0, len(groups), PARTITION_COLUMNS_PER_PAGE)]
-        return [self._partition_page(rows, columns, frames, groups, palette, labels)
-                for rows in row_pages for columns in column_pages]
+        # Yielded one at a time so the caller saves and releases each page before the next is
+        # drawn. As a list this held 107 live figures on the human build, and left the first
+        # 56 of the step's 91 seconds unreportable because no page existed to count yet.
+        return self._partition_page_stream(row_pages, column_pages, frames, groups, palette, labels)
+
+    def _partition_page_stream(self, row_pages, column_pages, frames, groups, palette, labels):
+        '''
+        Draw one page at a time. Split out of `_partition_pages` so that method stays an
+        ordinary function whose validation runs when it is CALLED -- a generator's body does
+        not run until the first page is requested, which would move the width check to after
+        the PDF had been opened.
+        '''
+        for rows in row_pages:
+            for columns in column_pages:
+                yield self._partition_page(rows, columns, frames, groups, palette, labels)
 
     def _partition_page(self, rows, columns, frames, all_groups, palette, labels):
         '''One page of the grid. Panels in a row share a y-axis so the groups are comparable.'''
@@ -354,10 +393,16 @@ class visualizer():
         frames = self._partition_frame()
         outend = (f'combined_{self.coverage_obs}_specificity_by_'
                   f'{self.coverage_grp}_{self.coverage_method}.pdf')
+        pages = self._partition_pages(frames)
         with PdfPages(f'{self.specificity_output}{outend}') as pdf:
-            for page in self._partition_pages(frames):
+            for page in toolsTG.progress_iterator(
+                pages, total=self._partition_page_count(), desc="Specificity grid pages",
+                logger=self.logger, quiet=self.quiet,
+            ):
                 pdf.savefig(page, bbox_inches='tight')
                 plt.close(page)
+                if self.phase_tracker is not None:
+                    self.phase_tracker.advance(1)
         logger.info(f'Coverage specificity overview saved to {self.specificity_output}{outend}')
 
     def generate_partition_plot(self, df, ax, covobs, palette, xaxis=True, top=None):
@@ -394,31 +439,45 @@ class visualizer():
     def generate_combine(self):
         '''
         Generate combined coverage plots for all tRNAs using multiprocessing.
+
+        Each page is saved the moment it is rendered rather than accumulated: on the human build
+        this is 28 pages per fill style, and holding them all cost the peak memory of 28 live
+        figures while making it impossible to report progress until the last one was drawn.
         '''
         ulist = self._covobs_list()
         # Generate list of tRNAs to plot split by 16 for each page
         ulist = [ulist[i*16:(i+1)*16] for i in range((len(ulist)+15)//16)]
-        # Use multiprocessing to generate plotsand return them as a list so they can be saved to a pdf in order
-        # Generate plots with confidence intervals
-        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_ci_{self.coverage_method}.pdf'
         shared = _share_with_workers(self)
-        with PdfPages(f'{self.category_output}{outend}') as pdf:
-            for page in self._render_pages(ulist, 'ci', shared):
-                pdf.savefig(page, bbox_inches='tight')
-                plt.close(page)
-        # Generate plots with fill
-        outend = f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}_with_fill_{self.coverage_method}.pdf'
-        with PdfPages(f'{self.category_output}{outend}') as pdf:
-            for page in self._render_pages(ulist, 'fill', shared):
-                pdf.savefig(page, bbox_inches='tight')
-                plt.close(page)
+        # 'ci' draws a confidence interval around the group means, 'fill' shades under them; the
+        # two are separate PDFs of the same pages.
+        for coverage_fill in ('ci', 'fill'):
+            outend = (f'combined_{self.coverage_obs}_{self.coverage_type}_by_{self.coverage_grp}'
+                      f'_with_{coverage_fill}_{self.coverage_method}.pdf')
+            with PdfPages(f'{self.category_output}{outend}') as pdf:
+                for page in toolsTG.progress_iterator(
+                    self._render_pages(ulist, coverage_fill, shared), total=len(ulist),
+                    desc=f"Combined coverage pages ({coverage_fill})", logger=self.logger,
+                    quiet=self.quiet,
+                ):
+                    pdf.savefig(page, bbox_inches='tight')
+                    plt.close(page)
+                    if self.phase_tracker is not None:
+                        self.phase_tracker.advance(1)
 
     def _render_pages(self, ulist, coverage_fill, shared):
-        '''Render the combined pages, in parallel where the workers can share this object.'''
+        '''
+        Yield the combined pages in order, in parallel where the workers can share this object.
+
+        A generator rather than a list so the caller can save and release each page as it
+        arrives. imap (ORDERED, not imap_unordered) because these become the pages of a PDF and
+        their order is the tRNA order the reader expects.
+        '''
         if not shared or self.threads <= 1:
-            return [self.generate_combine_page(chunk, coverage_fill) for chunk in ulist]
+            for chunk in ulist:
+                yield self.generate_combine_page(chunk, coverage_fill)
+            return
         with Pool(self.threads) as p:
-            return p.map(_combine_page_worker, [(chunk, coverage_fill) for chunk in ulist])
+            yield from p.imap(_combine_page_worker, [(chunk, coverage_fill) for chunk in ulist])
 
     def generate_combine_page(self, ulist, coverage_fill):
         '''

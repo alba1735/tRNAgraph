@@ -341,7 +341,19 @@ class anndataGrapher:
         '''
         try:
             if gt == 'coverage':
-                return max(1, int(self.adata.obs[self.args.covobs].nunique()))
+                # Four loops tick the tracker, not one: the per-covobs plots, the per-covobs
+                # per-group specificity plots, the combined pages (rendered once per fill
+                # style) and the specificity grid pages. Weighting by the first alone pinned
+                # the outer bar at coverage's start through the three steps that produce most
+                # of the work. Page geometry is duplicated from plotsCoverage's own constants
+                # rather than imported, to keep this estimator free of a module import.
+                covobs = int(self.adata.obs[self.args.covobs].nunique())
+                groups = int(self.adata.obs[self.args.covgrp].nunique())
+                combined_pages = max(1, -(-covobs // 16)) * 2
+                grid_pages = max(1, -(-covobs // 4)) * max(1, -(-groups // 8))
+                if self.args.combinedpdfonly:
+                    return max(1, combined_pages + grid_pages)
+                return max(1, covobs + covobs * groups + combined_pages + grid_pages)
             if gt == 'pca':
                 # One call per --pcareadtypes entry, plus the non-tRNA and combined-RNA overview
                 # plots (each producing its own evr/scatter/pairplot trio).

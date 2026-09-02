@@ -85,8 +85,10 @@ def test_every_partition_category_survives_into_each_groups_frame():
 
 
 def _pages(visualizer):
+    # _partition_pages streams its pages so the caller can save and release each one; these
+    # tests inspect them all, so they materialize the stream.
     frames = visualizer._partition_frame()
-    return visualizer._partition_pages(frames)
+    return list(visualizer._partition_pages(frames))
 
 
 def test_the_grid_puts_a_trna_on_each_row_and_a_group_in_each_column():

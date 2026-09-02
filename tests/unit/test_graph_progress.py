@@ -40,13 +40,31 @@ def _make_grapher(args, adata):
     return grapher
 
 
-def test_compute_graph_weight_coverage_uses_covobs_nunique():
-    adata = _make_adata(n_obs=6)
-    args = SimpleNamespace(covobs="trna", pcareadtypes=[], radarmethod=[], diffrts=[], volgrp="group",
-                           heatgrp="group", clustergrp="group", comparegrp2="group", logogrp="group")
-    grapher = _make_grapher(args, adata)
+def _coverage_args(**overrides):
+    args = dict(covobs="trna", covgrp="group", combinedpdfonly=False, pcareadtypes=[],
+                radarmethod=[], diffrts=[], volgrp="group", heatgrp="group", clustergrp="group",
+                comparegrp2="group", logogrp="group")
+    args.update(overrides)
+    return SimpleNamespace(**args)
 
-    assert grapher._compute_graph_weight("coverage") == 6
+
+def test_compute_graph_weight_coverage_counts_every_sub_step():
+    """Coverage ticks the tracker from four loops, not one: the per-tRNA plots, the per-tRNA
+    per-group specificity plots, the combined pages (once per fill style) and the specificity
+    grid pages. Weighting it by the first alone left the outer bar pinned at coverage's start
+    for the three steps that produce most of the work."""
+    adata = _make_adata(n_obs=6)  # 6 tRNAs, 3 groups
+    grapher = _make_grapher(_coverage_args(), adata)
+
+    # 6 split + (6 x 3) specificity + (1 page x 2 fills) + (2 grid row-pages x 1 column-page)
+    assert grapher._compute_graph_weight("coverage") == 28
+
+
+def test_compute_graph_weight_coverage_drops_the_individual_steps_under_combinedpdfonly():
+    adata = _make_adata(n_obs=6)
+    grapher = _make_grapher(_coverage_args(combinedpdfonly=True), adata)
+
+    assert grapher._compute_graph_weight("coverage") == 4
 
 
 def test_compute_graph_weight_pca_uses_readtype_count_plus_extras():
