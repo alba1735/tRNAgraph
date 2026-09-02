@@ -944,6 +944,23 @@ def scatter_subset_graph_to_full(subset_graph, subset_index, full_index):
     return full_graph.tocsr()
 
 
+def _as_pair_list(pairs) -> List[Tuple[str, str]]:
+    '''
+    Coerce a `pairs` value to a list of plain string tuples, whichever path produced it.
+
+    A freshly computed value is a list of tuples straight out of itertools.combinations, but the
+    same value read back from a written .h5ad is a numpy array of shape (n, 2): anndata stores a
+    list of same-length sequences as an array and has no way to restore the original container.
+    Consumers therefore saw a different type on a warm object than on a cold one, and one of them
+    (plotsVolcano's `if pairs:`) raised on the array form -- so a combined volcano overview was
+    only ever written on the first run for a given config_name/cutoff.
+
+    Normalizing here, at the single boundary both paths pass through, is what keeps that
+    asymmetry from reaching any consumer at all.
+    '''
+    return [tuple(str(level) for level in pair) for pair in pairs]
+
+
 class adataLog2FC:
     def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, lfc_shrink: bool = True):
         self.adata = adata
@@ -998,15 +1015,20 @@ class adataLog2FC:
         if entry.get('lfc_shrink', False) != self.lfc_shrink:
             df = pd.DataFrame()
 
+        # `pairs` is read by consumers out of the RETURNED dict, not from a local -- so both
+        # branches normalize the stored value rather than a variable of their own.
+        compare_entry = self.log2fc_dict[self.config_name][self.compare]
         if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
             entry['df'] = df
             entry['lfc_shrink'] = self.lfc_shrink
-            self.log2fc_dict[self.config_name][self.compare]['pairs'] = pairs
+            compare_entry['pairs'] = _as_pair_list(pairs)
             self.adata.uns['log2FC'] = self.log2fc_dict
             self.computed_fresh = True
         else:
-            pairs = self.log2fc_dict[self.config_name][self.compare]['pairs']
+            # Normalized in place: a cached entry that came back from a written .h5ad holds an
+            # ndarray, and leaving it there would hand the next reader the other type again.
+            compare_entry['pairs'] = _as_pair_list(compare_entry['pairs'])
 
         return df, self.log2fc_dict
 
