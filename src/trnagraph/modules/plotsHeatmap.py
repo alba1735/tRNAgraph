@@ -8,6 +8,7 @@ import pandas as pd
 import os
 
 from . import toolsTG
+from . import plotsThresholds
 from . import plotsPalette
 
 import matplotlib.pyplot as plt
@@ -17,6 +18,27 @@ plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
 
 logger = logging.getLogger(__name__)
+
+
+#: Ceiling of the significance panel's colour scale: the scale saturates exactly at the
+#: strong-evidence threshold, so a fully-saturated cell reads as "at least this significant".
+SIGNIFICANCE_VMAX = plotsThresholds.neglog10(plotsThresholds.PVAL_STRONG)
+
+
+def significance_colorbar_ticks():
+    '''
+    Positions and labels for the significance panel's colorbar.
+
+    The panel plots -log10(padj), so the ticks are derived positions rather than the p-values
+    themselves. Written as literals (`[0, 1.3, 3]`) these restated plotsVolcano's own copy of
+    the same pair and inherited its rounded -log10(0.05); deriving them keeps the tick, the
+    scale ceiling and the volcano's reference line tied to one definition.
+    '''
+    ticks = [0.0,
+             plotsThresholds.neglog10(plotsThresholds.PVAL_SIG),
+             plotsThresholds.neglog10(plotsThresholds.PVAL_STRONG)]
+    labels = ['1', f'{plotsThresholds.PVAL_SIG:g}', f'<={plotsThresholds.PVAL_STRONG:g}']
+    return ticks, labels
 
 
 def visualizer(adata, grp, readtypes, cutoff, heatbound, heatsubplots, output, threaded=False, config_name='default', overwrite=False, settings=None, orientation='vertical'):
@@ -267,7 +289,7 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
     sns.heatmap(log_tdf, ax=axs[0], cmap=cmap, center=0, vmax=4, vmin=-4, cbar=True, square=True,
                 cbar_kws=_cbar_kws(horizontal),
                 **(shared_axis_off if horizontal else labelled))
-    sns.heatmap(pval_tdf, ax=axs[1], cmap=sig_cmap, vmin=0, vmax=3, cbar=True, square=True,
+    sns.heatmap(pval_tdf, ax=axs[1], cmap=sig_cmap, vmin=0, vmax=SIGNIFICANCE_VMAX, cbar=True, square=True,
                 cbar_kws=_cbar_kws(horizontal),
                 **(labelled if horizontal else shared_axis_off))
     # The feature names are rotated on whichever axis carries them; transposing moves them
@@ -292,8 +314,9 @@ def heatmap_plot(df, col, cmap, sig_cmap, heatbound, settings=None, orientation=
         cbar.set_ticklabels(['<=-4','-3','-2','-1','0','1','2','3','>=4'])
     cbar.ax.tick_params(labelsize=8) 
     cbar = axs[1].collections[0].colorbar
-    cbar.set_ticks([0, 1.3, 3])
-    cbar.set_ticklabels(['1', '0.05', '<=0.001'])
+    sig_ticks, sig_labels = significance_colorbar_ticks()
+    cbar.set_ticks(sig_ticks)
+    cbar.set_ticklabels(sig_labels)
     cbar.ax.tick_params(labelsize=8)
 
     # Panel titles first: the figure title is positioned relative to them below.

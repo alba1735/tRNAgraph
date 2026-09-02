@@ -13,6 +13,7 @@ from adjustText import adjust_text
 
 from . import toolsTG
 from . import plotsPalette
+from . import plotsThresholds
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,15 @@ plt.rcParams['ps.fonttype'] = 42
 # Significance boundaries. LOG2FC_THRESHOLD + PVAL_SIG_LINE together define which points count
 # as "significant" for coloring/opacity/labeling; PVAL_STRONG_LINE is drawn as an additional
 # (non-classifying) reference line, matching the pre-existing dashed-line behavior.
-LOG2FC_THRESHOLD = 1.5
-PVAL_SIG_LINE = 1.3
-PVAL_STRONG_LINE = 3
+#
+# Derived from plotsThresholds rather than written as -log10 literals. These were previously
+# 1.3 and 3, and 1.3 is a ROUNDED -log10(0.05) -- so the line labelled p = 0.05 sat at
+# p = 0.050119, and every feature in that sliver was classified significant while failing the
+# threshold the figure drew. Deriving the axis position from the p-value makes the two agree
+# by construction.
+LOG2FC_THRESHOLD = plotsThresholds.LOG2FC_THRESHOLD
+PVAL_SIG_LINE = plotsThresholds.neglog10(plotsThresholds.PVAL_SIG)
+PVAL_STRONG_LINE = plotsThresholds.neglog10(plotsThresholds.PVAL_STRONG)
 SIG_ALPHA = 0.9
 NONSIG_ALPHA = 0.25
 DEFAULT_UP_COLOR = plotsPalette.DE_UP
