@@ -2,6 +2,70 @@
 
 <!-- version list -->
 
+## v2.1.0-alpha.3 (2026-09-02)
+
+### Bug Fixes
+
+- **compare**: Draw each comparison on its own axes and validate the pair
+  ([`072cc27`](https://github.com/alba1735/tRNAgraph/commit/072cc2707800055d01a8fc73be93ab655eddb727))
+
+- **volcano**: Write the combined overview on cached runs, not just the first
+  ([`80157c8`](https://github.com/alba1735/tRNAgraph/commit/80157c830bdd4ddfb807f87e8b08fb799fc3cf30))
+
+### Documentation
+
+- **cli**: Trim help text to a line and name the shrinkage method
+  ([`dcbd856`](https://github.com/alba1735/tRNAgraph/commit/dcbd8565694ec4f2cb964b0ea5f90d9cc3f6efe0))
+
+- **config**: Generate a reference for every config key
+  ([`a95d216`](https://github.com/alba1735/tRNAgraph/commit/a95d216ea45981d11edd8705a686544253f59d87))
+
+### Features
+
+- **cli**: Add tools info and abort on unknown obs/var labels
+  ([`e6a0c1e`](https://github.com/alba1735/tRNAgraph/commit/e6a0c1e9c2903be0280be32bfce9d49319262bc6))
+
+- **config**: Allow --config to pin most graph options via a flags block
+  ([`8b57577`](https://github.com/alba1735/tRNAgraph/commit/8b57577d711e16bfaf3fc03d1eb92efdcb37ff7c))
+
+- **config**: Give --config one flags block per command
+  ([`286adc9`](https://github.com/alba1735/tRNAgraph/commit/286adc95757fc7d761771434bdf1ed6bb4983f4a))
+
+- **coverage**: Draw read specificity per group instead of averaged
+  ([`0c5a1bc`](https://github.com/alba1735/tRNAgraph/commit/0c5a1bc3c8fda0f58502173cdad850f5945eeaab))
+
+- **graph**: Add --corrmask and stop PCA duplicating its output directory
+  ([`aa4640e`](https://github.com/alba1735/tRNAgraph/commit/aa4640e152ef918c564332a43967a6758477ed64))
+
+- **heatmap**: Add --heatorient for a stacked, landscape layout
+  ([`40b0d05`](https://github.com/alba1735/tRNAgraph/commit/40b0d054d277d67f3ca828bc2c63cb8063b3af00))
+
+- **heatmap**: Mark combined-heatmap rows with their read type
+  ([`69f10f9`](https://github.com/alba1735/tRNAgraph/commit/69f10f9c1b155827de9b0d8f3811d0aa350867f9))
+
+- **heatmap**: Name each heatmap's read types in its title
+  ([`c2bcbba`](https://github.com/alba1735/tRNAgraph/commit/c2bcbba5d01f66b6a5403bd4671cfe7cea2c384a))
+
+- **palette**: Retune default colors and fix plot rendering defects
+  ([`703c9ec`](https://github.com/alba1735/tRNAgraph/commit/703c9ece87dec1579746e3122cf82b2f7b6451a3))
+
+- **style**: Add a line_width key for data traces and bar edges
+  ([`66cd38b`](https://github.com/alba1735/tRNAgraph/commit/66cd38bac6c66d7e5d364e6fcb150bb0d1c0d170))
+
+### Performance Improvements
+
+- **coverage**: Memoize the specificity frame and draw its grid in parallel
+  ([`b828bf2`](https://github.com/alba1735/tRNAgraph/commit/b828bf24d67348b41efb8f917d237aedeaec8d46))
+
+- **coverage**: Report progress through every step and stream pages to disk
+  ([`2b708f6`](https://github.com/alba1735/tRNAgraph/commit/2b708f6250fd5299f262a315bcf0f20656331499))
+
+### Refactoring
+
+- **compare**: Re-base -g compare on the PyDESeq2 fit
+  ([`7a68e19`](https://github.com/alba1735/tRNAgraph/commit/7a68e19b80ed987bc3dd751bea419d1a411c2c9c))
+
+
 ## v2.1.0-alpha.2 (2026-08-31)
 
 ### Bug Fixes
