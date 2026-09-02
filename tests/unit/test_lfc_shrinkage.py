@@ -43,18 +43,18 @@ def _adata(groups=('A', 'A', 'A', 'B', 'B', 'B', 'C', 'C', 'C'), n_trna=25, seed
 def _run(shrink, **kwargs):
     adata = kwargs.pop('adata', None) or _adata()
     return adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                       readcount_cutoff=0, lfc_shrink=shrink, **kwargs).log2fc_df()
+                       readcount_cutoff=0, shrink=shrink, **kwargs).log2fc_df()
 
 
 def test_shrinkage_is_on_by_default():
     """tRAX shrinks; matching it is the default, not an opt-in."""
     adata = _adata()
-    assert adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm').lfc_shrink
+    assert adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm').shrink == 'apeGLM'
 
 
 def test_shrinkage_pulls_estimates_toward_zero():
-    mle, _ = _run(False)
-    shrunk, _ = _run(True)
+    mle, _ = _run('none')
+    shrunk, _ = _run('apeGLM')
 
     columns = [c for c in mle.columns if c.startswith('log2_')]
     assert shrunk[columns].abs().median().median() <= mle[columns].abs().median().median()
@@ -63,7 +63,7 @@ def test_shrinkage_pulls_estimates_toward_zero():
 def test_every_pair_gets_a_fold_change_and_a_pvalue():
     """The bug this caught: the pvalue assignment sat outside the per-pair loop, so only one
     column per reference group was populated and the rest were silently all-NaN."""
-    for shrink in (False, True):
+    for shrink in ('none', 'apeGLM'):
         df, pairs = _run(shrink)
         assert len(pairs) == 3
         for a, b in pairs:
@@ -72,8 +72,8 @@ def test_every_pair_gets_a_fold_change_and_a_pvalue():
 
 
 def test_shrinkage_does_not_flip_significance_calls():
-    mle, pairs = _run(False)
-    shrunk, _ = _run(True)
+    mle, pairs = _run('none')
+    shrunk, _ = _run('apeGLM')
 
     for a, b in pairs:
         column = f'pval_{a}-{b}'
@@ -84,8 +84,8 @@ def test_shrinkage_does_not_flip_significance_calls():
 
 
 def test_pairs_and_shape_are_unchanged_by_shrinkage():
-    mle, mle_pairs = _run(False)
-    shrunk, shrunk_pairs = _run(True)
+    mle, mle_pairs = _run('none')
+    shrunk, shrunk_pairs = _run('apeGLM')
 
     assert mle_pairs == shrunk_pairs
     assert list(mle.columns) == list(shrunk.columns)
@@ -97,20 +97,20 @@ def test_pairs_and_shape_are_unchanged_by_shrinkage():
 def test_cache_records_the_shrinkage_state():
     adata = _adata()
     calc = adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                       readcount_cutoff=0, lfc_shrink=True)
+                       readcount_cutoff=0, shrink='apeGLM')
     calc.main()
 
     entry = adata.uns['log2FC']['default']['group']['nreads_total_unique_norm']['0']
-    assert entry['lfc_shrink'] is True
+    assert entry['shrink'] == 'apeGLM'
 
 
 def test_switching_shrinkage_invalidates_the_cache():
     adata = _adata()
     adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                readcount_cutoff=0, lfc_shrink=False).main()
+                readcount_cutoff=0, shrink='none').main()
 
     second = adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                         readcount_cutoff=0, lfc_shrink=True)
+                         readcount_cutoff=0, shrink='apeGLM')
     second.main()
 
     assert second.computed_fresh, 'a shrunk run must not reuse an unshrunken cached frame'
@@ -120,13 +120,13 @@ def test_a_cache_written_before_shrinkage_existed_is_treated_as_unshrunken():
     """Objects built before apeGLM landed carry no marker; they must not be served as shrunk."""
     adata = _adata()
     calc = adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                       readcount_cutoff=0, lfc_shrink=True)
+                       readcount_cutoff=0, shrink='apeGLM')
     calc.main()
     entry = adata.uns['log2FC']['default']['group']['nreads_total_unique_norm']['0']
-    del entry['lfc_shrink']
+    del entry['shrink']
 
     again = adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                        readcount_cutoff=0, lfc_shrink=True)
+                        readcount_cutoff=0, shrink='apeGLM')
     again.main()
 
     assert again.computed_fresh
@@ -135,10 +135,10 @@ def test_a_cache_written_before_shrinkage_existed_is_treated_as_unshrunken():
 def test_matching_shrinkage_state_hits_the_cache():
     adata = _adata()
     adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                readcount_cutoff=0, lfc_shrink=True).main()
+                readcount_cutoff=0, shrink='apeGLM').main()
 
     second = adataLog2FC(adata, compare='group', readtype='nreads_total_unique_norm',
-                         readcount_cutoff=0, lfc_shrink=True)
+                         readcount_cutoff=0, shrink='apeGLM')
     second.main()
 
     assert not second.computed_fresh

@@ -269,7 +269,7 @@ def makedb(
     forcecca: bool = typer.Option(False, "--forcecca", help="Force addition of CCA tail"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     output: str = typer.Option("db", "-o", "--output", help="Specify output directory/name for bowtie2 index files"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.makedb` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.makedb` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # -o is a name prefix (e.g. "references/vibrChol1/trnadb/vibrChol1_db"), not itself a
@@ -313,7 +313,7 @@ def trim(
     umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
     style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file. Only its colors block is read here (the 'trimtype' key), but it is the same file `analyze graph` takes, so one file can style the whole pipeline"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.trim` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.trim` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
@@ -374,7 +374,7 @@ def map_cmd(
     dedup: bool = typer.Option(False, "--dedup", help="Deduplicate mapped reads by UMI using umi_tools. Requires UMIs in the read names (see 'preprocess trim -u'); refuses to run without them"),
     keep_prededup: bool = typer.Option(False, "--keep-prededup", help="Keep the pre-deduplication bam as <sample>.prededup.bam instead of discarding it (for comparing deduplicated against non-deduplicated output without remapping)"),
     dedup_method: str = typer.Option("directional", "--dedup-method", help="umi_tools dedup --method to use: unique, percentile, cluster, adjacency or directional"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.map` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.map` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # -o is an "experiment name", not itself a directory map writes to -- the actual mapped BAM
@@ -410,12 +410,12 @@ def build(
     gtf: Optional[str] = typer.Option(None, "--gtf", help="The ensembl gene list for that species"),
     pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
     bed: Optional[List[str]] = typer.Option(None, "--bed", help="Additional bed files for feature list"),
-    maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum mismatches allowed per read. Applied consistently everywhere reads are counted from BAM files -- affects the X matrix, uns aggregate counts, and coverage data identically, not different subsets for different outputs"),
-    minfeaturereads: Optional[str] = typer.Option(None, "--minfeaturereads", help="Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit (layers['vst'] only, default: 30) -- every feature always gets a full raw/normalized coverage row and a VST value regardless; features below this are just excluded from influencing the fit itself, then transformed using the resulting fit like everything else. See adata.obs['vst_fit_excluded']"),
+    maxmismatches: Optional[str] = typer.Option(None, "--maxmismatches", help="Maximum mismatches allowed per read, applied consistently everywhere reads are counted from BAM files"),
+    minfeaturereads: Optional[str] = typer.Option(None, "--minfeaturereads", help="Minimum total raw read count a tRNA gene needs to influence the VST dispersion-trend fit (default: 30). Every feature is still transformed and kept"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     hub: bool = typer.Option(False, "--hub", help="Make a track hub"),
     hubonly: bool = typer.Option(False, "--hubonly", help="Only make the track hub"),
-    filterother: bool = typer.Option(False, "--filterother", help="Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature"),
+    filterother: bool = typer.Option(False, "--filterother", help="Dump reads counted in the 'other' type category to a separate BAM for inspection: reads matching no tRNA, bed or GTF feature"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Directory for placing bam files (default: processed/<output>_bam)"),
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
@@ -423,7 +423,7 @@ def build(
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object"),
     vst: str = typer.Option("log1p", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.build` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.build` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # Output is a directory path - h5ad filename is based on the directory basename
@@ -475,7 +475,7 @@ def addsplit(
     output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite this cutoff's u<N>/o<N> data if already present in the object"),
     force: bool = typer.Option(False, "--force", help="Proceed even if explicitly-overridden parameters conflict with the object's original build provenance"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.addsplit` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.addsplit` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # add_split() itself resolves output_path = args.output or args.anndata (and writes there);
@@ -520,11 +520,11 @@ def cluster(
     umapstatsmetrics: str = typer.Option("euclidean", "-us", "--umapstatsmetrics", help="Specify UMAP statistics metrics to use for feature selection"),
     hdbstatsmetrics: str = typer.Option("euclidean", "-uh", "--hdbstatsmetrics", help="Specify hdbscan statistics metrics to use for feature selection with UMAP"),
     clusterobsexperimental: List[str] = typer.Option([], "--clusterobsexperimental", help="This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering"),
-    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to cluster, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
-    threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max). Passed to HDBSCAN's core_dist_n_jobs always, and to UMAP's n_jobs when no --randomstate seed is set (UMAP itself overrides n_jobs to 1 when seeded, for reproducibility)"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to cluster, e.g. 'norm:u60'. Default: 'norm:full'"),
+    threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max). UMAP is pinned to one thread when --randomstate is set, for reproducibility"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
     output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.cluster` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.cluster` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     output_path = os.path.abspath(output)
@@ -557,12 +557,12 @@ def graph(
     anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
     graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file containing observations/variables to filter out, plus an optional 'flags' block pinning most `graph` options (grouping columns, cutoffs, readtypes, --variant, --allreads, ...) so one file carries a whole saved analysis. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
-    style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file carrying both the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). Structure: a 'colors' block (grouping column -> value -> color), a 'gradients' block setting the ordered/continuous scales by role, a 'categorical' fallback palette, a 'defaults' block applying to every graph, and optional per-graph-type blocks overriding it. Run `trnagraph tools template --style` for a blank file listing every key. A CLI flag always wins over the file. A file in the old --colormap shape is still accepted and read as its colors block"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file of obs/var filters plus a `flags.graph` block pinning this command's options, so one file can carry a whole run. A typed flag beats the file"),
+    style: Optional[str] = typer.Option(None, "--style", help="JSON style file carrying the color palette and presentation settings. `trnagraph tools template --style` writes a blank one; a typed flag beats the file"),
     format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),
     regen_uns: bool = typer.Option(False, "--regen_uns", help="Force regenerate uns log2fc data if it would be generated again"),
-    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60', 'allfeatures:o60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag (e.g. 'u60'). Default 'norm:full' is today's default behavior"),
-    allreads: bool = typer.Option(False, "--allreads", help="Plot every graph type from all reads instead of unique (transcript-specific) reads. Applies to the whole command at once -- graphs use unique counts by default so that two plots of one dataset never rest on different denominators. Deliberately comparative overview pages (PCA, volcano) always show both bases and are unaffected"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to plot, e.g. 'raw:full', 'norm:u60'. Default: 'norm:full'"),
+    allreads: bool = typer.Option(False, "--allreads", help="Plot every graph type from all reads instead of unique (transcript-specific) reads. One setting for the whole command"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print verbose output to stdout"),
@@ -571,14 +571,14 @@ def graph(
     clusteroverview: bool = typer.Option(False, "--clusteroverview", help="Specify wether to generate an overview of the clusters"),
     clusternumeric: bool = typer.Option(False, "--clusternumeric", help="Specify wether to the cluster category is numeric"),
     clustermask: bool = typer.Option(False, "--clustermask", help="Specify wether to mask the cluster plots to annotated HDBSCAN clusters"),
-    comparegrp1: str = typer.Option("group", "--comparegrp1", help="AnnData obs column drawn as the coloured series within each compare plot. This is NOT the axis the fold change is taken along -- see --comparegrp2. Must name a different column than --comparegrp2"),
-    comparegrp2: str = typer.Option("group", "--comparegrp2", help="AnnData obs column the fold change is taken BETWEEN: one figure is written per pair of this column's values, and within each figure the bars are the --comparegrp1 series. Must name a different column than --comparegrp1"),
+    comparegrp1: str = typer.Option("group", "--comparegrp1", help="AnnData obs column drawn as the coloured series within each compare plot. Must differ from --comparegrp2"),
+    comparegrp2: str = typer.Option("group", "--comparegrp2", help="AnnData obs column the fold change is taken BETWEEN, one figure per pair of its values. Must differ from --comparegrp1"),
     corrmethod: str = typer.Option("pearson", "--corrmethod", help="Specify correlation method"),
     corrgroup: str = typer.Option("sample", "--corrgroup", help="Specify a grouping variable to generate correlation matrices for"),
     corrmask: str = typer.Option("none", "--corrmask", help="Hide one half of each correlation matrix: none (default), upper or lower. The diagonal is kept"),
     covgrp: str = typer.Option("group", "--covgrp", help="Specify a grouping variable to generate coverage plots for"),
     covobs: str = typer.Option("trna", "--covobs", help="Specify the basis for each individual coverage plot"),
-    covtype: Optional[str] = typer.Option(None, "--covtype", help="Coverage category to plot. tRAX's four-way read-specificity partition: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino' -- plus 'total' for their sum. Any other adata.var coverage value (readstarts, mismatchedbases, ...) is also accepted. Defaults to 'unique', or to 'total' under --allreads. Each category is written to its own subfolder; the stacked overview of all four sits above them"),
+    covtype: Optional[str] = typer.Option(None, "--covtype", help="Coverage category to plot: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino', or 'total' for their sum. Any adata.var coverage value also works"),
     covgap: bool = typer.Option(False, "--covgap", help="Specify wether to include gaps in coverage plots"),
     covmethod: str = typer.Option("mean", "--covmethod", help="Specify method to use for coverage plots when combining multiple groups"),
     combinedpdfonly: bool = typer.Option(False, "--combinedpdfonly", help="Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output"),
@@ -590,7 +590,7 @@ def graph(
     heatorient: str = typer.Option("vertical", "--heatorient", help="Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page"),
     pcamarkers: str = typer.Option("sample", "--pcamarkers", help="Specify AnnData column to use for PCA markers"),
     pcacolors: str = typer.Option("group", "--pcacolors", help="Specify AnnData column to color PCA markers by"),
-    pcareadtypes: List[str] = typer.Option(['total'], "--pcareadtypes", help="Specify read types to use for PCA markers. Bare readtypes only -- the read basis is set once for the whole command by --allreads. The combined overview page always compares both bases regardless"),
+    pcareadtypes: List[str] = typer.Option(['total'], "--pcareadtypes", help="Read types to use for PCA markers. Bare readtypes only; the read basis is set once for the whole command by --allreads"),
     radargrp: str = typer.Option("group", "--radargrp", help="Specify AnnData column to group by"),
     radarmethod: List[str] = typer.Option(['mean'], "--radarmethod", help="Specify method to use for radar plots"),
     radarscaled: bool = typer.Option(False, "--radarscaled", help="Specify wether to scale the radar plots to 100%% (optional)"),
@@ -602,12 +602,12 @@ def graph(
     ccatail: bool = typer.Option(True, "--ccatail", flag_value=False, help="Specify wether to keep the CCA tail from the sequences"),
     pseudogenes: bool = typer.Option(True, "--pseudogenes", flag_value=False, help="Specify wether to keep the pseudo-tRNAs (tRX)"),
     logornamode: bool = typer.Option(False, "--logornamode", help="Specify wether to print the output as RNA rather than DNA"),
-    mismatchpseudocount: int = typer.Option(10, "--mismatchpseudocount", help="Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots, damping near-zero-coverage positions (default: 10, matching tRAX). Applies at graph time only -- the build-time sigmismatch outputs keep tRAX's own constants so they stay directly comparable to a tRAX run"),
+    mismatchpseudocount: int = typer.Option(10, "--mismatchpseudocount", help="Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots (default: 10, matching tRAX)"),
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
     volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
-    lfcshrink: bool = typer.Option(True, "--lfcshrink/--no-lfcshrink", help="Shrink log2 fold changes with an apeGLM prior (Zhu, Ibrahim & Love 2019). On by default: it matches tRAX, which shrinks via DESeq2 betaPrior, and gives better effect-size estimates and ranking for low-count features. p-values are unaffected. Costs one DESeq2 fit per distinct baseline group instead of one overall, so --no-lfcshrink is available for faster iteration"),
-    volxlim: Optional[float] = typer.Option(None, "--volxlim", help="Force the volcano x-axis half-width to this log2 fold change instead of deriving it. By default the axis is capped at the 95th percentile of |log2FC| whenever the largest value exceeds 1.5x that percentile, with out-of-range points drawn as triangles at the boundary -- so one extreme feature cannot compress every other one. Nothing is ever dropped, only pinned to the edge"),
-    vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many"),
+    shrink: str = typer.Option("apeGLM", "--shrink", help="How to shrink log2 fold changes: apeGLM (default) or none. p-values are unaffected either way"),
+    volxlim: Optional[float] = typer.Option(None, "--volxlim", help="Force the volcano x-axis half-width to this log2 fold change. By default it is capped near the 95th percentile of |log2FC|, with outliers pinned to the edge"),
+    vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels"),
 ):
     output_path = os.path.abspath(output)
     with usage_error_guard(), handle_output(quiet, tool="graph", destination=output_path, name_suffix=_log_suffix(anndata, variant)):
@@ -629,7 +629,7 @@ def graph(
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
             ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, mismatchpseudocount=mismatchpseudocount,
-            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, lfcshrink=lfcshrink,
+            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, shrink=shrink,
             # Which options were typed rather than defaulted, so a --config `flags` block
             # can be applied without overriding anything the user asked for explicitly.
             cli_specified=cli_specified_params(ctx),
@@ -661,8 +661,8 @@ def log2fc(
     group: str = typer.Option("group", "-g", "--group", help="Specify group to use for log2fc from obs"),
     readtypes: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "-r", "--readtypes", help="Specify readtypes to generate log2fc for"),
     cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
-    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.log2fc` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
-    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to compute log2fc for, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
+    config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.log2fc` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
+    variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to compute log2fc for, e.g. 'norm:u60'. Default: 'norm:full'"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # log2fc always writes back into its own input file in place -- that file's directory is
@@ -812,7 +812,7 @@ def test(
     skip_download: bool = typer.Option(False, "--skip-download", help="Skip metadata/fastq/tRNA/genome download steps and run everything else (downloads are already skipped by default when the target files are present; this forces it regardless)"),
     cleanrun: bool = typer.Option(False, "--cleanrun", help="Clean up test files after running tests"),
     directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Specify directory to run tests in"),
-    log: bool = typer.Option(False, "--log", help="Disable the live progress panel and print plain sequential output instead (useful under nohup or in CI). The suite's own toolsTestSuite.log and the per-command .log/ entries are written regardless"),
+    log: bool = typer.Option(False, "--log", help="Disable the live progress panel and print plain sequential output instead (useful under nohup or in CI)"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # Deliberately NOT wrapped in handle_output(): tools test keeps its own independent,

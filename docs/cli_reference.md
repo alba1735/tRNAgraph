@@ -374,7 +374,7 @@ Only used by `-g compare`, which `all` does not include.
 
 **Differential Expression Options:**
 
-- **`--lfcshrink` / `--no-lfcshrink`**: Shrink log2 fold changes with an apeGLM prior. On by default — tRAX shrinks its own fold changes via DESeq2's `betaPrior`, so unshrunken estimates were a silent divergence from the reference pipeline as well as noisier for low-count features. p-values are unaffected. apeGLM shrinks a design coefficient rather than an arbitrary contrast, so this costs one DESeq2 fit per distinct baseline group instead of one overall; `--no-lfcshrink` is available for faster iteration. Shrinkage state is part of the cached `uns['log2FC']` key, so switching it recomputes rather than serving a stale frame.
+- **`--shrink`**: How the log2 fold changes are shrunk: `apeGLM` (default) or `none`. p-values are unaffected either way. Shrinking costs one DESeq2 fit per distinct baseline group instead of one overall, so `--shrink none` is faster for iteration. The method is part of the cached `uns['log2FC']` key, so changing it recomputes rather than serving a frame produced by the other setting. See [Coming from tRAX](improvements_from_trax.md) for how this compares to tRAX.
 
 > [!NOTE]
 > Two extra subplots are generated automatically (in combined plots) whenever `adata.uns['nontRNA_counts']` is non-empty (i.e., `--gtf` was used at `analyze build`): a non-tRNA-only plot and a combined tRNA + non-tRNA plot. No additional flags are needed, and both are skipped with a log message if non-tRNA counts are unavailable. These use a different DESeq2 normalization than the per-readtype plots — see [Data Structure: Graphing Notes](data_structure.md#6-graphing-notes).

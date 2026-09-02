@@ -189,7 +189,7 @@ A key written in the wrong block, or at the old top level of `flags`, is reporte
 
 #### Every settable key
 
-What each key accepts is the part a template cannot show: a blank `"lfcshrink": null` says nothing about whether it wants `true`/`false`, a number, or one of a set of words. The tables below are generated from the schema and the commands themselves, so they cannot drift from either.
+What each key accepts is the part a template cannot show: a blank `"shrink": null` says nothing about whether it wants `true`/`false`, a number, or the name of an estimator. The tables below are generated from the schema and the commands themselves, so they cannot drift from either.
 
 <!-- BEGIN GENERATED: config-flags (scripts/generate_config_reference.py) -->
 
@@ -240,13 +240,13 @@ What each key accepts is the part a template cannot show: a blank `"lfcshrink": 
 | `bed` | list of strings | — | Additional bed files for feature list |
 | `database` | string | — | Name of the tRNA database |
 | `dispfittype` | string | `parametric` | DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples) |
-| `filterother` | `true` \| `false` | `false` | Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e |
+| `filterother` | `true` \| `false` | `false` | Dump reads counted in the 'other' type category to a separate BAM for inspection: reads matching no tRNA, bed or GTF feature |
 | `gtf` | string | — | The ensembl gene list for that species |
 | `hub` | `true` \| `false` | `false` | Make a track hub |
 | `hubonly` | `true` \| `false` | `false` | Only make the track hub |
 | `input` | string | — | Specify a metadata file to create annotations |
-| `maxmismatches` | string | — | Maximum mismatches allowed per read |
-| `minfeaturereads` | string | — | Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit (layers['vst'] only, default: 30) -- every feature always gets a full raw/normalized coverage row and a VST value regardless; features below this are just excluded from influencing the fit itself, then transformed using the resulting fit like everything else |
+| `maxmismatches` | string | — | Maximum mismatches allowed per read, applied consistently everywhere reads are counted from BAM files |
+| `minfeaturereads` | string | — | Minimum total raw read count a tRNA gene needs to influence the VST dispersion-trend fit (default: 30) |
 | `minnontrnasize` | integer | `20` | Minimum read length for non-tRNAs |
 | `overwritebams` | `true` \| `false` | `false` | Force overwrite of existing BAM files during map/split |
 | `pairs` | string | — | List of sample pairs to compare |
@@ -309,7 +309,7 @@ What each key accepts is the part a template cannot show: a blank `"lfcshrink": 
 | `clusteroverview` | `true` \| `false` | `false` | Specify wether to generate an overview of the clusters |
 | `combinedpdfonly` | `true` \| `false` | `false` | Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output |
 | `comparegrp1` | string | `group` | AnnData obs column drawn as the coloured series within each compare plot |
-| `comparegrp2` | string | `group` | AnnData obs column the fold change is taken BETWEEN: one figure is written per pair of this column's values, and within each figure the bars are the --comparegrp1 series |
+| `comparegrp2` | string | `group` | AnnData obs column the fold change is taken BETWEEN, one figure per pair of its values |
 | `corrgroup` | string | `sample` | Specify a grouping variable to generate correlation matrices for |
 | `corrmask` | `"none"` \| `"upper"` \| `"lower"` | `none` | Hide one half of each correlation matrix: none (default), upper or lower |
 | `corrmethod` | string | `pearson` | Specify correlation method |
@@ -317,7 +317,7 @@ What each key accepts is the part a template cannot show: a blank `"lfcshrink": 
 | `covgrp` | string | `group` | Specify a grouping variable to generate coverage plots for |
 | `covmethod` | string | `mean` | Specify method to use for coverage plots when combining multiple groups |
 | `covobs` | string | `trna` | Specify the basis for each individual coverage plot |
-| `covtype` | string | — | Coverage category to plot |
+| `covtype` | string | — | Coverage category to plot: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino', or 'total' for their sum |
 | `diffrts` | list of strings | `wholecounts, fiveprime, threeprime, other, total` | Specify readtypes to use for heatmap/volcano |
 | `graphtypes` | list of strings | `all, cluster, correlation, count, coverage, heatmap, logo, mismatch, pca, radar, volcano` | Specify graphs to create, if not specified it will default to 'all' |
 | `heatbound` | integer | `25` | Specify range to use for bounding the heatmap to top and bottom counts |
@@ -325,27 +325,27 @@ What each key accepts is the part a template cannot show: a blank `"lfcshrink": 
 | `heatgrp` | string | `group` | Specify group to use for heatmap |
 | `heatorient` | `"vertical"` \| `"horizontal"` | `vertical` | Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page |
 | `heatsubplots` | `true` \| `false` | `false` | Specify wether to generate subplots for each comparasion in addition to the sum |
-| `lfcshrink` | `true` \| `false` | `true` | Shrink log2 fold changes with an apeGLM prior (Zhu, Ibrahim & Love 2019) |
 | `logogrp` | string | `amino` | Specify AnnData column to group sequences by |
 | `logomanualgrp` | list of strings | — | Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column |
 | `logomanualname` | string | — | Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified |
 | `logopseudocount` | integer | `20` | Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs |
 | `logornamode` | `true` \| `false` | `false` | Specify wether to print the output as RNA rather than DNA |
 | `logosize` | string | `noloop` | Specify the sequence size to use for the logo plots from presets |
-| `mismatchpseudocount` | integer | `10` | Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots, damping near-zero-coverage positions (default: 10, matching tRAX) |
+| `mismatchpseudocount` | integer | `10` | Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots (default: 10, matching tRAX) |
 | `pcacolors` | string | `group` | Specify AnnData column to color PCA markers by |
 | `pcamarkers` | string | `sample` | Specify AnnData column to use for PCA markers |
-| `pcareadtypes` | list of strings | `total` | Specify read types to use for PCA markers |
+| `pcareadtypes` | list of strings | `total` | Read types to use for PCA markers |
 | `pseudogenes` | `true` \| `false` | `true` | Specify wether to keep the pseudo-tRNAs (tRX) |
 | `radargrp` | string | `group` | Specify AnnData column to group by |
 | `radarmethod` | list of strings | `mean` | Specify method to use for radar plots |
 | `radarscaled` | `true` \| `false` | `false` | Specify wether to scale the radar plots to 100%% (optional) |
 | `regen_uns` | `true` \| `false` | `false` | Force regenerate uns log2fc data if it would be generated again |
+| `shrink` | `"apeGLM"` \| `"none"` | `apeGLM` | How to shrink log2 fold changes: apeGLM (default) or none |
 | `variant` | string | `norm:full` | Select which normalization:split-tag to plot, e.g |
 | `volcutoff` | integer | `80` | Specify readcount cutoff to use for volcano plot |
 | `volgrp` | string | `group` | Specify group to use for volcano plot |
-| `vollabels` | integer | `100` | Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many |
-| `volxlim` | number | — | Force the volcano x-axis half-width to this log2 fold change instead of deriving it |
+| `vollabels` | integer | `100` | Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels |
+| `volxlim` | number | — | Force the volcano x-axis half-width to this log2 fold change |
 
 #### `flags.log2fc` — `tools log2fc`
 

@@ -120,9 +120,9 @@ def test_unset_flags_are_left_alone():
 
 def test_a_false_boolean_is_applied_not_treated_as_unset():
     """False is a real value; only None means 'not configured'."""
-    args = _merge({'lfcshrink': False}, lfcshrink=True)
+    args = _merge({'heatsubplots': False}, heatsubplots=True)
 
-    assert args.lfcshrink is False
+    assert args.heatsubplots is False
 
 
 # --- precedence -----------------------------------------------------------------------

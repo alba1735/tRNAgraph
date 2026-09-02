@@ -202,14 +202,14 @@ class anndataGrapher:
             for grp in list(set([self.args.heatgrp, self.args.volgrp])):
                 for readtype in self.resolved_diffrts():
                     for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
-                        log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, lfc_shrink=getattr(self.args, 'lfcshrink', True))
+                        log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, shrink=getattr(self.args, 'shrink', 'apeGLM'))
                         log2fc.main()
                         any_computed = any_computed or log2fc.computed_fresh
         if 'volcano' in self.args.graphtypes:
             # The volcano combined overview page always uses these two read types (mirroring
             # PCA's default --pcareadtypes), regardless of what --diffrts requests.
             for readtype in plotsVolcano.OVERVIEW_TRNA_READTYPES:
-                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, lfc_shrink=getattr(self.args, 'lfcshrink', True))
+                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, shrink=getattr(self.args, 'shrink', 'apeGLM'))
                 log2fc.main()
                 any_computed = any_computed or log2fc.computed_fresh
         if any_computed or self.args.regen_uns:
@@ -267,6 +267,12 @@ class anndataGrapher:
         everything wrong with the command.
         '''
         problems = []
+        shrink = getattr(self.args, 'shrink', None)
+        if shrink is not None and shrink not in toolsTG.SHRINK_METHODS:
+            # Checked up front like --corrmask and --heatorient: a run can spend most of its
+            # time before the first fold change is fitted, and a typo should cost nothing.
+            problems.append(f"--shrink '{shrink}' is not a shrinkage method; expected one of: "
+                            f"{', '.join(toolsTG.SHRINK_METHODS)}.")
         # Gated on compare actually being requested, because --comparegrp1 and --comparegrp2
         # BOTH DEFAULT to 'group': an unconditional check would abort every ordinary run of a
         # command that never asked for a compare plot. compare is excluded from `-g all` by

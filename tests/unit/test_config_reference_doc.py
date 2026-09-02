@@ -1,6 +1,6 @@
 """The generated `--config` flags reference in docs/advanced_usage.md.
 
-The template can only ever show `"lfcshrink": null`, which says nothing about whether the key
+The template can only ever show `"shrink": null`, which says nothing about whether the key
 wants true/false, a number, or one of a set of words. The reference tables answer that, and
 are generated from the pydantic models (which own the types) and the typer commands (which own
 the defaults and the one-line meanings) so neither becomes a second source of truth.
@@ -47,11 +47,20 @@ def test_every_block_has_a_table(generator):
 
 
 def test_a_boolean_key_states_both_values(generator):
-    """The reported motivation for the table: `lfcshrink` gave no clue what it accepted."""
+    """The reported motivation for the table: a bare null gave no clue what it accepted."""
     body = generator.DOC.read_text()
-    row = next(line for line in body.splitlines() if line.startswith('| `lfcshrink` |'))
+    row = next(line for line in body.splitlines() if line.startswith('| `savesplitbams` |'))
 
     assert '`true`' in row and '`false`' in row, row
+
+
+def test_the_shrink_key_lists_its_methods(generator):
+    """`shrink` is the key that prompted the table: a bare null said nothing about whether it
+    wanted true/false, a number, or the name of an estimator."""
+    body = generator.DOC.read_text()
+    row = next(line for line in body.splitlines() if line.startswith('| `shrink` |'))
+
+    assert '"apeGLM"' in row and '"none"' in row, row
 
 
 def test_a_choice_key_lists_its_choices(generator):

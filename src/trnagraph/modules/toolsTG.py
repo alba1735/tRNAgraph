@@ -944,6 +944,11 @@ def scatter_subset_graph_to_full(subset_graph, subset_index, full_index):
     return full_graph.tocsr()
 
 
+#: Shrinkage estimators for the log2 fold changes. PyDESeq2 implements apeGLM only;
+#: tRAX's own DESeq2 betaPrior has no equivalent here, so it is not offered.
+SHRINK_METHODS = ('apeGLM', 'none')
+
+
 def _as_pair_list(pairs) -> List[Tuple[str, str]]:
     '''
     Coerce a `pairs` value to a list of plain string tuples, whichever path produced it.
@@ -962,7 +967,7 @@ def _as_pair_list(pairs) -> List[Tuple[str, str]]:
 
 
 class adataLog2FC:
-    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, lfc_shrink: bool = True):
+    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, shrink: str = 'apeGLM'):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
@@ -978,12 +983,17 @@ class adataLog2FC:
         # caller that KNOWS it isn't running inside a pool (e.g. adataBuild.py's or
         # adataGraph.py's own pre-pool precompute step) should ever pass something else.
         self.n_cpus = n_cpus
-        # apeGLM shrinkage of the log2 fold changes (Zhu, Ibrahim & Love 2019,
-        # doi:10.1093/bioinformatics/bty895). On by default: tRAX shrinks its own LFCs via
-        # DESeq2's betaPrior=TRUE (analyzecounts.R:104), so unshrunken MLEs were a silent
-        # divergence from the reference pipeline as well as noisier effect sizes. Costs one
+        # How the log2 fold changes are shrunk: 'apeGLM' (Zhu, Ibrahim & Love 2019,
+        # doi:10.1093/bioinformatics/bty895) or 'none'. A named method rather than a boolean
+        # because the choice of estimator is a real one -- tRAX shrinks via DESeq2's
+        # betaPrior=TRUE (analyzecounts.R:104), which PyDESeq2 does not implement, so a third
+        # value can be added here without changing the flag's shape. Shrinking costs one
         # DESeq2 fit per distinct baseline level instead of one overall -- see log2fc_df().
-        self.lfc_shrink = lfc_shrink
+        if shrink not in SHRINK_METHODS:
+            raise InvalidParameterError(
+                f"Unknown --shrink method {shrink!r}. Expected one of: "
+                + ', '.join(SHRINK_METHODS))
+        self.shrink = shrink
         self.log2fc_dict: Dict[str, Any] = {}
         # Set by main(): whether THIS call actually computed a fresh fit (cache miss) rather than
         # reusing a cached df (cache hit). Callers that precompute several combos and want to
@@ -1008,11 +1018,11 @@ class adataLog2FC:
 
         entry = self.log2fc_dict[self.config_name][self.compare][self.readtype][self.readcount_cutoff]
         df = entry.get('df', pd.DataFrame())
-        # Shrinkage state is part of what a cached fold change IS, so it belongs in the cache
-        # key. An entry written before this key existed reads as False, which correctly misses
-        # against the shrunk default and recomputes -- otherwise every object built before
-        # apeGLM landed would keep serving unshrunken values under a run that asked for shrunk.
-        if entry.get('lfc_shrink', False) != self.lfc_shrink:
+        # Which shrinkage produced a cached fold change is part of what that value IS, so it
+        # belongs in the cache key. An entry written before this key existed reads as None,
+        # which correctly misses against any named method and recomputes -- otherwise an object
+        # built under the old boolean key would keep serving values from the wrong estimator.
+        if entry.get('shrink') != self.shrink:
             df = pd.DataFrame()
 
         # `pairs` is read by consumers out of the RETURNED dict, not from a local -- so both
@@ -1021,7 +1031,7 @@ class adataLog2FC:
         if df.empty or self.overwrite:
             df, pairs = self.log2fc_df()
             entry['df'] = df
-            entry['lfc_shrink'] = self.lfc_shrink
+            entry['shrink'] = self.shrink
             compare_entry['pairs'] = _as_pair_list(pairs)
             self.adata.uns['log2FC'] = self.log2fc_dict
             self.computed_fresh = True
@@ -1126,7 +1136,7 @@ class adataLog2FC:
         # Group pairs by the level acting as their baseline, so each distinct reference costs
         # one fit rather than each pair costing one. Without shrinkage a single fit serves
         # every contrast, which is why this is opt-outable.
-        if self.lfc_shrink:
+        if self.shrink != 'none':
             by_reference = defaultdict(list)
             for pair in pairs:
                 by_reference[pair[0]].append(pair)
@@ -1143,7 +1153,7 @@ class adataLog2FC:
                 # test=pair[1], ref=pair[0] matches the previous log2(mean(pair[1])/mean(pair[0])) convention.
                 stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True)
                 stat_res.summary()
-                if self.lfc_shrink:
+                if self.shrink != 'none':
                     # Leaves p-values untouched by construction -- shrinkage moves the effect
                     # size, not the significance call.
                     stat_res.lfc_shrink(coeff=f'condition[T.{pair[1]}]')

@@ -202,7 +202,7 @@ class GraphFlags(BaseModel):
     # volcano
     volgrp: Optional[str] = None
     volcutoff: Optional[int] = None
-    lfcshrink: Optional[bool] = None
+    shrink: Optional[Literal['apeGLM', 'none']] = None
     volxlim: Optional[float] = None
     vollabels: Optional[int] = None
 
