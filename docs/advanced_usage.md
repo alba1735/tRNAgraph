@@ -187,6 +187,177 @@ Not settable, on purpose:
 
 A key written in the wrong block, or at the old top level of `flags`, is reported by name with the block it belongs in.
 
+#### Every settable key
+
+What each key accepts is the part a template cannot show: a blank `"lfcshrink": null` says nothing about whether it wants `true`/`false`, a number, or one of a set of words. The tables below are generated from the schema and the commands themselves, so they cannot drift from either.
+
+<!-- BEGIN GENERATED: config-flags (scripts/generate_config_reference.py) -->
+
+#### `flags.makedb` — `preprocess makedb`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `addseqs` | string | — | Specify location of additional sequences file |
+| `addtrna` | string | — | Specify location of additional tRNA sequences file |
+| `forcecca` | `true` \| `false` | `false` | Force addition of CCA tail |
+| `genome` | string | — | Specify location of the reference genome fasta file |
+| `namemap` | string | — | Specify location of the tRNA name mapping file |
+| `orgmode` | string | `euk` | Organism mode used for tRNAScan-SE and for Sprinzl position numbering |
+| `trnafa` | string | — | Specify location of the tRNA reference fasta file |
+| `trnaout` | string | — | Specify location of the tRNAScan-SE out file |
+
+#### `flags.trim` — `preprocess trim`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `adapter1` | string | — | Adapter sequence for R1 (optional, fastp auto-detects) |
+| `adapter2` | string | — | Adapter sequence for R2 (optional, fastp auto-detects) |
+| `input` | string | — | Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path] |
+| `length` | integer | `15` | Minimum length of sequence after trimming |
+| `umi3` | `true` \| `false` | `false` | UMI is at the 3-prime end (Default is 5-prime) |
+| `umilength` | integer | `0` | Length of UMI (0 to disable) |
+
+#### `flags.map` — `preprocess map`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `bamdir` | string | — | Directory for placing bam files (default: processed/<output>_bam) |
+| `database` | string | — | Name of the tRNA database |
+| `dedup` | `true` \| `false` | `false` | Deduplicate mapped reads by UMI using umi_tools |
+| `dedup_method` | string | `directional` | umi_tools dedup --method to use: unique, percentile, cluster, adjacency or directional |
+| `force_remap` | `true` \| `false` | `false` | Force remapping even if a matching bam file already exists (default: skip mapping if bams exist, after a fastq/header consistency check) |
+| `input` | string | — | Specify a metadata file to create annotations |
+| `keep_prededup` | `true` \| `false` | `false` | Keep the pre-deduplication bam as <sample>.prededup.bam instead of discarding it (for comparing deduplicated against non-deduplicated output without remapping) |
+| `local` | `true` \| `false` | `false` | Use local bam mapping |
+| `minnontrnasize` | integer | `20` | Minimum read length for non-tRNAs |
+| `skipcheck` | `true` \| `false` | `false` | Skips the check that the fq files match bam files |
+
+#### `flags.build` — `analyze build`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `bamdir` | string | — | Directory for placing bam files (default: processed/<output>_bam) |
+| `bed` | list of strings | — | Additional bed files for feature list |
+| `database` | string | — | Name of the tRNA database |
+| `dispfittype` | string | `parametric` | DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples) |
+| `filterother` | `true` \| `false` | `false` | Dump reads counted in the 'other' type category (the 'other' row in typecounts.txt/uns['type_counts']) to a separate BAM file for inspection -- i.e |
+| `gtf` | string | — | The ensembl gene list for that species |
+| `hub` | `true` \| `false` | `false` | Make a track hub |
+| `hubonly` | `true` \| `false` | `false` | Only make the track hub |
+| `input` | string | — | Specify a metadata file to create annotations |
+| `maxmismatches` | string | — | Maximum mismatches allowed per read |
+| `minfeaturereads` | string | — | Minimum total raw read count (summed across all samples) a tRNA gene needs to be included in the VST dispersion-trend fit (layers['vst'] only, default: 30) -- every feature always gets a full raw/normalized coverage row and a VST value regardless; features below this are just excluded from influencing the fit itself, then transformed using the resulting fit like everything else |
+| `minnontrnasize` | integer | `20` | Minimum read length for non-tRNAs |
+| `overwritebams` | `true` \| `false` | `false` | Force overwrite of existing BAM files during map/split |
+| `pairs` | string | — | List of sample pairs to compare |
+| `readlengthsplit` | integer | — | Read length cutoff for splitting (generates additional under/over analyses) |
+| `savesplitbams` | `true` \| `false` | `false` | Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object |
+| `vst` | string | `log1p` | Variance Stabilizing Transformation method [vst, log1p, none] |
+
+#### `flags.addsplit` — `analyze addsplit`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `bamdir` | string | — | Original (unsplit) BAM directory (default: recovered from provenance) |
+| `database` | string | — | Override tRNA database (default: recovered from provenance) |
+| `dispfittype` | string | — | Override DESeq2 dispersion fit type (default: recovered from provenance) |
+| `force` | `true` \| `false` | `false` | Proceed even if explicitly-overridden parameters conflict with the object's original build provenance |
+| `gtf` | string | — | Override GTF path (default: recovered from provenance) |
+| `metadata` | string | — | Metadata file (default: recovered from the object's own build provenance) |
+| `minfeaturereads` | string | — | Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit (default: recovered from provenance, or 30) |
+| `overwrite` | `true` \| `false` | `false` | Overwrite this cutoff's u<N>/o<N> data if already present in the object |
+| `overwritebams` | `true` \| `false` | `false` | Force overwrite of existing split BAM files |
+| `readlengthsplit` | integer | — | New read length cutoff to add (generates u<N>/o<N> variants) |
+| `savesplitbams` | `true` \| `false` | `false` | Keep the split BAM files (under --bamdir/u<N>,o<N>) instead of deleting them once merged into the AnnData object |
+| `vst` | string | — | VST strategy for this split's vst layer (default: recovered from provenance) |
+
+#### `flags.cluster` — `analyze cluster`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `clusterobsexperimental` | list of strings | — | This is an experimental feature to add columns from adata.obs to the adata.var and adata.X to be used for clustering |
+| `coveragetype` | list of strings | `uniquecoverage, readstarts, readends, mismatchedbases, deletions` | Specify coverage types for umap clustering treated as features |
+| `hdbscanminclugrp` | integer | `10` | Specify min cluster size to use for HDBSCAN clustering of groups |
+| `hdbscanminclusmp` | integer | `30` | Specify min cluster size to use for HDBSCAN clustering of samples |
+| `hdbscanminsampgrp` | integer | `3` | Specify minsamples size to use for HDBSCAN clustering of groups |
+| `hdbscanminsampsmp` | integer | `6` | Specify minsamples size to use for HDBSCAN clustering of samples |
+| `hdbstatsmetrics` | string | `euclidean` | Specify hdbscan statistics metrics to use for feature selection with UMAP |
+| `mindist` | number | `0.1` | Specify minimum distance to use for UMAP clustering |
+| `ncomponentgrp` | integer | `2` | Specify number of components to use for UMAP clustering of groups |
+| `ncomponentsmp` | integer | `2` | Specify number of components to use for UMAP clustering of samples |
+| `neighborclusgrp` | integer | `40` | Specify number of neighbors to use for UMAP clustering of groups |
+| `neighborclusmp` | integer | `150` | Specify number of neighbors to use for UMAP clustering of samples |
+| `neighborstdgrp` | integer | `20` | Specify number of neighbors to use for UMAP projection plotting of groups |
+| `neighborstdsmp` | integer | `75` | Specify number of neighbors to use for UMAP projection plotting of samples |
+| `overwrite` | `true` \| `false` | `false` | Overwrite existing cluster information in AnnData object |
+| `randomstate` | integer | — | Specify random state for UMAP if you want to have a static seed |
+| `readcutoff` | integer | `20` | Specify readcount cutoff to use for clustering |
+| `umapstatsmetrics` | string | `euclidean` | Specify UMAP statistics metrics to use for feature selection |
+| `variancethreshold` | number | `0.1` | Specify variance threshold to use for feature selection |
+| `variant` | string | `norm:full` | Select which normalization:split-tag to cluster, e.g |
+
+#### `flags.graph` — `graph`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `allreads` | `true` \| `false` | `false` | Plot every graph type from all reads instead of unique (transcript-specific) reads |
+| `ccatail` | `true` \| `false` | `true` | Specify wether to keep the CCA tail from the sequences |
+| `clustergrp` | string | `amino` | Specify AnnData column to group by |
+| `clusterlabels` | string | — | Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot |
+| `clustermask` | `true` \| `false` | `false` | Specify wether to mask the cluster plots to annotated HDBSCAN clusters |
+| `clusternumeric` | `true` \| `false` | `false` | Specify wether to the cluster category is numeric |
+| `clusteroverview` | `true` \| `false` | `false` | Specify wether to generate an overview of the clusters |
+| `combinedpdfonly` | `true` \| `false` | `false` | Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output |
+| `comparegrp1` | string | `group` | AnnData obs column drawn as the coloured series within each compare plot |
+| `comparegrp2` | string | `group` | AnnData obs column the fold change is taken BETWEEN: one figure is written per pair of this column's values, and within each figure the bars are the --comparegrp1 series |
+| `corrgroup` | string | `sample` | Specify a grouping variable to generate correlation matrices for |
+| `corrmask` | `"none"` \| `"upper"` \| `"lower"` | `none` | Hide one half of each correlation matrix: none (default), upper or lower |
+| `corrmethod` | string | `pearson` | Specify correlation method |
+| `covgap` | `true` \| `false` | `false` | Specify wether to include gaps in coverage plots |
+| `covgrp` | string | `group` | Specify a grouping variable to generate coverage plots for |
+| `covmethod` | string | `mean` | Specify method to use for coverage plots when combining multiple groups |
+| `covobs` | string | `trna` | Specify the basis for each individual coverage plot |
+| `covtype` | string | — | Coverage category to plot |
+| `diffrts` | list of strings | `wholecounts, fiveprime, threeprime, other, total` | Specify readtypes to use for heatmap/volcano |
+| `graphtypes` | list of strings | `all, cluster, correlation, count, coverage, heatmap, logo, mismatch, pca, radar, volcano` | Specify graphs to create, if not specified it will default to 'all' |
+| `heatbound` | integer | `25` | Specify range to use for bounding the heatmap to top and bottom counts |
+| `heatcutoff` | integer | `80` | Specify readcount cutoff to use for heatmap |
+| `heatgrp` | string | `group` | Specify group to use for heatmap |
+| `heatorient` | `"vertical"` \| `"horizontal"` | `vertical` | Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page |
+| `heatsubplots` | `true` \| `false` | `false` | Specify wether to generate subplots for each comparasion in addition to the sum |
+| `lfcshrink` | `true` \| `false` | `true` | Shrink log2 fold changes with an apeGLM prior (Zhu, Ibrahim & Love 2019) |
+| `logogrp` | string | `amino` | Specify AnnData column to group sequences by |
+| `logomanualgrp` | list of strings | — | Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column |
+| `logomanualname` | string | — | Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified |
+| `logopseudocount` | integer | `20` | Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs |
+| `logornamode` | `true` \| `false` | `false` | Specify wether to print the output as RNA rather than DNA |
+| `logosize` | string | `noloop` | Specify the sequence size to use for the logo plots from presets |
+| `mismatchpseudocount` | integer | `10` | Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots, damping near-zero-coverage positions (default: 10, matching tRAX) |
+| `pcacolors` | string | `group` | Specify AnnData column to color PCA markers by |
+| `pcamarkers` | string | `sample` | Specify AnnData column to use for PCA markers |
+| `pcareadtypes` | list of strings | `total` | Specify read types to use for PCA markers |
+| `pseudogenes` | `true` \| `false` | `true` | Specify wether to keep the pseudo-tRNAs (tRX) |
+| `radargrp` | string | `group` | Specify AnnData column to group by |
+| `radarmethod` | list of strings | `mean` | Specify method to use for radar plots |
+| `radarscaled` | `true` \| `false` | `false` | Specify wether to scale the radar plots to 100%% (optional) |
+| `regen_uns` | `true` \| `false` | `false` | Force regenerate uns log2fc data if it would be generated again |
+| `variant` | string | `norm:full` | Select which normalization:split-tag to plot, e.g |
+| `volcutoff` | integer | `80` | Specify readcount cutoff to use for volcano plot |
+| `volgrp` | string | `group` | Specify group to use for volcano plot |
+| `vollabels` | integer | `100` | Specify number of top significant markers to label on each volcano plot (default: 100, since labeling every significant marker has unbounded cost on large datasets); pass 0 to disable labels, or any other N for exactly that many |
+| `volxlim` | number | — | Force the volcano x-axis half-width to this log2 fold change instead of deriving it |
+
+#### `flags.log2fc` — `tools log2fc`
+
+| Key | Accepts | Default | Meaning |
+| --- | --- | --- | --- |
+| `cutoff` | list of integers | `80` | Specify readcounts cutoff to use for log2fc |
+| `group` | string | `group` | Specify group to use for log2fc from obs |
+| `readtypes` | list of strings | `wholecounts_unique, fiveprime_unique, threeprime_unique, other_unique, total_unique` | Specify readtypes to generate log2fc for |
+| `variant` | string | `norm:full` | Select which normalization:split-tag to compute log2fc for, e.g |
+
+<!-- END GENERATED: config-flags -->
+
 A list value **replaces** the default rather than adding to it, which is what lets a config narrow one — `"diffrts": ["fiveprime"]` plots that readtype alone. An empty list is rejected rather than silently selecting nothing.
 
 ### Style Files (`--style`)
