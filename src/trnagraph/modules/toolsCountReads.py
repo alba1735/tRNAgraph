@@ -306,14 +306,12 @@ class counttypes:
 def getbamcounts(bamfile, samplename,trnainfo, trnaloci, trnalist,featurelist = dict(),otherseqdict = dict(), embllist = list(), bedfiles = list(),nomultimap = False, allowindels = True, maxmismatches = None):
     samplecounts = featurecount(samplename, bamfile, trnas = trnalist, trnaloci = trnaloci, emblgenes = embllist, otherfeats = featurelist)
     fullpretrnathreshold = 2
+    # tRAX gated on MAPQ >= 2 here when nomultimap was set; tRNAgraph applies the genome
+    # MAPQ filter earlier and unconditionally (see test_filtermultimapped_default.py),
+    # so the local threshold was dead. printcountfile()/printtrnacountfile() carry the
+    # minreads = 5 default in their own signatures.
+    # A read must clear the tRNA end by this many bases to count as a true pre-tRNA.
     minpretrnaextend = 5
-    #minimum mapq
-    #nomultimap = False
-    minmapq = 0
-    if nomultimap:
-        minmapq = 2
-    #minimum number of reads for a feature to be reported
-    minreads = 5
     #print >>sys.stderr, embllist
     
     genetypes = dict()
@@ -369,7 +367,6 @@ def getbamcounts(bamfile, samplename,trnainfo, trnaloci, trnalist,featurelist = 
         #print >>sys.stderr, "**"
         #pass 
         try:
-            allreads = set()
             for currfeat in list(featset):
                 
                 for currread in toolsTG.getbamrangeshort(bamfile, currfeat, singleonly = nomultimap, maxmismatches = maxmismatches,allowindels = allowindels, skiptags = True):
@@ -427,7 +424,6 @@ def getbamcounts(bamfile, samplename,trnainfo, trnaloci, trnalist,featurelist = 
                 continue
 
             curramino = trnainfo.getamino(currfeat.name)
-            curranticodon = trnainfo.getanticodon(currfeat.name)
             #samplecounts.addfragcount(currfeat.name, fragtype)
             samplecounts.addtrnacount(currfeat.name)
                 
@@ -456,10 +452,8 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
     readtypecounts = counttypes(samplename, bamfile, trnas = trnalist, trnaloci = trnaloci, emblgenes = embllist, otherfeats = bedlist)
     mitochrom = None
     fullpretrnathreshold = 2
-    minpretrnaextend = 5
     ncrnaorder = defaultdict(int)
     currbam = bamfile
-    dumpotherreads = True
 
     for i, curr in enumerate(reversed(list(["snoRNA","miRNA", "rRNA","snRNA","misc_RNA","lincRNA", "protein_coding"]))):
         ncrnaorder[curr] = i + 1
@@ -484,8 +478,6 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
 
     for i, currread in enumerate(toolsTG.getbam(bamfile, primaryonly = True)):
 
-        isindel = False
-        hasmiamatch  = False
         readlength = currread.getlength()
         gotread = False
         #continue #point1
@@ -493,7 +485,6 @@ def counttypereads(bamfile, samplename,trnainfo, trnaloci, trnalist,maturenames,
         readtypecounts.addmismatchcounts(currread.getmismatches())
         if currread.hasindel():
             readtypecounts.addindelreads(readlength)
-            isindel = True
             #continue
 
         else:

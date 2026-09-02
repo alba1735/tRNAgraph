@@ -14,7 +14,6 @@ reason.
 The fix makes the walk a *candidate* that must be positively identified as this project's source
 tree before it is returned, and gives every caller an explicit answer for "there isn't one".
 """
-import logging
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch

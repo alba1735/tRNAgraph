@@ -17,7 +17,6 @@ the interface counttypereads() calls -- so it deterministically exercises both p
 of the exact same underlying candidates and confirms the code's own sort normalizes both to an
 identical classification result.
 """
-from types import SimpleNamespace
 
 import pysam
 

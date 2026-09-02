@@ -1,7 +1,6 @@
 import pandas as pd
 import anndata as ad
 import os
-import sys
 import shutil
 import datetime
 import subprocess
@@ -482,7 +481,7 @@ class AnalysisPipeline:
                 sample_df.columns = ['sample', 'condition']
                 sample_df['replicate'] = sample_df['condition'] # Assign replicate same as condition
             else:
-                 self.logger.error(f"Error: Metadata file must have at least 3 columns (fastq, sample, group)")
+                 self.logger.error("Error: Metadata file must have at least 3 columns (fastq, sample, group)")
                  return
 
             sample_df.set_index('sample', inplace=True)
@@ -520,7 +519,7 @@ class AnalysisPipeline:
                     control_genes = trna_features
                     self.logger.info(f"Using {len(control_genes)} tRNA features for size factor calculation.")
                 else:
-                    self.logger.warning(f"Warning: No tRNA features found for size factor computation. Defaulting to all features.")
+                    self.logger.warning("Warning: No tRNA features found for size factor computation. Defaulting to all features.")
 
             dds = DeseqDataSet(counts=counts_df, metadata=sample_df, design_factors="condition", fit_type=self.dispfittype, control_genes=control_genes)
             dds.deseq2()
@@ -915,7 +914,7 @@ class AnnDataBuilder():
         metadata_type = '\t' if metadata.endswith('.tsv') else ',' if metadata.endswith('.csv') else None
         try:
             self.metadata = pd.read_csv(metadata, sep=metadata_type, header=None, index_col=None, engine='python' if metadata_type is None else None)
-        except:
+        except Exception:
             raise ValueError(f'Could not read metadata file, check to make sure it is formated correctly: {metadata}')
 
         # Validate and drop fastq column
@@ -1214,7 +1213,7 @@ class AnnDataBuilder():
         x_df = x_df.astype('float64')  # Not sure if this is the dtype I want to use defaults to float64
         # Rename columns of x_df to include position and coverage type
         clist = [[p + '_' + cov for p in self.positions] for cov in self.cov_types]
-        clist = [a for l in clist for a in l]
+        clist = [name for per_cov in clist for name in per_cov]
         x_df.columns = clist
         return x_df, size_factors_list
 

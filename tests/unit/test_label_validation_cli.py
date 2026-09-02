@@ -9,7 +9,6 @@ one ERROR line, exit 1, no traceback.
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 from typer.testing import CliRunner
 
 from trnagraph import cli

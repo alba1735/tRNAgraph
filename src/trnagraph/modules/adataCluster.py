@@ -49,14 +49,14 @@ class anndataCluster():
 
     def main(self):
         # Check if the output file already exists
-        if os.path.isfile(self.output) and self.overwrite == False:
+        if os.path.isfile(self.output) and not self.overwrite:
             try:
                 existing_uns = ad.read_h5ad(self.output).uns
                 existing_info = existing_uns if self.variant_spec.tag == 'full' else existing_uns.get('size_splits', {}).get(self.variant_spec.tag, {})
                 if 'cluster_runinfo' in existing_info:
                     self.logger.info('Cluster information already present in AnnData object for this variant. No new clustering will be performed. If you wish to overwrite the existing clustering information, please use the --overwrite option.')
                     exit()
-            except:
+            except Exception:
                 self.logger.info('Output file already exists but not in AnnData format. Please remove the file or use the --overwrite option.')
                 exit()
         # Subset the AnnData object to only include samples with a minimum number of reads

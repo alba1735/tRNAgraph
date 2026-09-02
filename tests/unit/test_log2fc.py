@@ -4,7 +4,6 @@ from unittest.mock import patch
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 
 import trnagraph.modules.toolsTG as toolsTG
 from trnagraph.modules.toolsTG import adataLog2FC

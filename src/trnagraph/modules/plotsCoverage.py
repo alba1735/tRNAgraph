@@ -5,12 +5,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import anndata as ad
 
 from . import toolsTG
 from . import plotsPalette
 
-from functools import partial
 import multiprocessing
 from multiprocessing import Pool
 
@@ -110,7 +108,7 @@ class visualizer():
         # which shows every category at once and so has no single category to file under --
         # stays at <base>/. See toolsTG.coverage_category_dir().
         self.category_dir = toolsTG.coverage_category_dir(self.coverage_type)
-        if colormap != None: #and self.coverage_combine_all == False:
+        if colormap is not None:  # and not self.coverage_combine_all:
             self.coverage_pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         else:
             coverage_pal = plotsPalette.categorical(settings, len(self.adata.obs[self.coverage_grp].unique()))

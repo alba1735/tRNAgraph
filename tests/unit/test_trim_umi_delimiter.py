@@ -14,7 +14,6 @@ This asserts on the fastp argv because that is the boundary with the external bi
 end-to-end proof is that a trimmed FASTQ maps and deduplicates, which the tutorial's yeast run
 exercises for real.
 """
-import pathlib
 from types import SimpleNamespace
 
 import pytest

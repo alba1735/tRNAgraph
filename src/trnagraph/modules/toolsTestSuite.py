@@ -6,7 +6,6 @@ import sys
 import subprocess
 import logging
 import contextlib
-import zipfile
 import argparse
 from typing import List, Optional
 

@@ -3,7 +3,6 @@
 import logging
 
 import pandas as pd
-import anndata as ad
 
 from . import toolsTG
 from . import plotsPalette

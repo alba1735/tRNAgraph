@@ -15,7 +15,6 @@ not error -- it mis-parses the UMI, which is exactly the kind of silent wrong an
 detection exists to prevent.
 """
 import pysam
-import pytest
 
 from trnagraph.modules.toolsDedup import detect_umi_separator
 

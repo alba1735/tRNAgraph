@@ -5,8 +5,6 @@ import sys
 import shutil
 import subprocess
 import multiprocessing
-import re
-import itertools
 import logging
 import pysam
 
@@ -182,11 +180,9 @@ class BamSplitter:
         
         parent_dir = os.path.dirname(self.bamdir)  
         exp_basename = os.path.basename(parent_dir)  
-        exp_dir = os.path.dirname(parent_dir)  
         
         base_output_dir = exp_basename
         
-        under_output_dir = base_output_dir
         over_output_dir = base_output_dir
         
         under_results_name, under_graphs_name = toolsTG.variant_dir_names(self.args, tag=f"u{self.cutoff}")

@@ -13,7 +13,6 @@ import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
-import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +88,7 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
     comparegrp1 = toolsTG.resolve_grp_column(adata, comparegrp1, 'comparegrp1')
     comparegrp2 = toolsTG.resolve_grp_column(adata, comparegrp2, 'comparegrp2')
     # Create a color palette for the p
-    if colormap != None:
+    if colormap is not None:
         pal = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
     else:
         pal = plotsPalette.categorical(settings, len(adata.obs[comparegrp1].unique()))

@@ -173,7 +173,7 @@ def visualizer(adata, pcamarkers, pcacolors, pcareadtypes, colormap, output, thr
     else:
         meta_df = pd.DataFrame(adata.obs, columns=['trna', pcamarkers, pcacolors])
         hue_dict = dict(zip(meta_df[pcamarkers], meta_df[pcacolors]))
-    if colormap != None:
+    if colormap is not None:
         colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in colormap.items()}
         for v in hue_dict.values():
             if v not in colormap:

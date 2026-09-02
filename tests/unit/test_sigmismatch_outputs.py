@@ -32,7 +32,8 @@ def _coverage(region, values):
 def _coverage_info(region, *, coverage, mismatches, deletions=None, bases=None):
     name = region.name
     zeros = [0] * region.length()
-    empty = lambda: {name: _coverage(region, zeros)}
+    def empty():
+        return {name: _coverage(region, zeros)}
     return tgc.CoverageInfo(
         readcounts={name: sum(coverage)},
         allcoverages={name: _coverage(region, coverage)},

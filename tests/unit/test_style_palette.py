@@ -273,7 +273,8 @@ def test_the_template_is_a_no_op(graph_type):
     assert blank['gradients'].keys() == unset['gradients'].keys()
     for role in unset['gradients']:
         assert blank['gradients'][role](0.5) == unset['gradients'][role](0.5)
-    strip = lambda s: {k: v for k, v in s.items() if k != 'gradients'}
+    def strip(s):
+        return {k: v for k, v in s.items() if k != 'gradients'}
     assert strip(blank) == strip(unset)
 
 

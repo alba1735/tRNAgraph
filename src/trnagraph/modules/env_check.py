@@ -500,7 +500,8 @@ def warn_if_output_capture_suspected(isatty_fn=None, environ=None) -> Optional[s
     callers can log/print/test the message independently.
     """
     if isatty_fn is None:
-        isatty_fn = lambda: sys.stdout.isatty() or sys.stderr.isatty()
+        def isatty_fn():
+            return sys.stdout.isatty() or sys.stderr.isatty()
     if isatty_fn():
         return None
     if environ is None:

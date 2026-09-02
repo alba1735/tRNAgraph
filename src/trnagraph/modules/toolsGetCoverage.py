@@ -2,16 +2,11 @@
 
 import sys
 import os
-import re
-import gzip
-import string
-import itertools
 import logging
 import multiprocessing
 from collections import defaultdict
-from typing import List, Dict, Set, Tuple, Optional, Union, Generator, Any, Iterable
+from typing import List, Dict, Tuple, Optional, Generator, Any, Iterable
 import pysam
-import numpy as np
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

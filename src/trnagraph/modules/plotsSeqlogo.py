@@ -49,7 +49,7 @@ class visualizer():
         if self.logosize == 'full' or self.logosize == 'noloop':
             self.positions_list = adata_pos['positions'].tolist()
         else:
-            self.positions_list = adata_pos[adata_pos['gap'] == False]['positions'].tolist()
+            self.positions_list = adata_pos[~adata_pos['gap']]['positions'].tolist()
 
     def generate_plots(self):
         if self.manual_grp:
@@ -106,7 +106,6 @@ class visualizer():
 
     def build_seqdata(self, seq_adata):
         trna_list = seq_adata.obs.trna.unique().tolist()
-        seq_list = seq_adata.obs.refseq.values.tolist()
         # Create a dictionary of the tRNA sequences for the map plot
         seq_dict = {}
         for j in trna_list:
@@ -133,11 +132,11 @@ class visualizer():
             seq_adata = seq_adata[:,seq_adata.var['location'] != 'variablestem']
             # Subset the seq_df to the extension loop
             seq_df['variablestem'] = self.adata.var[self.adata.var['coverage'] == 'coverage']['location'].isin(['variablestem']).tolist()
-            seq_df = seq_df[seq_df['variablestem'] == False]
+            seq_df = seq_df[~seq_df['variablestem']]
             seq_df = seq_df.drop(['variablestem'], axis=1)
             seq_df = seq_df.reset_index(drop=True)
         if self.logosize == 'sprinzl':
-            seq_adata = seq_adata[:,seq_adata.var['gap'] == False]
+            seq_adata = seq_adata[:, ~seq_adata.var['gap']]
         # Create an information matrix from the sequence reads
         # df_seqinfo, df_consensus = self.build_seqdata(seq_adata)
         # Create a matrix of 0s for the actual base reads
@@ -295,7 +294,7 @@ class visualizer():
         if len(trna_list) == 0 or len(seq_df) == 0:
             return
         # Make a all white heatmap in the shape of the sequence
-        fig = plt.figure(figsize=(18,len(trna_list)))
+        plt.figure(figsize=(18, len(trna_list)))
 
         seq_hm = np.zeros((len(trna_list), len(seq_df)))
         sns.heatmap(seq_hm, cmap=plotsPalette.gradient(self.settings, 'sequence'), cbar=False, square=True, linewidths=0, linecolor='black')

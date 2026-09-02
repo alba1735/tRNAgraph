@@ -7,7 +7,6 @@ import logging
 import subprocess
 import pandas as pd
 import multiprocessing
-from pydantic import ValidationError
 from . import plotsTrimmingStats, toolsTG
 
 # Where trimmed output lands when a manifest's OutputPrefix carries no directory of its own.

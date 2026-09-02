@@ -33,7 +33,6 @@ def _drawn(monkeypatch, orientation):
     """Render one heatmap, capturing the frames handed to seaborn and the panel geometry."""
     import matplotlib
     matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
 
     captured = {'frames': []}
     real_heatmap = plotsHeatmap.sns.heatmap

@@ -9,7 +9,6 @@ it is the same definition the split-variant filters already use, and it delibera
 `Mt_tRNA` on the tRNA side. The collapsed plot is emitted *in addition* to the full one.
 """
 import pandas as pd
-import pytest
 
 from trnagraph.modules.adataBuild import TRNA_TYPE_LABELS
 from trnagraph.modules.plotsCount import NONTRNA_COLLAPSED_COLOR, NONTRNA_COLLAPSED_LABEL, collapse_nontrna_types

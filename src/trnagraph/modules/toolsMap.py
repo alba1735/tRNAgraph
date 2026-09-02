@@ -4,16 +4,12 @@ import itertools
 import sys
 import os
 import subprocess
-import time
 import re
 import random
 import string
 import tempfile
 import logging
-from collections import defaultdict
 from multiprocessing import Pool, cpu_count
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
 import pysam
 
 from . import toolsTG
@@ -84,7 +80,6 @@ def process_mappings(trnafile_path, infile, outfile, logfile=sys.stderr, prognam
         totalreads += 1
         
         readlength = None
-        clipsize = 50
         mappings = 0
         currscore = None
         newset = set()

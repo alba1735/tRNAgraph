@@ -11,7 +11,6 @@ per-read-type heatmaps must be untouched, since a column of identical glyphs tea
 """
 import numpy as np
 import pandas as pd
-import pytest
 
 from trnagraph.modules import plotsHeatmap
 

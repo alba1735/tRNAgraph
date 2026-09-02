@@ -13,7 +13,6 @@ import matplotlib.colors as mplcolors
 plt.rcParams['savefig.dpi'] = 300
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
-import seaborn as sns
 
 class visualizer:
     def __init__(self, adata, radargrp, radarmethod, radarscaled, colormap, output, threaded=False, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
@@ -87,7 +86,7 @@ class visualizer:
         if self.radarscaled:
             ax.set_ylim(0,100)
         # Set colormap if specified
-        if self.colormap != None:
+        if self.colormap is not None:
             self.colormap = {k:v if v[0]!='#' else mplcolors.to_rgb(v) for k,v in self.colormap.items()}
             for v in tdf.columns:
                 if v not in self.colormap:
@@ -103,7 +102,7 @@ class visualizer:
             v = np.concatenate((v, v[:1]))
             a = angles + angles[:1]
             # Plot data for each anticodon group
-            if self.colormap != None:
+            if self.colormap is not None:
                 ax.plot(a, v, linewidth=toolsTG.linewidth_for(self.settings, 1.5), linestyle='solid', label=i, color=self.colormap[i])
                 ax.fill(a, v, alpha=0.5/len(tdf.columns.values), color=self.colormap[i])
             else:

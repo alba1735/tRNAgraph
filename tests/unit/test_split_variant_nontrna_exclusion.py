@@ -61,7 +61,6 @@ def test_trna_feature_predicate_covers_both_trna_and_trx():
     assert not toolsTG.is_trna_feature('ENSG00000201098')
 
 
-import os
 from types import SimpleNamespace
 
 from trnagraph.modules.adataBuild import _filter_nontrna_rows_from_counts_file
@@ -291,7 +290,6 @@ def test_allfeatures_on_a_split_fails_saying_it_is_deliberate():
     """The layer is absent by design, not by accident. The generic "was this normalization
     computed for this split?" message invites the reader to go looking for a build flag that
     would produce it -- there isn't one."""
-    import anndata as ad
     adata = _adata_with_samples(['s1', 's2'])
     adata.layers['norm'] = np.zeros((2, 2))
     adata.layers['norm_u60'] = np.zeros((2, 2))
@@ -307,7 +305,6 @@ def test_allfeatures_on_a_split_fails_saying_it_is_deliberate():
 
 
 def test_allfeatures_on_the_full_variant_is_unaffected():
-    import anndata as ad
     adata = _adata_with_samples(['s1', 's2'])
     adata.layers['norm_allfeatures'] = np.zeros((2, 2))
 

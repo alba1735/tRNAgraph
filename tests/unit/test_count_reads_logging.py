@@ -108,7 +108,7 @@ def test_countreads_main_assigns_results_to_correct_sample_under_pool_mode(tmp_p
 
     lines = countfile.read_text().strip().split("\n")
     header = lines[0].split("\t")
-    row = next(l for l in lines[1:] if l.startswith("tRNA1_wholecounts\t"))
+    row = next(line for line in lines[1:] if line.startswith("tRNA1_wholecounts\t"))
     values = dict(zip(header, row.split("\t")[1:]))
 
     for index, name in enumerate(samplenames):

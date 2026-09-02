@@ -1,5 +1,4 @@
 import logging
-import sys
 
 import anndata as ad
 import numpy as np

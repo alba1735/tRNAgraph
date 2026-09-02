@@ -14,7 +14,6 @@ import pathlib
 from unittest.mock import patch
 
 import pysam
-import pytest
 
 from trnagraph.modules.toolsDedup import dedup_sample
 

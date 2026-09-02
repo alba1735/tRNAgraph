@@ -18,9 +18,8 @@ is the series/colour axis. The CLI help and cli_reference described it the other
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 
-from trnagraph.modules import plotsCompare, toolsTG
+from trnagraph.modules import plotsCompare
 
 
 # Three aminos that move fourfold per timepoint and three that stay flat. The flat half is
