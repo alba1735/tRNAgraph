@@ -1032,7 +1032,7 @@ class adataLog2FC:
 
         return df, self.log2fc_dict
 
-    def log2fc_df(self) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
+    def log2fc_df(self, index_col: str = 'trna') -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
         '''
         Compute pairwise log2FC/significance between every pair of self.compare's levels,
         using PyDESeq2's own dispersion/GLM model rather than a manual two-sample t-test on
@@ -1055,9 +1055,12 @@ class adataLog2FC:
         obs = self.adata.obs
 
         # Same readcount-cutoff filter as before: mean of the per-compare-group NORMALIZED
-        # readtype average must clear the cutoff.
-        mdf = obs.pivot_table(index='trna', columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
-        keep_trnas = mdf.index[mdf.mean(axis=1) >= int(self.readcount_cutoff)]
+        # readtype average must clear the cutoff. `index_col` is the FEATURE AXIS the fit is
+        # taken over -- 'trna' for the heatmap and volcano, 'amino'/'iso' for `-g compare`,
+        # which plots per amino acid and per isoacceptor and so could not use this method at
+        # all while both pivots below were hardwired to 'trna'.
+        mdf = obs.pivot_table(index=index_col, columns=self.compare, values=self.readtype, aggfunc='mean', observed=True)
+        keep_features = mdf.index[mdf.mean(axis=1) >= int(self.readcount_cutoff)]
 
         # Create permutations of pairings of groups for heatmap
         pairs = list(itertools.combinations(mdf.columns, 2))
@@ -1066,14 +1069,20 @@ class adataLog2FC:
         # if no rows end up surviving -- callers (e.g. plotsVolcano.py) index these columns
         # unconditionally, so an empty-but-column-less df breaks them with a KeyError.
         pair_columns = sorted(c for p in pairs for c in (f'log2_{p[0]}-{p[1]}', f'pval_{p[0]}-{p[1]}'))
-        df_pairs = pd.DataFrame(index=keep_trnas, columns=pair_columns, dtype=float)
-        if not pairs or len(keep_trnas) == 0:
+        df_pairs = pd.DataFrame(index=keep_features, columns=pair_columns, dtype=float)
+        if not pairs or len(keep_features) == 0:
             return df_pairs, pairs
 
         # Build the RAW per-(trna, sample) counts matrix PyDESeq2 needs, and each sample's
         # condition (self.compare is a per-sample covariate: samples sharing a value are
         # replicates of that group).
-        wide_raw = obs.pivot_table(index='trna', columns='sample', values=raw_readtype, aggfunc='first').loc[keep_trnas]
+        # Counts aggregate additively, so a coarser axis SUMS its tRNAs into one feature -- an
+        # amino acid's count in a sample is the total over its isodecoders. The 'trna' axis
+        # keeps 'first' rather than being folded into the same branch: one row per
+        # (trna, sample) makes the two identical, and leaving that path untouched means adding
+        # this parameter cannot move a single existing number.
+        wide_raw = obs.pivot_table(index=index_col, columns='sample', values=raw_readtype,
+                                   aggfunc='first' if index_col == 'trna' else 'sum').loc[keep_features]
         sample_df = obs.drop_duplicates('sample').set_index('sample')
         # self.compare == 'sample' (the Parameter Fallback default) is a degenerate but valid
         # case: 'sample' becomes the index via set_index above, so it's no longer a column to
@@ -1083,7 +1092,7 @@ class adataLog2FC:
         else:
             sample_condition = sample_df[self.compare]
 
-        counts_df = wide_raw.T.fillna(0).clip(lower=0).round().astype(int)  # samples x trna, as PyDESeq2 expects
+        counts_df = wide_raw.T.fillna(0).clip(lower=0).round().astype(int)  # samples x feature, as PyDESeq2 expects
         meta_df = pd.DataFrame({'condition': sample_condition.reindex(counts_df.index)}).dropna()
         counts_df = counts_df.loc[meta_df.index]
 
@@ -1139,74 +1148,14 @@ class adataLog2FC:
                     # size, not the significance call.
                     stat_res.lfc_shrink(coeff=f'condition[T.{pair[1]}]')
                 res = stat_res.results_df
-                df_pairs[f'log2_{col_name}'] = res['log2FoldChange'].reindex(keep_trnas)
+                df_pairs[f'log2_{col_name}'] = res['log2FoldChange'].reindex(keep_features)
                 # BH-adjusted p-value (padj), not the raw per-comparison p-value -- the old
                 # t-test never applied any multiple-testing correction.
-                df_pairs[f'pval_{col_name}'] = res['padj'].reindex(keep_trnas)
+                df_pairs[f'pval_{col_name}'] = res['padj'].reindex(keep_features)
 
         # sort the columns alphabetically so log2FC are followed by pvals
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
         return df_pairs, pairs
-
-def log2fc_compare_df(adata: ad.AnnData, countgrp: str, comparison_groups: List[str], readtype: str, readcount_cutoff: int) -> pd.DataFrame:
-    '''
-    Calculate log2FC of tRNA read counts between multiple groups.
-    '''
-    df = pd.DataFrame(adata.obs, columns=[countgrp, *comparison_groups, readtype])
-    # Create correlation matrixs from reads stored in adata observations as mean and standard deviation
-    sdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='std', observed=True)
-    mdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='mean', observed=True)
-    cdf = df.pivot_table(index=countgrp, columns=comparison_groups, values=readtype, aggfunc='count', observed=True)
-    
-    # For rows in df if a value is less than readcount_cutoff, drop the row from df
-    mean_drop_list = mdf.mean(axis=1) >= readcount_cutoff
-    
-    sdf = sdf[mean_drop_list].dropna()
-    mdf = mdf[mean_drop_list].dropna()
-    cdf = cdf[mean_drop_list].dropna()
-    
-    # Make sure all indexs of sdf, mdf, and cdf are the same dropping any that are not
-    common_index = sdf.index.intersection(mdf.index).intersection(cdf.index)
-    sdf = sdf.loc[common_index]
-    mdf = mdf.loc[common_index]
-    cdf = cdf.loc[common_index]
-    
-    # Replace 0 with small epsilon to avoid log2(0) = -inf
-    mdf = mdf.replace(0, 1e-20)
-    
-    # Create a dict where the keys are the first level of the multiindex and the values are the second level
-    pairs = {i: list(mdf.columns.get_level_values(1)[mdf.columns.get_level_values(0) == i]) for i in mdf.columns.get_level_values(0).unique()}
-    
-    # Subset the value lists in each key-value pair to only include values found in all key-pair values
-    ppairs = list(itertools.combinations(set.intersection(*map(set,pairs.values())), 2))
-    pairs_keys = list(pairs.keys())
-    
-    # Sort the tuples in ppairs so the first element is always alphabetical
-    ppairs = [tuple(sorted(i)) for i in ppairs]
-    
-    # Print combinations of comparison groups as a tuple for multiindex columns
-    pppairs = list(itertools.product(pairs_keys, ppairs))
-    
-    columns_tuples = []
-    for i in pppairs:
-        pair_name = f"{i[1][0]}-{i[1][1]}"
-        columns_tuples.append(('log2', i[0], pair_name))
-        columns_tuples.append(('pval', i[0], pair_name))
-        
-    # Create empty df of log2FC values for each pair with a multiindex column
-    df_pairs = pd.DataFrame(0.0, index=mdf.index, columns=pd.MultiIndex.from_tuples(columns_tuples, names=['stats', 'cgrp1', 'cgrp2']))
-    
-    for cgrp1 in pairs_keys:
-        for cgrp2 in ppairs:
-            pair_name = f"{cgrp2[0]}-{cgrp2[1]}"
-            df_pairs.loc[:, ('log2', cgrp1, pair_name)] = np.log2(mdf[cgrp1][cgrp2[1]]) - np.log2(mdf[cgrp1][cgrp2[0]])
-            _, pval = stats.ttest_ind_from_stats(
-                mdf[cgrp1][cgrp2[0]].values, sdf[cgrp1][cgrp2[0]].values, cdf[cgrp1][cgrp2[0]].values, 
-                mdf[cgrp1][cgrp2[1]].values, sdf[cgrp1][cgrp2[1]].values, cdf[cgrp1][cgrp2[1]].values
-            )
-            df_pairs.loc[:, ('pval', cgrp1, pair_name)] = pval
-
-    return df_pairs
 
 def log2fc_from_wide_df(df: pd.DataFrame, sample_group_map: Dict[str, str], readcount_cutoff: int = 80) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
     '''

@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 
 from . import toolsTG
 from . import plotsPalette
@@ -15,6 +16,73 @@ plt.rcParams['ps.fonttype'] = 42
 import seaborn as sns
 
 logger = logging.getLogger(__name__)
+
+def _log2fc_by_stratum(adata, countgrp, comparegrp1, comparegrp2, readtype):
+    '''
+    Fold changes between --comparegrp2 values, computed separately within each --comparegrp1
+    value, as the MultiIndex ('stats', 'cgrp1', 'cgrp2') frame this plot draws from.
+
+    The fit is adataLog2FC's PyDESeq2 negative-binomial model -- the same engine the heatmap
+    and volcano use -- rather than the t-test over per-group means and SDs this plot used to
+    carry, so two plots of one dataset can no longer disagree about the same contrast. It is
+    called through log2fc_df() rather than main() deliberately: the uns['log2FC'] cache is
+    keyed [config][compare][readtype][cutoff] with no slot for a feature axis or a stratum,
+    and adding a level would invalidate the cached entries in every already-built object, for
+    a plot that is opt-in, excluded from -g all, and cheap to fit at 22-54 features.
+
+    Stratifying by subsetting, rather than modelling ~grp1+grp2, is also deliberate: a real
+    interaction term belongs to the planned multivariate engine, not here.
+    '''
+    strata = sorted(adata.obs[comparegrp1].dropna().unique())
+    per_stratum = {}
+    for cgrp1 in strata:
+        subset = adata[adata.obs[comparegrp1] == cgrp1]
+        # A negative-binomial fit needs residual degrees of freedom to estimate dispersion
+        # from, so a stratum with one sample per --comparegrp2 value cannot be modelled at
+        # all. Checked here, by name, rather than left to PyDESeq2's "no replicates to
+        # estimate the dispersion" ValueError, which names neither the column nor the stratum
+        # and would abort the whole graph run rather than this one plot. Note the previous
+        # t-test engine did not handle this case either -- its per-cell standard deviation was
+        # NaN and dropna() emptied the frame, so it wrote nothing and said nothing.
+        samples = subset.obs.drop_duplicates('sample')
+        levels = samples[comparegrp2].nunique()
+        if len(samples) <= levels:
+            logger.warning(
+                f'Skipping the {countgrp} compare plot: {comparegrp1} "{cgrp1}" has '
+                f'{len(samples)} samples across {levels} {comparegrp2} values, leaving no '
+                f'replicates to estimate dispersion from. Fold changes need at least one '
+                f'{comparegrp2} value with two or more samples inside each {comparegrp1}.'
+            )
+            return pd.DataFrame()
+        # readcount_cutoff=0: compare has never applied one, and the axis is amino/iso, where
+        # a cutoff tuned for per-tRNA counts would mean something quite different.
+        frame, pairs = toolsTG.adataLog2FC(
+            subset, compare=comparegrp2, readtype=readtype, readcount_cutoff=0,
+        ).log2fc_df(index_col=countgrp)
+        per_stratum[cgrp1] = (frame, [f'{a}-{b}' for a, b in pairs])
+
+    # Only pairs present in EVERY stratum, and only features present in every stratum: the
+    # plot indexes (feature, cgrp1, cgrp2) for all three axes, so a pair or feature missing
+    # from one stratum has no cell to draw. This is what the previous implementation's
+    # set-intersection over pairs and dropna() over features amounted to.
+    shared_pairs = sorted(set.intersection(*(set(p) for _, p in per_stratum.values()))) if per_stratum else []
+    shared_index = None
+    for frame, _ in per_stratum.values():
+        shared_index = frame.index if shared_index is None else shared_index.intersection(frame.index)
+    if not shared_pairs or shared_index is None or len(shared_index) == 0:
+        return pd.DataFrame()
+
+    columns = pd.MultiIndex.from_tuples(
+        [(stat, cgrp1, pair) for stat in ('log2', 'pval') for cgrp1 in strata for pair in shared_pairs],
+        names=['stats', 'cgrp1', 'cgrp2'],
+    )
+    out = pd.DataFrame(0.0, index=shared_index, columns=columns)
+    for cgrp1, (frame, _) in per_stratum.items():
+        for pair in shared_pairs:
+            out.loc[:, ('log2', cgrp1, pair)] = frame[f'log2_{pair}'].reindex(shared_index)
+            out.loc[:, ('pval', cgrp1, pair)] = frame[f'pval_{pair}'].reindex(shared_index)
+    return out
+
 
 def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True, read_basis=toolsTG.READ_BASIS_UNIQUE, settings=None):
     # Fall back to 'sample' (with a warning) if the specified columns aren't in the AnnData object
@@ -33,13 +101,13 @@ def visualizer(adata, comparegrp1, comparegrp2, colormap, output, threaded=True,
 
     for countgrp in ['amino','iso']:
         # Get log2 fold change dataframe from analysis_tools
-        df = toolsTG.log2fc_compare_df(adata, countgrp, [comparegrp1, comparegrp2], readtype, 0)
-        # log2fc_compare_df can legitimately produce zero valid comparegrp1/comparegrp2 pairs
-        # (e.g. comparegrp1 has no comparegrp2 value shared across every one of its own values --
-        # notably always true when comparegrp1 is a per-observation-unique column like 'sample',
-        # the Parameter Fallback default) -- its 'log2'/'pval' column levels don't exist at all
-        # in that case, so skip this countgrp instead of a KeyError on the .loc[:, ('log2')] below.
-        if 'log2' not in df.columns.get_level_values('stats'):
+        df = _log2fc_by_stratum(adata, countgrp, comparegrp1, comparegrp2, readtype)
+        # Zero valid comparegrp1/comparegrp2 pairs is legitimate (e.g. comparegrp1 has no
+        # comparegrp2 value shared across every one of its own values -- notably always true
+        # when comparegrp1 is a per-observation-unique column like 'sample', the Parameter
+        # Fallback default). The frame is empty and has no column levels at all in that case,
+        # so skip this countgrp instead of a KeyError on the .loc[:, ('log2')] below.
+        if df.empty or 'log2' not in df.columns.get_level_values('stats'):
             logger.warning(
                 f'WARNING: no valid {comparegrp1}/{comparegrp2} pairs found for {countgrp}; skipping compare plot.'
             )

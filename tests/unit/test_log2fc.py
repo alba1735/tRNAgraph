@@ -105,3 +105,52 @@ def test_log2fc_df_pins_deseq2_to_a_single_cpu():
 
     assert mock_dds.call_args is not None
     assert mock_dds.call_args.kwargs.get("n_cpus") == 1
+
+
+def _make_amino_adata(amino_group_means, n_per_group=3, seed=1):
+    """As _make_adata, but each amino carries two tRNA isodecoders, so an amino-level fit has
+    to aggregate them rather than pick one. This is the shape `-g compare` works at: it plots
+    fold changes per amino acid and per isoacceptor, never per tRNA."""
+    rng = np.random.default_rng(seed)
+    groups = sorted({g for means in amino_group_means.values() for g in means})
+    samples = [f"{g}_rep{i}" for g in groups for i in range(n_per_group)]
+    sample_group = {s: s.rsplit("_rep", 1)[0] for s in samples}
+
+    rows = []
+    for amino, group_means in amino_group_means.items():
+        for copy in (1, 2):
+            for sample in samples:
+                raw = rng.negative_binomial(n=10, p=10 / (10 + group_means[sample_group[sample]]))
+                rows.append({
+                    "trna": f"tRNA-{amino}-AGC-{copy}", "amino": amino, "iso": f"{amino}-AGC",
+                    "sample": sample, "group": sample_group[sample],
+                    RAW_READTYPE: raw, READTYPE: raw,
+                })
+    obs = pd.DataFrame(rows)
+    obs.index = [f"{r.trna}_{r['sample']}" for _, r in obs.iterrows()]
+    return ad.AnnData(X=np.zeros((len(obs), 1)), obs=obs)
+
+
+def test_log2fc_df_can_fit_on_a_feature_axis_other_than_trna():
+    """`-g compare` works at amino/iso level while both pivot sites here were hardwired to
+    index='trna', which is why compare had to keep its own hand-rolled t-test engine."""
+    adata = _make_amino_adata({"Ala": {"A": 800, "B": 50}, "Arg": {"A": 400, "B": 400},
+                               "Asn": {"A": 300, "B": 300}, "Asp": {"A": 250, "B": 250}})
+    log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=0)
+
+    df, pairs = log2fc.log2fc_df(index_col="amino")
+
+    assert pairs == [("A", "B")]
+    assert sorted(df.index) == ["Ala", "Arg", "Asn", "Asp"], "expected one row per amino acid"
+    # Ala is 800 -> 50 across the contrast, i.e. strongly down from A to B.
+    assert df.loc["Ala", "log2_A-B"] < -1
+
+
+def test_log2fc_df_still_defaults_to_the_trna_axis():
+    adata = _make_amino_adata({"Ala": {"A": 800, "B": 50}, "Arg": {"A": 400, "B": 400},
+                               "Asn": {"A": 300, "B": 300}, "Asp": {"A": 250, "B": 250}})
+    log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=0)
+
+    df, _ = log2fc.log2fc_df()
+
+    assert all(name.startswith("tRNA-") for name in df.index)

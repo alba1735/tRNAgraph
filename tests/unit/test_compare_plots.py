@@ -23,19 +23,36 @@ import pytest
 from trnagraph.modules import plotsCompare, toolsTG
 
 
-AMINOS = ["Ala", "Arg", "Asn"]
-ISOS = {"Ala": "AGC", "Arg": "ACG", "Asn": "GTT"}
+# Three aminos that move fourfold per timepoint and three that stay flat. The flat half is
+# load-bearing now that the fold changes come from PyDESeq2: it re-derives size factors from
+# the raw counts, so a dataset in which EVERY feature moves together is read as a library-size
+# difference and normalized back to ~0. A stable majority is what anchors the normalization,
+# which is the same reason test_log2fc.py's fixture carries flat tRNAs beside its differential
+# one. All three pairs put the same three aminos over the |log2FC| >= 1 threshold, which is
+# what keeps the per-figure bar count equal across pairs.
+MOVING_AMINOS = ["Ala", "Arg", "Asn"]
+FLAT_AMINOS = ["Asp", "Cys", "Gln"]
+AMINOS = MOVING_AMINOS + FLAT_AMINOS
+ISOS = {"Ala": "AGC", "Arg": "ACG", "Asn": "GTT", "Asp": "GTC", "Cys": "GCA", "Gln": "TTG"}
 GROUPS = ["ctrl", "drug"]
 TIMEPOINTS = ["t0", "t1", "t2"]
 REPLICATES = 2
 
 
-def _make_adata():
-    """Two comparegrp1 values x three comparegrp2 values x two replicates.
+def _counts(amino, t_index, rng):
+    """One cell's counts. Drawn from a negative binomial rather than set to a constant: with
+    zero within-group variance the dispersion estimates collapse and apeGLM shrinkage returns
+    nonsense (a flat feature came back at log2FC 2.0 instead of 0.0), which is an artifact of
+    degenerate synthetic data rather than anything the pipeline does to real counts."""
+    mean = 100.0 * (4 ** t_index) if amino in MOVING_AMINOS else 400.0
+    value = float(rng.negative_binomial(n=20, p=20 / (20 + mean)))
+    return {"nreads_total_unique_norm": value, "nreads_total_unique_raw": value,
+            "nreads_total_norm": value, "nreads_total_raw": value}
 
-    Replicates matter: log2fc_compare_df takes a per-cell standard deviation and drops any row
-    whose SD is NaN, so a single observation per cell silently empties the frame.
-    """
+
+def _make_adata():
+    """Two comparegrp1 values x three comparegrp2 values x two replicates."""
+    rng = np.random.default_rng(0)
     rows = []
     for amino in AMINOS:
         for group in GROUPS:
@@ -48,13 +65,7 @@ def _make_adata():
                         "sample": f"{group}_{timepoint}_{replicate}",
                         "group": group,
                         "timepoint": timepoint,
-                        # Fourfold per timepoint, so EVERY pair clears the |log2FC| >= 1
-                        # threshold that decides whether the significance backdrop is drawn.
-                        # Pairs straddling that threshold would draw different numbers of bars
-                        # for legitimate reasons, which would blur the accumulation this test
-                        # is looking for. Distinct per replicate so the SD is defined.
-                        "nreads_total_unique_norm": 100.0 * (4 ** t_index) + replicate,
-                        "nreads_total_norm": 100.0 * (4 ** t_index) + replicate,
+                        **_counts(amino, t_index, rng),
                     })
     obs = pd.DataFrame(rows)
     obs.index = [f"obs{i}" for i in range(len(obs))]
@@ -76,8 +87,13 @@ def _run(monkeypatch, threaded=False):
     saved = []
 
     def fake_save(path, settings=None):
+        # Bars only, not the grey significance backdrop behind each significant row: that is
+        # drawn with linewidth=0, and how many rows get one legitimately varies from pair to
+        # pair once the fold changes come from a real dispersion fit. The bars themselves are
+        # one per feature per --comparegrp1 value on every figure, which is what accumulation
+        # would have multiplied.
         figure = plt.gcf()
-        saved.append((path, len(figure.axes[0].patches)))
+        saved.append((path, sum(1 for p in figure.axes[0].patches if p.get_linewidth() > 0)))
 
     monkeypatch.setattr(plotsCompare.toolsTG, "save_current", fake_save)
     plotsCompare.visualizer(_make_adata(), "group", "timepoint", None, "out/",
@@ -86,14 +102,15 @@ def _run(monkeypatch, threaded=False):
 
 
 def test_each_comparison_is_drawn_on_its_own_axes(monkeypatch):
-    """Three timepoints give three pairs per countgrp, and every pair plots the same number of
-    bars. Under the bug the second figure carried the first's bars too and the third carried
-    both, so the counts grew 1x, 2x, 3x down the file list."""
+    """Three timepoints give three pairs per countgrp, and every pair plots one bar per feature
+    per --comparegrp1 value. Under the bug the second figure carried the first's bars too and
+    the third carried both, so the counts grew 1x, 2x, 3x down the file list."""
     saved = _run(monkeypatch)
 
     counts = [count for _, count in saved]
-    assert len(set(counts)) == 1, (
-        f"each figure must carry only its own bars; got patch counts {counts}")
+    expected = len(AMINOS) * len(GROUPS)
+    assert counts == [expected] * len(counts), (
+        f"each figure must carry only its own {expected} bars; got {counts}")
 
 
 def test_a_threaded_run_saves_every_comparison_and_reports_all_of_them(monkeypatch):
@@ -132,3 +149,58 @@ def test_a_configured_line_width_reaches_the_bar_edges(monkeypatch):
     # every bar that actually has an edge carries the configured width.
     assert set(w for w in widths if w) == {0.25}
     assert 0.0 in widths, 'the strokeless backdrop must stay strokeless'
+
+
+# ---------------------------------------------------------------------------------------------
+# Re-basing compare on the same engine as the heatmap and volcano (roadmap.md). It used to call
+# toolsTG.log2fc_compare_df -- a hand-rolled scipy.stats.ttest_ind_from_stats over per-group
+# means and SDs of already-normalized counts -- so two plots of one dataset could report
+# different fold changes for the same contrast, and its `sdf.dropna()` discarded every feature
+# as soon as any group had a single replicate, because that group's SD is NaN.
+
+
+def _make_single_replicate_adata():
+    """One observation per comparegrp1/comparegrp2 cell. Real timecourse designs are routinely
+    unreplicated at a timepoint, and a per-cell standard deviation does not exist there."""
+    rows = []
+    for amino in AMINOS:
+        for group in GROUPS:
+            for t_index, timepoint in enumerate(TIMEPOINTS):
+                raw = 100.0 * (4 ** t_index)
+                rows.append({
+                    "amino": amino, "iso": ISOS[amino],
+                    "trna": f"tRNA-{amino}-{ISOS[amino]}-1",
+                    "sample": f"{group}_{timepoint}", "group": group, "timepoint": timepoint,
+                    "nreads_total_unique_norm": raw, "nreads_total_unique_raw": raw,
+                    "nreads_total_norm": raw, "nreads_total_raw": raw,
+                })
+    obs = pd.DataFrame(rows)
+    obs.index = [f"obs{i}" for i in range(len(obs))]
+    var = pd.DataFrame({"coverage": ["uniquecoverage"], "gap": [False]}, index=["v0"])
+    return ad.AnnData(X=np.zeros((len(obs), 1)), obs=obs, var=var)
+
+
+def test_a_single_replicate_per_cell_is_refused_by_name(monkeypatch, caplog):
+    """An unreplicated design cannot be fitted by a negative-binomial model -- there are no
+    residual degrees of freedom to estimate dispersion from -- so the honest outcome is a
+    named refusal, not a plot. What changes is that it is now SAID: the t-test path's per-cell
+    standard deviation was NaN, dropna() emptied the frame, and compare wrote nothing while
+    reporting nothing. The check is made here rather than left to PyDESeq2's own ValueError,
+    which names neither the column nor the stratum and aborts the entire graph run."""
+    import logging
+
+    import matplotlib
+    matplotlib.use("Agg")
+
+    saved = []
+    monkeypatch.setattr(plotsCompare.toolsTG, "save_current",
+                        lambda path, settings=None: saved.append(path))
+    with caplog.at_level(logging.WARNING, logger="trnagraph.modules.plotsCompare"):
+        plotsCompare.visualizer(_make_single_replicate_adata(), "group", "timepoint", None,
+                                "out/", threaded=False)
+
+    assert saved == [], "an unfittable design must not produce figures"
+    messages = "\n".join(r.message for r in caplog.records)
+    assert "no replicates to estimate dispersion" in messages
+    assert "timepoint" in messages and "group" in messages, (
+        f"the warning must name both columns; got: {messages}")
