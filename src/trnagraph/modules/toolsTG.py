@@ -1157,6 +1157,96 @@ class adataLog2FC:
         df_pairs = df_pairs.reindex(sorted(df_pairs.columns), axis=1)
         return df_pairs, pairs
 
+
+
+def require_options(args, command, required):
+    """
+    Fail with one sentence when an option a run cannot proceed without is missing.
+
+    These options used to be typer-required, which made them impossible to supply from a
+    --config file: click rejected the invocation before the file was ever read. They are now
+    optional at the parser and checked here instead, AFTER the config has been merged, so
+    either source satisfies them and the error names both.
+    """
+    missing = [name for name in required if getattr(args, name, None) is None]
+    if missing:
+        flags = ', '.join(f"--{name.replace('_', '-')}" for name in missing)
+        keys = ', '.join(f"'{name}'" for name in missing)
+        raise InvalidParameterError(
+            f"{command} needs {flags}. Give {'them' if len(missing) > 1 else 'it'} on the "
+            f"command line, or set {keys} in your --config file's `flags.{command}` block."
+        )
+
+
+def read_run_config(path):
+    """
+    Parse and validate a --config file, or return None when none was given.
+
+    Deliberately silent: some commands need a value out of the config (a manifest path, say)
+    before their log file exists, so parsing is separated from the logging that
+    `apply_config_flags` does once a logger is available.
+    """
+    import json
+
+    from pydantic import ValidationError
+
+    from .toolsSchemas import RunConfig, explain_rejected_keys
+
+    if not path:
+        return None
+    try:
+        with open(path, 'r') as handle:
+            return RunConfig.model_validate(json.load(handle))
+    except FileNotFoundError:
+        raise InvalidParameterError(f'Config file not found: {path}')
+    except json.JSONDecodeError as e:
+        raise InvalidParameterError(f'Config file {path} is not valid JSON: {e}')
+    except ValidationError as e:
+        detail = '\n'.join([f'Invalid config file {path}:', str(e)]
+                           + explain_rejected_keys(e, 'config'))
+        raise InvalidParameterError(detail)
+
+
+def load_run_config(path, command, args, logger):
+    """
+    Read a --config file and apply that command's `flags` block to `args`.
+
+    Shared by every command that takes --config so all eight apply a block identically:
+    a value typed on the command line always beats the file, detected through
+    `args.cli_specified` (cli.py builds it from click's ParameterSource -- comparing against
+    the default cannot work, since nearly every option has a real default rather than a None
+    sentinel, so "set to 80" and "left alone" look identical).
+
+    `cli_specified` is absent when a namespace is built directly (the Python API, and tests),
+    in which case nothing counts as typed and the file applies in full.
+    """
+    config = read_run_config(path)
+    if config is None:
+        return None
+    logger.info(f'Loading config file: {path}')
+    apply_config_flags(config, command, args, logger)
+    return config
+
+
+def apply_config_flags(config, command, args, logger):
+    '''Lay one command's `flags` block over `args`, skipping anything typed on the CLI.'''
+    if config is None:
+        return
+    # Named on every command that reads the file, so a run is traceable to what drove it.
+    logger.info(f'Using config "{config.name}"')
+    block = getattr(config.flags, command, None) if config.flags else None
+    if block is None:
+        return
+    typed = getattr(args, 'cli_specified', None) or frozenset()
+    for key, value in block.model_dump(exclude_none=True).items():
+        if key in typed:
+            logger.info(f'Config sets {key}, but --{key} was given on the command line; '
+                        f'keeping the command-line value.')
+            continue
+        setattr(args, key, value)
+        logger.info(f'Config sets {command}.{key} = {value!r}')
+
+
 def log2fc_from_wide_df(df: pd.DataFrame, sample_group_map: Dict[str, str], readcount_cutoff: int = 80) -> Tuple[pd.DataFrame, List[Tuple[Any, Any]]]:
     '''
     Compute pairwise log2FC/p-value statistics from a wide (feature x sample) dataframe using an

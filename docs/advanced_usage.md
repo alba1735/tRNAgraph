@@ -115,7 +115,9 @@ You can control filtering and coloring in `trnagraph graph` using JSON files.
 
 ### Run Configuration (`--config`)
 
-Used to filter data before plotting, and to pin the `graph` options a run uses — so one file carries a whole saved analysis instead of a shell line that has to be retyped correctly each time.
+Used to filter data, and to pin the options each command runs with — so one file carries a whole saved analysis, from trimming through graphing, instead of a shell script whose variables have to be retyped correctly each time.
+
+Every command that takes `--config` reads the same file and applies only its own block, so the same file can drive `preprocess trim`, `preprocess map`, `analyze build`, `analyze cluster` and `graph` in turn.
 
 ```json
 {
@@ -131,11 +133,20 @@ Used to filter data before plotting, and to pin the `graph` options a run uses �
     "coverage": ["unique"]
   },
   "flags": {
-    "graphtypes": ["heatmap", "volcano"],
-    "variant": "norm:u60",
-    "heatgrp": "treatment",
-    "heatcutoff": 200,
-    "diffrts": ["fiveprime", "threeprime"]
+    "build": {
+      "input": "config/metadata.tsv",
+      "database": "references/hg38/trnadb/hg38_db",
+      "gtf": "references/hg38/hg38_ncRNAs.gtf",
+      "readlengthsplit": 60
+    },
+    "cluster": { "randomstate": 42 },
+    "graph": {
+      "graphtypes": ["heatmap", "volcano"],
+      "variant": "norm:u60",
+      "heatgrp": "treatment",
+      "heatcutoff": 200,
+      "diffrts": ["fiveprime", "threeprime"]
+    }
   }
 }
 ```
@@ -144,27 +155,37 @@ Used to filter data before plotting, and to pin the `graph` options a run uses �
 - `obs`: Include only these values.
 - `obs_r`: **Reverse** filter (Exclude these values).
 - `var` / `var_r`: The same, applied to variables rather than observations.
-- `flags`: `graph` options this run pins. See below.
+- `flags`: one block per command, holding the options that command runs with. See below.
 
 Run `trnagraph tools template --config` to drop a blank `config.template.json` listing every settable key into the current directory.
 
 #### The `flags` block
 
-Almost every `graph` option can be set here, keyed by its long flag name without the leading dashes (`--heatcutoff` becomes `"heatcutoff"`). **A flag typed on the command line always beats the file**, so a saved config can be reused and adjusted in place:
+One block per command, named by the bare subcommand: `makedb`, `trim`, `map`, `build`, `addsplit`, `cluster`, `graph` and `log2fc`. Inside a block, each option is keyed by its long flag name without the leading dashes (`--heatcutoff` becomes `"heatcutoff"`). A command only ever reads its own block and ignores the rest.
+
+`tools csv`, `merge`, `info`, `test` and `template` have no block: their options are paths, output destinations and one-shot selectors, with nothing an analysis would want to fix.
+
+**A flag typed on the command line always beats the file**, so a saved config can be reused and adjusted in place:
 
 ```bash
 trnagraph graph -i data.h5ad --config analysis.json --heatcutoff 50   # 50 wins
 ```
 
-Each key that the file sets, and each one it sets that you overrode, is named in the run log.
+Each key that the file sets, and each one it sets that you overrode, is named in the run log, along with the config's `name`.
+
+Because a block can supply them, options such as `--input` and `--database` are no longer required on the command line. If neither the file nor the command line provides one, the run stops with a message naming both ways to give it.
 
 Not settable, on purpose:
 
 | Excluded | Why |
 | --- | --- |
-| `--input`, `--output`, `--config`, `--style` | A config that redirects its own output or reopens itself is a footgun rather than a saved analysis. |
+| `--output` | A config that redirects where a run writes is a footgun rather than a saved analysis. Input paths *are* settable — for `build`, `map` and `makedb` the reference, GTF, bam directory and metadata are the analysis. |
+| `--input` on `graph`/`cluster`/`log2fc` (the `.h5ad`) | Same reason: a file that could reopen itself against a different object. |
+| `--config`, `--style` | A file that could name the files it is read alongside could redirect them. |
 | `--threads`, `--quiet`, `--verbose` | Process controls belong to the invocation, not to the analysis. |
 | `--format` | `--style` already owns it. Keeping it in one file means there is no precedence rule between the two. |
+
+A key written in the wrong block, or at the old top level of `flags`, is reported by name with the block it belongs in.
 
 A list value **replaces** the default rather than adding to it, which is what lets a config narrow one — `"diffrts": ["fiveprime"]` plots that readtype alone. An empty list is rejected rather than silently selecting nothing.
 

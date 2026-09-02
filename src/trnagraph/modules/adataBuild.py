@@ -1070,9 +1070,14 @@ class AnnDataBuilder():
 
         # Capture the CLI flags used to build this object, sanitizing None (anndata's h5ad uns writer
         # doesn't reliably round-trip None values, so substitute a string sentinel like adataCluster.py does)
+        # `cli_specified` is bookkeeping for the --config merge (a frozenset of the option
+        # names the user actually typed), not a setting this object was built with -- and
+        # h5ad cannot write a frozenset, so recording it fails the whole build at the point
+        # the object is saved.
         run_flags = {}
         if self.analysis_args:
-            run_flags = {k: (v if v is not None else 'None') for k, v in vars(self.analysis_args).items()}
+            run_flags = {k: (v if v is not None else 'None')
+                         for k, v in vars(self.analysis_args).items() if k != 'cli_specified'}
         self.trnagraph_run_info = {'expname': resultsdir.split('/')[-1],
                                    'time': os.popen('date').read().rstrip(),
                                    'trnagraph_directory': resultsdir,

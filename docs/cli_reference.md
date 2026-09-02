@@ -42,6 +42,8 @@ trnagraph preprocess makedb -g <genome> -t <trnaout> -r <trnafa> -m <namemap> [o
 - **`--forcecca`**: Forces the addition of a CCA tail to the 3' end of all tRNA sequences in the database.
 - **`-n`, `--threads`**: Number of threads to use for building the index. Default: max_cores.
 
+- **`--config`**: JSON configuration file whose `flags.makedb` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
+
 ### `trim`
 
 Trims adapters and processes UMIs using `fastp`.
@@ -65,6 +67,8 @@ trnagraph preprocess trim -i <manifest> [options]
 
 > [!NOTE]
 > If R2_Path is omitted in the manifest file, the sample will be treated as single-end.
+
+- **`--config`**: JSON configuration file whose `flags.trim` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
 
 ### `map`
 
@@ -119,6 +123,8 @@ trnagraph preprocess map -i <metadata> -d <database> -o <output> [options]
 
 ---
 
+- **`--config`**: JSON configuration file whose `flags.map` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
+
 ## Analyze Modules
 
 ### `build`
@@ -162,6 +168,8 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 > [!NOTE]
 > DESeq2 size factors are always computed twice for the main feature matrix: once using only tRNA/tRX features as the normalization reference (the **default**, backing `adata.X`, `adata.layers["raw"]`, and `adata.obs["deseq2_sizefactor"]`), and once using all features as the reference (a secondary set kept for comparison). Both are stored in `adata.uns["deseq2_sizefactors_trna"]` / `adata.uns["deseq2_sizefactors_allfeatures"]`, and the all-feature-normalized layer is available as `adata.layers["norm_allfeatures"]`. If a GTF file is not provided no non-tRNA features are counted and the two sizefactor sets should be identical. This applies to the complete variant only: a read-length split variant excludes non-tRNA features entirely, so it runs no all-feature pass and `--variant allfeatures:<tag>` is not available for it.
 
+- **`--config`**: JSON configuration file whose `flags.build` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
+
 ### `addsplit`
 
 Adds an additional read-length split variant (an under/over cutoff pair) to an _existing_ AnnData object, without disturbing any variant already present — e.g. build with `-c 60`, then later add `-c 50` to see `u50`/`o50` alongside the existing `u60`/`o60`. Uses the same computation as `build`'s `--readlengthsplit`, so both paths produce identical results for the same cutoff/data. See [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit).
@@ -195,6 +203,8 @@ trnagraph analyze addsplit -i <input.h5ad> -c <cutoff> [options]
 
 > [!NOTE]
 > Each split variant gets its own independently-fit DESeq2 size factors, computed from that variant's own BAMs — never a shared/global normalization.
+
+- **`--config`**: JSON configuration file whose `flags.addsplit` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
 
 ### `cluster`
 
@@ -243,6 +253,8 @@ trnagraph analyze cluster -i <input.h5ad> [options]
 > [!WARNING]
 > When working with downstream analysis of the cluster groups, it is important to note that reads that are dropped via the `--readcutoff` flag will not be included in the clustering however, they are still present in the AnnData object. This means that your object can contain NaN values in the clustering columns. Depending on your use case, you may want to filter these out before performing any analysis.
 
+- **`--config`**: JSON configuration file whose `flags.cluster` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. See [Run Configuration](advanced_usage.md#run-configuration---config).
+
 ### `graph`
 
 Generates a wide variety of visualizations from the AnnData file.
@@ -259,7 +271,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`-o`, `--output`**: Output directory. Default: `figures`.
 - **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `volcano`). Default: `all`. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
-- **`--config`**: JSON configuration file for filtering, and optionally a `flags` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...) so one file carries a whole saved analysis. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
+- **`--config`**: JSON configuration file for filtering, and optionally a `flags.graph` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...). The same file carries a block per command, so one file can drive a whole run. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
 - **`--format`**: Output image format for every plot: `pdf`, `svg` or `png`. Overrides a `format` set in `--style`. Multi-page combined outputs stay PDF. Default: `pdf`.
 - **`--regen_uns`**: Force regeneration of calculated stats.
@@ -446,7 +458,7 @@ trnagraph tools log2fc -i <input.h5ad> [options]
 - **`-g`, `--group`**: Grouping variable from obs. Default: `group`. A column that does not exist in the object aborts the run (see the note under [`graph`](#graph)).
 - **`-r`, `--readtypes`**: List of read types to analyze.
 - **`-x`, `--cutoff`**: Read count cutoff(s). Default: `80`.
-- **`-c`, `--config`**: Config file for filtering.
+- **`--config`**: JSON configuration file whose `flags.log2fc` block pins this command's options; its `name` also namespaces the computed log2FC cache. The `-c` short form was removed, since `-c` means `--readlengthsplit` on `analyze build`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--variant`**: Select which `<norm>:<tag>` variant to compute log2fc for, e.g. `norm:u60` (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit) for the syntax). Default: `norm:full`. Results for a split variant are written to `adata.uns['size_splits'][tag]['log2FC']` instead of the top-level `adata.uns['log2FC']`.
 
 ### `csv`

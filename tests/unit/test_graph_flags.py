@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from trnagraph import cli
 from trnagraph.modules import adataGraph, toolsTemplate
 from trnagraph.modules.toolsSchemas import (
+    CommandFlags,
     GRAPH_FLAG_EXCLUSIONS, GRAPH_LIST_FLAGS, GraphFilterConfig, GraphFlags)
 
 TEMPLATE_PATH = pathlib.Path('src/trnagraph/assets/config.template.json')
@@ -47,7 +48,7 @@ def _merge(flags, typed=None, **args):
     """Run the merge in isolation, without constructing a real grapher (which needs an h5ad)."""
     grapher = object.__new__(adataGraph.anndataGrapher)
     grapher.logger = __import__('logging').getLogger('test')
-    grapher.config = GraphFilterConfig(name='t', flags=GraphFlags(**flags))
+    grapher.config = GraphFilterConfig(name='t', flags=CommandFlags(graph=GraphFlags(**flags)))
     grapher.args = types.SimpleNamespace(cli_specified=typed, **args)
     grapher._apply_config_flags()
     return grapher.args
@@ -63,8 +64,10 @@ def test_the_model_covers_exactly_the_eligible_graph_options():
 
 
 def test_every_exclusion_is_a_real_graph_option():
-    """A stale exclusion would silently widen the model without anyone noticing."""
-    assert GRAPH_FLAG_EXCLUSIONS <= set(_graph_options())
+    """A stale exclusion would silently widen the model without anyone noticing. The set is
+    shared by every command's block now, so `anndata_path` (addsplit's and log2fc's spelling
+    of an input object) is in it without being one of graph's own options."""
+    assert (GRAPH_FLAG_EXCLUSIONS - {'anndata_path'}) <= set(_graph_options())
 
 
 def test_paths_and_process_controls_are_not_settable():
@@ -82,7 +85,7 @@ def test_format_belongs_to_style_not_config():
 
 def test_an_unknown_flag_is_rejected():
     with pytest.raises(ValidationError, match='Extra inputs'):
-        GraphFilterConfig.model_validate({'name': 'x', 'flags': {'heatcuttoff': 80}})
+        GraphFilterConfig.model_validate({'name': 'x', 'flags': {'graph': {'heatcuttoff': 80}}})
 
 
 def test_every_declared_list_flag_really_is_a_list_field():
@@ -140,7 +143,7 @@ def test_the_file_applies_in_full_when_nothing_was_typed():
     """Namespaces built directly -- the Python API and tests -- carry no cli_specified."""
     grapher = object.__new__(adataGraph.anndataGrapher)
     grapher.logger = __import__('logging').getLogger('test')
-    grapher.config = GraphFilterConfig(name='t', flags=GraphFlags(volcutoff=5))
+    grapher.config = GraphFilterConfig(name='t', flags=CommandFlags(graph=GraphFlags(volcutoff=5)))
     grapher.args = types.SimpleNamespace(volcutoff=80)
     grapher._apply_config_flags()
 
@@ -213,7 +216,7 @@ def test_the_config_template_validates():
 
 
 def test_the_config_template_enumerates_every_flag():
-    assert set(_template()['flags']) == set(GraphFlags.model_fields)
+    assert set(_template()['flags']['graph']) == set(GraphFlags.model_fields)
 
 
 def test_the_config_template_enumerates_every_filter_key():
@@ -221,7 +224,7 @@ def test_the_config_template_enumerates_every_filter_key():
 
 
 def test_every_config_template_flag_is_null():
-    assert all(v is None for v in _template()['flags'].values())
+    assert all(v is None for block in _template()['flags'].values() for v in block.values())
 
 
 def test_the_config_template_sets_nothing():
@@ -232,7 +235,9 @@ def test_the_config_template_sets_nothing():
     """
     parsed = GraphFilterConfig.model_validate(_template())
 
-    assert parsed.flags.model_dump(exclude_none=True) == {}
+    # Every block is present and every key inside it is null, so a freshly written template
+    # pins nothing at all -- the blocks themselves are the enumeration of what CAN be set.
+    assert all(block == {} for block in parsed.flags.model_dump(exclude_none=True).values())
     assert (parsed.obs, parsed.obs_r, parsed.var, parsed.var_r) == (None, None, None, None)
 
 

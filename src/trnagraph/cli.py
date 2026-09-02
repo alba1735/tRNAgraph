@@ -258,39 +258,45 @@ app.add_typer(tools_app, name="tools")
 
 @preprocess_app.command("makedb", help="Build bowtie2 index from gtRNAdb/tRNAScan-SE output and reference genome")
 def makedb(
-    genome: str = typer.Option(..., "-g", "--genome", help="Specify location of the reference genome fasta file"),
-    trnaout: str = typer.Option(..., "-t", "--trnaout", help="Specify location of the tRNAScan-SE out file"),
-    trnafa: str = typer.Option(..., "-r", "--trnafa", help="Specify location of the tRNA reference fasta file"),
-    namemap: str = typer.Option(..., "-m", "--namemap", help="Specify location of the tRNA name mapping file"),
+    ctx: typer.Context,
+    genome: Optional[str] = typer.Option(None, "-g", "--genome", help="Specify location of the reference genome fasta file"),
+    trnaout: Optional[str] = typer.Option(None, "-t", "--trnaout", help="Specify location of the tRNAScan-SE out file"),
+    trnafa: Optional[str] = typer.Option(None, "-r", "--trnafa", help="Specify location of the tRNA reference fasta file"),
+    namemap: Optional[str] = typer.Option(None, "-m", "--namemap", help="Specify location of the tRNA name mapping file"),
     addtrna: Optional[str] = typer.Option(None, "--addtrna", help="Specify location of additional tRNA sequences file"),
     addseqs: Optional[str] = typer.Option(None, "--addseqs", help="Specify location of additional sequences file"),
     orgmode: str = typer.Option("euk", "-s", "--orgmode", help="Organism mode used for tRNAScan-SE and for Sprinzl position numbering. One of: euk, arch, bact, mito. An unrecognised value is rejected rather than silently treated as euk"),
     forcecca: bool = typer.Option(False, "--forcecca", help="Force addition of CCA tail"),
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max)"),
     output: str = typer.Option("db", "-o", "--output", help="Specify output directory/name for bowtie2 index files"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.makedb` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # -o is a name prefix (e.g. "references/vibrChol1/trnadb/vibrChol1_db"), not itself a
     # directory -- the index files land in its dirname.
     destination = os.path.dirname(output) or "."
-    # Checked before the file paths: it costs nothing and is the kind of typo
-    # worth reporting immediately rather than after the paths are sorted out.
-    valid_orgmodes = ("euk", "arch", "bact", "mito")
-    if orgmode not in valid_orgmodes:
-        raise typer.BadParameter(
-            f"Unknown organism mode {orgmode!r}. Expected one of: "
-            + ", ".join(valid_orgmodes),
-            param_hint="--orgmode",
-        )
-    with handle_output(quiet, tool="makedb", destination=destination):
-        if not os.path.isfile(genome):
-            raise Exception('Error: genome fasta file does not exist.')
-
+    with usage_error_guard(), handle_output(quiet, tool="makedb", destination=destination):
         args = SimpleNamespace(
             mode='makedb', genome=genome, trnaout=trnaout, trnafa=trnafa, namemap=namemap,
             addtrna=addtrna, addseqs=addseqs, orgmode=orgmode, forcecca=forcecca,
-            threads=threads, output=output, quiet=quiet
+            threads=threads, output=output, quiet=quiet,
+            cli_specified=cli_specified_params(ctx),
         )
+        toolsTG.load_run_config(config, 'makedb', args, logging.getLogger('trnagraph.cli'))
+        toolsTG.require_options(args, 'makedb', ['genome', 'trnaout', 'trnafa', 'namemap'])
+
+        # Checked before the file paths: it costs nothing and is the kind of typo worth
+        # reporting immediately. It validates args.orgmode rather than the parameter, so a
+        # value coming from --config is checked exactly as a typed one is.
+        valid_orgmodes = ("euk", "arch", "bact", "mito")
+        if args.orgmode not in valid_orgmodes:
+            raise typer.BadParameter(
+                f"Unknown organism mode {args.orgmode!r}. Expected one of: "
+                + ", ".join(valid_orgmodes),
+                param_hint="--orgmode",
+            )
+        if not os.path.isfile(args.genome):
+            raise Exception('Error: genome fasta file does not exist.')
 
         print('Building tRNA database...')
         toolsTDatabase.tRNADatabaseBuilder(args).main()
@@ -298,7 +304,8 @@ def makedb(
 
 @preprocess_app.command("trim", help="Trim, merge, and extract UMIs from fastq files using fastp")
 def trim(
-    input: str = typer.Option(..., "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
+    ctx: typer.Context,
+    input: Optional[str] = typer.Option(None, "-i", "--input", help="Tab-delimited manifest file: SampleName <tab> R1_Path [<tab> R2_Path]"),
     adapter1: Optional[str] = typer.Option(None, "-a1", "--adapter1", help="Adapter sequence for R1 (optional, fastp auto-detects)"),
     adapter2: Optional[str] = typer.Option(None, "-a2", "--adapter2", help="Adapter sequence for R2 (optional, fastp auto-detects)"),
     length: int = typer.Option(15, "-l", "--length", help="Minimum length of sequence after trimming"),
@@ -306,32 +313,47 @@ def trim(
     umi3: bool = typer.Option(False, "--umi3", help="UMI is at the 3-prime end (Default is 5-prime)"),
     threads: int = typer.Option(0, "-n", "--threads", help="Total number of threads to use (0 = all available)"),
     style: Optional[str] = typer.Option(None, "--style", help="Specify a json style file. Only its colors block is read here (the 'trimtype' key), but it is the same file `analyze graph` takes, so one file can style the whole pipeline"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.trim` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Print detailed command execution"),
 ):
     # Same directory _generate_summary() writes trim_stats.csv/trim_feature_types.pdf to: the
     # first manifest entry's output-prefix directory, falling back to processed/trimmed exactly
     # like toolsTrim.py's own FastpTrimmer._construct_command() does.
+    # The manifest names the destination, so it has to be resolved before the log is opened --
+    # which means reading the config here rather than only inside the block below. Read, not
+    # applied: applying logs each key, and no logger exists until handle_output runs. A bad
+    # config file is swallowed here and reported properly by the guarded load below.
+    manifest = input
+    if manifest is None and config:
+        try:
+            early = toolsTG.read_run_config(config)
+            manifest = early.flags.trim.input if early and early.flags and early.flags.trim else None
+        except Exception:
+            manifest = None
     destination = "processed/trimmed"
-    if os.path.isfile(input):
-        with open(input, 'r') as f:
+    if manifest and os.path.isfile(manifest):
+        with open(manifest, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
                     first_prefix = line.split()[0]
                     destination = os.path.dirname(first_prefix) or "processed/trimmed"
                     break
-    with handle_output(quiet, tool="trim", destination=destination):
-        if shutil.which('fastp') is None:
-            raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
-        if not os.path.isfile(input):
-            raise Exception(f'Error: Manifest file does not exist: {input}')
-
+    with usage_error_guard(), handle_output(quiet, tool="trim", destination=destination):
         args = SimpleNamespace(
             mode='trim', input=input, adapter1=adapter1, adapter2=adapter2,
             length=length, umilength=umilength, umi3=umi3, threads=threads, style=style,
-            quiet=quiet, verbose=verbose
+            quiet=quiet, verbose=verbose, cli_specified=cli_specified_params(ctx),
         )
+        # Applied here, inside the log, so the file records which keys the config set.
+        toolsTG.load_run_config(config, 'trim', args, logging.getLogger('trnagraph.cli'))
+        toolsTG.require_options(args, 'trim', ['input'])
+
+        if shutil.which('fastp') is None:
+            raise Exception("Error: 'fastp' is not installed or not in PATH. Please install it (e.g., 'conda install -c bioconda fastp').")
+        if not os.path.isfile(args.input):
+            raise Exception(f'Error: Manifest file does not exist: {args.input}')
 
         print('Starting fastp trimming pipeline...')
         toolsTrim.FastpTrimmer(args).process()
@@ -339,9 +361,10 @@ def trim(
 
 @preprocess_app.command("map", help="Map reads to tRNA database")
 def map_cmd(
+    ctx: typer.Context,
     output: str = typer.Option(..., "-o", "--output", help="Experiment name to be used"),
-    database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
-    input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
+    database: Optional[str] = typer.Option(None, "-d", "--database", help="Name of the tRNA database"),
+    input: Optional[str] = typer.Option(None, "-i", "--input", help="Specify a metadata file to create annotations"),
     force_remap: bool = typer.Option(False, "--force-remap", help="Force remapping even if a matching bam file already exists (default: skip mapping if bams exist, after a fastq/header consistency check)"),
     minnontrnasize: int = typer.Option(20, "--minnontrnasize", help="Minimum read length for non-tRNAs"),
     local: bool = typer.Option(False, "--local", help="Use local bam mapping"),
@@ -351,18 +374,22 @@ def map_cmd(
     dedup: bool = typer.Option(False, "--dedup", help="Deduplicate mapped reads by UMI using umi_tools. Requires UMIs in the read names (see 'preprocess trim -u'); refuses to run without them"),
     keep_prededup: bool = typer.Option(False, "--keep-prededup", help="Keep the pre-deduplication bam as <sample>.prededup.bam instead of discarding it (for comparing deduplicated against non-deduplicated output without remapping)"),
     dedup_method: str = typer.Option("directional", "--dedup-method", help="umi_tools dedup --method to use: unique, percentile, cluster, adjacency or directional"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.map` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # -o is an "experiment name", not itself a directory map writes to -- the actual mapped BAM
     # output goes to --bamdir (or its default).
     destination = bamdir or f"processed/{output}_bam"
-    with handle_output(quiet, tool="map", destination=destination):
+    with usage_error_guard(), handle_output(quiet, tool="map", destination=destination):
         args = SimpleNamespace(
             mode='map', output=output, database=database, input=input,
             force_remap=force_remap, minnontrnasize=minnontrnasize, local=local, threads=threads, skipcheck=skipcheck,
             bamdir=bamdir, quiet=quiet,
             dedup=dedup, keep_prededup=keep_prededup, dedup_method=dedup_method,
+            cli_specified=cli_specified_params(ctx),
         )
+        toolsTG.load_run_config(config, 'map', args, logging.getLogger('trnagraph.cli'))
+        toolsTG.require_options(args, 'map', ['database', 'input'])
 
         print('Mapping samples...')
         try:
@@ -375,9 +402,10 @@ def map_cmd(
 
 @analyze_app.command("build", help="Build a h5ad AnnData object from a tRNAgraph preprocess run")
 def build(
-    input: str = typer.Option(..., "-i", "--input", help="Specify a metadata file to create annotations"),
+    ctx: typer.Context,
+    input: Optional[str] = typer.Option(None, "-i", "--input", help="Specify a metadata file to create annotations"),
     output: str = typer.Option("h5ad", "-o", "--output", help="Specify output directory (h5ad file named <dirname>.h5ad will be created inside)"),
-    database: str = typer.Option(..., "-d", "--database", help="Name of the tRNA database"),
+    database: Optional[str] = typer.Option(None, "-d", "--database", help="Name of the tRNA database"),
     # Analysis arguments
     gtf: Optional[str] = typer.Option(None, "--gtf", help="The ensembl gene list for that species"),
     pairs: Optional[str] = typer.Option(None, "--pairs", help="List of sample pairs to compare"),
@@ -395,18 +423,13 @@ def build(
     overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object"),
     vst: str = typer.Option("log1p", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.build` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # Output is a directory path - h5ad filename is based on the directory basename
     output_dir = os.path.abspath(output)
-    with handle_output(quiet, tool="build", destination=output_dir):
-        if not os.path.isfile(input):
-            raise Exception('Error: metadata file does not exist.')
-
-        print('Building AnnData object...')
+    with usage_error_guard(), handle_output(quiet, tool="build", destination=output_dir):
         h5ad_filename = os.path.basename(output_dir) + '.h5ad'
-        print(toolsTG.builder(output_dir))
-
         # Update output to be the full h5ad path inside the directory
         full_output_path = os.path.join(output_dir, h5ad_filename)
 
@@ -417,17 +440,28 @@ def build(
             minfeaturereads=minfeaturereads, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             filterother=filterother, bamdir=bamdir, dispfittype=dispfittype, threads=threads,
             readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
-            vst=vst, quiet=quiet
+            vst=vst, quiet=quiet, cli_specified=cli_specified_params(ctx),
         )
+        # Before the metadata check and before the builder is handed its arguments, so a
+        # config-supplied --input is validated and used rather than the typed one shadowing it.
+        toolsTG.load_run_config(config, 'build', args, logging.getLogger('trnagraph.cli'))
+        toolsTG.require_options(args, 'build', ['input', 'database'])
+
+        if not os.path.isfile(args.input):
+            raise Exception('Error: metadata file does not exist.')
+
+        print('Building AnnData object...')
+        print(toolsTG.builder(output_dir))
 
         # Create AnnData object
-        adataBuild.AnnDataBuilder(output_dir, input, full_output_path, args).create()
+        adataBuild.AnnDataBuilder(output_dir, args.input, full_output_path, args).create()
         print('Done!\n')
 
 @analyze_app.command("addsplit", help="Add an additional read-length split variant (under/over cutoff pair) to an existing h5ad AnnData object")
 def addsplit(
+    ctx: typer.Context,
     anndata_path: str = typer.Option(..., "-i", "--anndata", help="Existing h5ad object to add a split variant to"),
-    readlengthsplit: int = typer.Option(..., "-c", "--readlengthsplit", help="New read length cutoff to add (generates u<N>/o<N> variants)"),
+    readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="New read length cutoff to add (generates u<N>/o<N> variants)"),
     metadata: Optional[str] = typer.Option(None, "--metadata", help="Metadata file (default: recovered from the object's own build provenance)"),
     bamdir: Optional[str] = typer.Option(None, "--bamdir", help="Original (unsplit) BAM directory (default: recovered from provenance)"),
     database: Optional[str] = typer.Option(None, "-d", "--database", help="Override tRNA database (default: recovered from provenance)"),
@@ -441,12 +475,13 @@ def addsplit(
     output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite this cutoff's u<N>/o<N> data if already present in the object"),
     force: bool = typer.Option(False, "--force", help="Proceed even if explicitly-overridden parameters conflict with the object's original build provenance"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.addsplit` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     # add_split() itself resolves output_path = args.output or args.anndata (and writes there);
     # replicate that resolution here to know the destination before any work starts.
     destination = os.path.dirname(os.path.abspath(output or anndata_path))
-    with handle_output(quiet, tool="addsplit", destination=destination, name_suffix=_adata_basename(anndata_path)):
+    with usage_error_guard(), handle_output(quiet, tool="addsplit", destination=destination, name_suffix=_adata_basename(anndata_path)):
         if not os.path.isfile(anndata_path):
             raise Exception('Error: h5ad file does not exist.')
 
@@ -454,8 +489,10 @@ def addsplit(
             mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
             bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst, minfeaturereads=minfeaturereads,
             overwritebams=overwritebams, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
-            quiet=quiet
+            quiet=quiet, cli_specified=cli_specified_params(ctx),
         )
+        toolsTG.load_run_config(config, 'addsplit', args, logging.getLogger('trnagraph.cli'))
+        toolsTG.require_options(args, 'addsplit', ['readlengthsplit'])
 
         print('Adding split variant to database object...\n')
         adataBuild.add_split(args)
@@ -463,6 +500,7 @@ def addsplit(
 
 @analyze_app.command("cluster", help="Cluster data from an existing h5ad AnnData object")
 def cluster(
+    ctx: typer.Context,
     anndata: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     randomstate: Optional[int] = typer.Option(None, "-r", "--randomstate", help="Specify random state for UMAP if you want to have a static seed"),
     readcutoff: int = typer.Option(20, "-t", "--readcutoff", help="Specify readcount cutoff to use for clustering"),
@@ -486,6 +524,7 @@ def cluster(
     threads: int = typer.Option(0, "-n", "--threads", help="Specify number of threads to use (default: cpu_max). Passed to HDBSCAN's core_dist_n_jobs always, and to UMAP's n_jobs when no --randomstate seed is set (UMAP itself overrides n_jobs to 1 when seeded, for reproducibility)"),
     overwrite: bool = typer.Option(False, "-w", "--overwrite", help="Overwrite existing cluster information in AnnData object"),
     output: str = typer.Option("trnagraph.cluster.h5ad", "-o", "--output", help="Specify output h5ad file path"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.cluster` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
     output_path = os.path.abspath(output)
@@ -503,8 +542,10 @@ def cluster(
             neighborstdsmp=neighborstdsmp, neighborstdgrp=neighborstdgrp, hdbscanminsampsmp=hdbscanminsampsmp, hdbscanminsampgrp=hdbscanminsampgrp,
             hdbscanminclusmp=hdbscanminclusmp, hdbscanminclugrp=hdbscanminclugrp, mindist=mindist, variancethreshold=variancethreshold,
             umapstatsmetrics=umapstatsmetrics, hdbstatsmetrics=hdbstatsmetrics, clusterobsexperimental=clusterobsexperimental,
-            variant=variant, threads=threads, overwrite=overwrite, output=output_path, quiet=quiet
+            variant=variant, threads=threads, overwrite=overwrite, output=output_path, quiet=quiet,
+            cli_specified=cli_specified_params(ctx),
         )
+        toolsTG.load_run_config(config, 'cluster', args, logging.getLogger('trnagraph.cli'))
         
         print('Clustering data from database object...\n')
         adataCluster.anndataCluster(args).main()
@@ -615,11 +656,12 @@ def update(
 
 @tools_app.command("log2fc", help="Compute log2fc data from an existing h5ad AnnData object")
 def log2fc(
+    ctx: typer.Context,
     anndata_path: str = typer.Option(..., "-i", "--anndata", help="Specify location of h5ad object"),
     group: str = typer.Option("group", "-g", "--group", help="Specify group to use for log2fc from obs"),
     readtypes: List[str] = typer.Option(['wholecounts_unique', 'fiveprime_unique', 'threeprime_unique', 'other_unique', 'total_unique'], "-r", "--readtypes", help="Specify readtypes to generate log2fc for"),
     cutoff: List[int] = typer.Option([80], "-x", "--cutoff", help="Specify readcounts cutoff to use for log2fc"),
-    config: Optional[str] = typer.Option(None, "-c", "--config", help="Specify a json file containing observations/variables to filter out and other config options"),
+    config: Optional[str] = typer.Option(None, "--config", help="Specify a json file whose `flags.log2fc` block pins this command's options, so one file can carry a whole run. A flag typed on the command line always beats the file. Run `trnagraph tools template --config` for a blank file listing every settable key"),
     variant: str = typer.Option("norm:full", "--variant", help="Select which normalization:split-tag to compute log2fc for, e.g. 'norm:u60'. norm is one of norm/raw/allfeatures/vst; tag is 'full' or an added split tag. Default 'norm:full' is today's default behavior"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress output to stdout"),
 ):
@@ -634,16 +676,16 @@ def log2fc(
         # Note: using anndata.read_h5ad from lazy_imports
         adata = anndata.read_h5ad(anndata_path)
 
-        # Load config file for name if specified
-        config_name = 'default'
-        config_data = None
-        if config:
-            with open(config, 'r') as f:
-                config_data = json.load(f)
-            if 'name' in config_data:
-                config_name = config_data['name']
-            else:
-                raise ValueError('Config file must contain a "name" field')
+        args = SimpleNamespace(
+            group=group, readtypes=readtypes, cutoff=cutoff, variant=variant,
+            cli_specified=cli_specified_params(ctx),
+        )
+        # Validated through the shared schema rather than a bare json.load: the name is
+        # required by the model, so a file missing it now fails the same way it would for any
+        # other command instead of raising a bespoke ValueError here.
+        run_config = toolsTG.load_run_config(config, 'log2fc', args, logging.getLogger('trnagraph.cli'))
+        config_name = run_config.name if run_config is not None else 'default'
+        group, readtypes, cutoff, variant = args.group, args.readtypes, args.cutoff, args.variant
 
         print('Calculating log2FC for database object...\n')
         # Resolve the requested normalization:split-tag into a working view so the readtype

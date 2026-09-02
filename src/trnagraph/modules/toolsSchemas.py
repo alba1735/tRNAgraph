@@ -61,12 +61,15 @@ class VariantContribution(BaseModel):
     mismatch_counts: Optional[pd.DataFrame] = None
 
 
-class GraphFilterConfig(BaseModel):
+class RunConfig(BaseModel):
     '''
-    Validates the `--config` filter JSON passed to `trnagraph graph`, at the point it's read
-    in adataGraph.py -- previously a bare `json.load()` with no structural checks, which let a
-    `var_r`-without-`var` config crash later as an uncaught `KeyError` on `config['var']`
-    instead of a clear, immediate validation error.
+    Validates the `--config` JSON, which describes one saved analysis: which subset of the
+    data, and which options each command runs with.
+
+    The top level holds what is global to the file -- its `name`, and the obs/var filters that
+    say which subset of the object every AnnData-consuming command sees. Per-command options
+    live under `flags`, one block per command. Filters are not CLI flags and are not scoped to
+    a single command, which is why they stay at the top level rather than moving inside a block.
     '''
     model_config = ConfigDict(extra='forbid')
 
@@ -75,10 +78,11 @@ class GraphFilterConfig(BaseModel):
     obs_r: Optional[Dict[str, List[Any]]] = None
     var: Optional[Dict[str, List[Any]]] = None
     var_r: Optional[Dict[str, List[Any]]] = None
-    # `graph` options this config pins. Lives here rather than in --style because these are
-    # selection/analysis choices, not presentation: a style file is meant to be shared across
-    # differently-parameterized runs, which it could not be if it also fixed the cutoffs.
-    flags: Optional['GraphFlags'] = None
+    # Per-command options this config pins, one block per command. They live here rather than
+    # in --style because these are selection/analysis choices, not presentation: a style file
+    # is meant to be shared across differently-parameterized runs, which it could not be if it
+    # also fixed the cutoffs.
+    flags: Optional['CommandFlags'] = None
 
     @field_validator('name')
     @classmethod
@@ -92,14 +96,23 @@ class GraphFilterConfig(BaseModel):
         return v
 
 
-# `graph` options a --config file may NOT set. Paths and process controls are excluded on
-# purpose: a config that redirects its own output, reopens itself, or picks a thread count is
-# a footgun rather than a saved analysis. `format` is excluded because --style already owns
-# it, which leaves exactly zero keys settable from two files and so no precedence rule to
-# document between them.
-GRAPH_FLAG_EXCLUSIONS = frozenset({
-    'anndata', 'output', 'config', 'style', 'format', 'threads', 'quiet', 'verbose',
+# Options NO command's flags block may set. What is excluded is where a run writes and how it
+# is driven -- an output directory, a thread count, verbosity -- plus the config and style
+# files themselves, which a file able to name them could redirect. `format` is excluded
+# because --style already owns it, which leaves exactly zero keys settable from two files and
+# so no precedence rule to document between them.
+#
+# INPUT paths are deliberately settable. For `build`, `map` and `makedb` the reference, GTF,
+# bam directory and metadata ARE the analysis; withholding them would leave those blocks
+# nearly empty and a config file could not describe a run end to end, which is the point of
+# having them. The line is between what an analysis IS and where its output goes.
+COMMAND_FLAG_EXCLUSIONS = frozenset({
+    'anndata', 'anndata_path', 'output', 'config', 'style', 'format',
+    'threads', 'quiet', 'verbose',
 })
+
+#: Kept as the old name for `graph`'s own exclusions, which are the same set.
+GRAPH_FLAG_EXCLUSIONS = COMMAND_FLAG_EXCLUSIONS
 
 # Flags whose value is a list. Declared once so the empty-list guard and the tests that pin
 # replace-not-append semantics agree on the set.
@@ -209,6 +222,160 @@ class GraphFlags(BaseModel):
                 f"to keep the default."
             )
         return v
+
+
+class MakedbFlags(BaseModel):
+    '''`preprocess makedb` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    genome: Optional[str] = None
+    trnaout: Optional[str] = None
+    trnafa: Optional[str] = None
+    namemap: Optional[str] = None
+    addtrna: Optional[str] = None
+    addseqs: Optional[str] = None
+    orgmode: Optional[str] = None
+    forcecca: Optional[bool] = None
+
+
+class TrimFlags(BaseModel):
+    '''`preprocess trim` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    input: Optional[str] = None
+    adapter1: Optional[str] = None
+    adapter2: Optional[str] = None
+    length: Optional[int] = None
+    umilength: Optional[int] = None
+    umi3: Optional[bool] = None
+
+
+class MapFlags(BaseModel):
+    '''`preprocess map` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    database: Optional[str] = None
+    input: Optional[str] = None
+    force_remap: Optional[bool] = None
+    minnontrnasize: Optional[int] = None
+    local: Optional[bool] = None
+    skipcheck: Optional[bool] = None
+    bamdir: Optional[str] = None
+    dedup: Optional[bool] = None
+    keep_prededup: Optional[bool] = None
+    dedup_method: Optional[str] = None
+
+
+class BuildFlags(BaseModel):
+    '''`analyze build` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    input: Optional[str] = None
+    database: Optional[str] = None
+    gtf: Optional[str] = None
+    pairs: Optional[str] = None
+    bed: Optional[List[str]] = None
+    maxmismatches: Optional[str] = None
+    minfeaturereads: Optional[str] = None
+    minnontrnasize: Optional[int] = None
+    hub: Optional[bool] = None
+    hubonly: Optional[bool] = None
+    filterother: Optional[bool] = None
+    bamdir: Optional[str] = None
+    dispfittype: Optional[str] = None
+    readlengthsplit: Optional[int] = None
+    overwritebams: Optional[bool] = None
+    savesplitbams: Optional[bool] = None
+    vst: Optional[str] = None
+
+
+class AddsplitFlags(BaseModel):
+    '''`analyze addsplit` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    readlengthsplit: Optional[int] = None
+    metadata: Optional[str] = None
+    bamdir: Optional[str] = None
+    database: Optional[str] = None
+    gtf: Optional[str] = None
+    dispfittype: Optional[str] = None
+    vst: Optional[str] = None
+    minfeaturereads: Optional[str] = None
+    overwritebams: Optional[bool] = None
+    savesplitbams: Optional[bool] = None
+    overwrite: Optional[bool] = None
+    force: Optional[bool] = None
+
+
+class ClusterFlags(BaseModel):
+    '''`analyze cluster` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    randomstate: Optional[int] = None
+    readcutoff: Optional[int] = None
+    coveragetype: Optional[List[str]] = None
+    ncomponentsmp: Optional[int] = None
+    ncomponentgrp: Optional[int] = None
+    neighborclusmp: Optional[int] = None
+    neighborclusgrp: Optional[int] = None
+    neighborstdsmp: Optional[int] = None
+    neighborstdgrp: Optional[int] = None
+    hdbscanminsampsmp: Optional[int] = None
+    hdbscanminsampgrp: Optional[int] = None
+    hdbscanminclusmp: Optional[int] = None
+    hdbscanminclugrp: Optional[int] = None
+    mindist: Optional[float] = None
+    variancethreshold: Optional[float] = None
+    umapstatsmetrics: Optional[str] = None
+    hdbstatsmetrics: Optional[str] = None
+    clusterobsexperimental: Optional[List[str]] = None
+    variant: Optional[str] = None
+    overwrite: Optional[bool] = None
+
+
+class Log2fcFlags(BaseModel):
+    '''`tools log2fc` options settable from a --config file.'''
+    model_config = ConfigDict(extra='forbid')
+
+    group: Optional[str] = None
+    readtypes: Optional[List[str]] = None
+    cutoff: Optional[List[int]] = None
+    variant: Optional[str] = None
+
+
+class CommandFlags(BaseModel):
+    '''
+    One block of pinned options per command, so a single --config file can carry a whole run
+    rather than each stage's settings living in a shell script.
+
+    Blocks exist for the commands whose options are worth saving between runs. `tools csv`,
+    `merge`, `info`, `test` and `template` have none: their options are paths, output
+    destinations and one-shot selectors, with nothing an analysis would want to fix.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    graph: Optional['GraphFlags'] = None
+    build: Optional[BuildFlags] = None
+    map: Optional[MapFlags] = None
+    trim: Optional[TrimFlags] = None
+    makedb: Optional[MakedbFlags] = None
+    cluster: Optional[ClusterFlags] = None
+    addsplit: Optional[AddsplitFlags] = None
+    log2fc: Optional[Log2fcFlags] = None
+
+
+#: {command name: its flags model}. Drives the drift tests, the template generator and the
+#: per-command merge, so a new block is added in exactly one place.
+COMMAND_FLAG_MODELS = {
+    'graph': None,  # bound below, once GraphFlags is defined
+    'build': BuildFlags,
+    'map': MapFlags,
+    'trim': TrimFlags,
+    'makedb': MakedbFlags,
+    'cluster': ClusterFlags,
+    'addsplit': AddsplitFlags,
+    'log2fc': Log2fcFlags,
+}
 
 
 class MetadataFile(BaseModel):
@@ -568,36 +735,76 @@ class StyleFile(BaseModel):
             return None
         return self.colors.get(column)
 
+def _blocks_owning(key: str):
+    """Which command blocks declare `key`, in the order they appear in the file."""
+    return [command for command, model in COMMAND_FLAG_MODELS.items()
+            if model is not None and key in model.model_fields]
+
+
 def explain_rejected_keys(exc, file_kind: str):
     '''
     Turn pydantic's `extra_forbidden` reports into a sentence naming where the key belongs.
 
-    `--config` and `--style` deliberately share no keys, which is what lets a style file be
-    reused across differently-parameterized runs. The cost is that reaching for the wrong file
-    produces "Extra inputs are not permitted" and nothing else -- true, and useless. A key that
-    is valid in the OTHER file is by far the likeliest mistake, so it is named first; anything
-    else falls back to the nearest valid spelling.
+    Three mistakes are worth naming, and none of them is a typo. A key can be in the wrong
+    FILE (`--config` and `--style` deliberately share no keys, which is what lets a style file
+    be reused across differently-parameterized runs). It can be in the wrong BLOCK, an easy
+    slip once `flags` holds eight of them. Or it can be at the wrong DEPTH: `flags` used to be
+    graph's options directly, so every config file written before the per-command blocks has
+    its keys one level too shallow. Pydantic reports all three as "Extra inputs are not
+    permitted", which is true and useless; only a typo falls through to a spelling guess.
 
     `file_kind` is 'style' or 'config'. Returns a list of lines to append to the error.
     '''
     import difflib
 
     style_keys = set(StyleBlock.model_fields)
-    flag_keys = set(GraphFlags.model_fields)
     lines = []
     for error in exc.errors():
         if error.get('type') != 'extra_forbidden':
             continue
-        key = str(error['loc'][-1])
-        if file_kind == 'style' and key in flag_keys:
-            lines.append(f"  '{key}' is a `graph` option, not a presentation setting: put it "
-                         f"in the `flags` block of your --config file instead.")
-        elif file_kind == 'config' and key in style_keys:
-            lines.append(f"  '{key}' is a presentation setting, not a `graph` option: put it "
+        loc = [str(part) for part in error['loc']]
+        key = loc[-1]
+        # Where the key was written: the block it sat in, or None for a bare `flags` key.
+        placed_in = loc[1] if len(loc) >= 3 and loc[0] == 'flags' else None
+
+        if file_kind == 'config' and key in style_keys:
+            lines.append(f"  '{key}' is a presentation setting, not a command option: put it "
                          f"in your --style file instead.")
+            continue
+
+        owners = _blocks_owning(key)
+        if owners and (file_kind == 'style' or placed_in not in owners):
+            where = ' or '.join(f'`flags.{command}`' for command in owners)
+            if file_kind == 'style':
+                lines.append(f"  '{key}' is a {owners[0]} option, not a presentation setting: "
+                             f"put it under {where} in your --config file instead.")
+            elif placed_in is None:
+                # The commonest case by far: a file written when `flags` WAS graph's options.
+                lines.append(f"  '{key}' now belongs one level deeper, under {where}: `flags` "
+                             f"takes one block per command rather than graph's options directly.")
+            else:
+                lines.append(f"  '{key}' is not a `{placed_in}` option; it belongs under {where}.")
+            continue
+
+        # Nothing structural -- fall back to the nearest valid spelling at this location.
+        if file_kind == 'style':
+            valid = style_keys
+        elif placed_in in COMMAND_FLAG_MODELS and COMMAND_FLAG_MODELS[placed_in] is not None:
+            valid = set(COMMAND_FLAG_MODELS[placed_in].model_fields)
+        elif loc[:1] == ['flags']:
+            valid = set(CommandFlags.model_fields)
         else:
-            valid = style_keys if file_kind == 'style' else flag_keys
-            close = difflib.get_close_matches(key, sorted(valid), n=3, cutoff=0.7)
-            if close:
-                lines.append(f"  '{key}' is not a valid key; did you mean: {', '.join(close)}?")
+            valid = set(RunConfig.model_fields)
+        close = difflib.get_close_matches(key, sorted(valid), n=3, cutoff=0.7)
+        if close:
+            lines.append(f"  '{key}' is not a valid key; did you mean: {', '.join(close)}?")
     return lines
+
+
+#: The previous name for RunConfig, from when the file carried only `graph`'s options.
+GraphFilterConfig = RunConfig
+
+COMMAND_FLAG_MODELS['graph'] = GraphFlags
+
+# RunConfig is declared before CommandFlags, so its forward reference is resolved here.
+RunConfig.model_rebuild()

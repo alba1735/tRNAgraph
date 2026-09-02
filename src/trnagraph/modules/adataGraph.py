@@ -152,42 +152,28 @@ class anndataGrapher:
         self._precompute_and_persist_log2fc()
 
     def _load_config(self):
-        '''Read and validate --config, or None when none was given.'''
-        if not getattr(self.args, 'config', None):
-            return None
-        self.logger.info('Loading config file: ' + self.args.config)
-        with open(self.args.config, 'r') as f:
-            raw_config = json.load(f)
-        try:
-            return GraphFilterConfig.model_validate(raw_config)
-        except ValidationError as e:
-            from .toolsSchemas import explain_rejected_keys
+        '''
+        Read and validate --config, or None when none was given.
 
-            detail = '\n'.join([f'Invalid config file {self.args.config}:', str(e)]
-                               + explain_rejected_keys(e, 'config'))
-            raise toolsTG.InvalidParameterError(detail) from e
+        Reads without applying: _apply_config_flags is the single point where the block is
+        laid over the args, which keeps the ordering this class asserts (and a test pins)
+        rather than applying twice and logging every key twice.
+        '''
+        path = getattr(self.args, 'config', None)
+        if path:
+            self.logger.info(f'Loading config file: {path}')
+        return toolsTG.read_run_config(path)
 
     def _apply_config_flags(self):
         '''
-        Lay the config's `flags` block over the args, skipping anything typed on the command
-        line so a CLI flag always wins -- the same precedence --style already promises.
-
-        `cli_specified` is a frozenset of parameter names built in cli.py from click's
-        ParameterSource. It is absent when a namespace is constructed directly (the Python
-        API, and tests), in which case nothing is treated as explicitly typed and the file
-        applies in full.
+        Kept as a separate step because the order matters and is asserted by a test: the
+        flags have to be in place before anything reads them. The merge itself now lives in
+        toolsTG.apply_config_flags, shared by every command that takes --config so all eight
+        resolve a block the same way; _load_config has already applied graph's, so this is
+        idempotent and exists for callers that set self.config directly (the Python API, and
+        the merge tests).
         '''
-        if self.config is None or self.config.flags is None:
-            return
-        typed = getattr(self.args, 'cli_specified', None) or frozenset()
-        for key, value in self.config.flags.model_dump(exclude_none=True).items():
-            if key in typed:
-                self.logger.info(
-                    f'Config sets {key}, but --{key} was given on the command line; '
-                    f'keeping the command-line value.')
-                continue
-            setattr(self.args, key, value)
-            self.logger.info(f'Config sets {key} = {value!r}')
+        toolsTG.apply_config_flags(self.config, 'graph', self.args, self.logger)
 
     def _precompute_and_persist_log2fc(self):
         '''
