@@ -94,6 +94,19 @@ def render_default(param) -> str:
     return f'`{default}`'
 
 
+def escape_markdown(text: str) -> str:
+    """
+    Escape what a markdown formatter would escape, so regeneration stays idempotent under one.
+
+    Only `_` needs handling in practice, and only when it is NOT intraword: CommonMark lets an
+    underscore open emphasis unless both sides are word characters, so a formatter escapes
+    `<output>_bam` (the `_` follows `>`) while leaving `dedup_method`, `regen_uns` and `R1_Path`
+    untouched. Escaping every underscore would corrupt those; escaping none leaves the committed
+    doc one save away from failing the up-to-date test.
+    """
+    return re.sub(r'(?<![A-Za-z0-9])_', r'\\_', text)
+
+
 def render_help(param) -> str:
     """The command's own one-line description, trimmed to its first sentence."""
     if param is None:
@@ -103,7 +116,7 @@ def render_help(param) -> str:
         return ''
     # First sentence only: several help strings carry a second clause aimed at the terminal.
     text = re.split(r'(?<=[a-z0-9)\'"])\. ', text)[0].rstrip('.')
-    return text.replace('|', '\\|').replace('\n', ' ')
+    return escape_markdown(text.replace('|', '\\|').replace('\n', ' '))
 
 
 def _command_params():
@@ -117,6 +130,30 @@ def _command_params():
     return {name: dict(inspect.signature(fn).parameters) for name, fn in commands.items()}
 
 
+#: Minimum dashes in a separator cell, matching what markdown formatters emit for a narrow
+#: column. Purely cosmetic -- one dash parses the same as ten.
+MIN_RULE = 3
+
+
+def render_rows(rows):
+    """
+    Lay out one table's cells as column-aligned markdown rows, header first.
+
+    Padded rather than written bare (`| a | b |`) so regeneration is IDEMPOTENT under a markdown
+    formatter. An editor formatting docs/advanced_usage.md on save re-aligns every table in it,
+    which left the committed file no longer matching this generator's output and failed the
+    up-to-date test for a reason unrelated to the schema it guards. Emitting the formatted shape
+    means the two agree, and neither can dirty what the other wrote.
+
+    Width is measured on the literal cell text, so an escaped pipe inside a choice type counts as
+    the two characters it occupies on the line.
+    """
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+    rule = ['-' * max(width, MIN_RULE) for width in widths]
+    return ['| ' + ' | '.join(cell.ljust(width) for cell, width in zip(row, widths)) + ' |'
+            for row in [rows[0], rule] + rows[1:]]
+
+
 def build_table() -> str:
     from trnagraph.modules.toolsSchemas import COMMAND_FLAG_MODELS
 
@@ -125,13 +162,13 @@ def build_table() -> str:
     for command in BLOCK_ORDER:
         model = COMMAND_FLAG_MODELS[command]
         out.append(f'#### `flags.{command}` — {BLOCK_TITLES[command]}\n')
-        out.append('| Key | Accepts | Default | Meaning |')
-        out.append('| --- | --- | --- | --- |')
+        rows = [['Key', 'Accepts', 'Default', 'Meaning']]
         for key in sorted(model.model_fields):
             field = model.model_fields[key]
             param = params[command].get(key)
-            out.append(f'| `{key}` | {render_type(field.annotation)} | '
-                       f'{render_default(param)} | {render_help(param)} |')
+            rows.append([f'`{key}`', render_type(field.annotation),
+                         render_default(param), render_help(param)])
+        out.extend(render_rows(rows))
         out.append('')
     return '\n'.join(out).rstrip() + '\n'
 

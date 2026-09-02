@@ -13,6 +13,8 @@ guarantee the schema already has against the CLI via the drift tests.
 import importlib.util
 import pathlib
 
+import re
+
 import pytest
 
 SCRIPT = pathlib.Path('scripts/generate_config_reference.py')
@@ -46,10 +48,24 @@ def test_every_block_has_a_table(generator):
         assert f'#### `flags.{command}`' in body
 
 
+def _row_for(body, key):
+    """The table row whose Key cell is `key`.
+
+    Matched on the parsed cell rather than a `line.startswith('| `key` |')` prefix: the tables
+    are column-aligned, so a row's raw prefix carries however much padding that column needs and
+    a prefix match silently finds nothing.
+    """
+    for line in body.splitlines():
+        cells = [c.strip() for c in re.split(r'(?<!\\)\|', line)[1:-1]]
+        if cells and cells[0] == f'`{key}`':
+            return line
+    raise AssertionError(f'no table row for {key!r}')
+
+
 def test_a_boolean_key_states_both_values(generator):
     """The reported motivation for the table: a bare null gave no clue what it accepted."""
     body = generator.DOC.read_text()
-    row = next(line for line in body.splitlines() if line.startswith('| `savesplitbams` |'))
+    row = _row_for(body, 'savesplitbams')
 
     assert '`true`' in row and '`false`' in row, row
 
@@ -58,14 +74,14 @@ def test_the_shrink_key_lists_its_methods(generator):
     """`shrink` is the key that prompted the table: a bare null said nothing about whether it
     wanted true/false, a number, or the name of an estimator."""
     body = generator.DOC.read_text()
-    row = next(line for line in body.splitlines() if line.startswith('| `shrink` |'))
+    row = _row_for(body, 'shrink')
 
     assert '"apeGLM"' in row and '"none"' in row, row
 
 
 def test_a_choice_key_lists_its_choices(generator):
     body = generator.DOC.read_text()
-    row = next(line for line in body.splitlines() if line.startswith('| `heatorient` |'))
+    row = _row_for(body, 'heatorient')
 
     assert '"vertical"' in row and '"horizontal"' in row, row
 
@@ -73,3 +89,45 @@ def test_a_choice_key_lists_its_choices(generator):
 def test_the_pipe_in_a_choice_is_escaped_so_the_table_still_renders(generator):
     """An unescaped `|` inside a cell ends the column, which silently mangles the row."""
     assert generator.render_type(__import__('typing').Optional[bool]) == '`true` \\| `false`'
+
+
+def _cells(row):
+    """Split a markdown row on UNESCAPED pipes -- `\\|` is literal text inside a cell, and
+    splitting on it would mis-count the columns of every row containing a choice type."""
+    import re
+    return re.split(r'(?<!\\)\|', row)[1:-1]
+
+
+def test_generated_tables_are_column_aligned(generator):
+    """The generator emits the same padding a markdown formatter would.
+
+    The rows used to be written unpadded (`| a | b |`), which reads fine on GitHub but is not
+    what a formatter leaves behind. An editor formatting docs/advanced_usage.md on save
+    re-aligned every table in the file, and the committed result then no longer matched what
+    this generator produced -- so `test_the_committed_reference_is_up_to_date` failed for a
+    reason that had nothing to do with the schema it exists to guard.
+
+    Padding here rather than relaxing the comparison keeps regeneration idempotent under a
+    formatter: the generator's output IS the formatted output, so neither can dirty the file
+    the other wrote.
+    """
+    for block in generator.build_table().split('#### ')[1:]:
+        rows = [line for line in block.splitlines() if line.startswith('|')]
+        widths = {tuple(len(cell) for cell in _cells(row)) for row in rows}
+
+        assert len(widths) == 1, f'ragged table: {sorted(widths)}'
+
+
+def test_an_underscore_that_could_open_emphasis_is_escaped(generator):
+    """Matching the markdown formatter's own escaping, for the same idempotence reason as the
+    padding above.
+
+    CommonMark lets `_` open emphasis only when it is NOT intraword, so a formatter escapes
+    `<output>_bam` (the underscore follows `>`) and leaves `dedup_method`, `regen_uns` and
+    `R1_Path` alone. Escaping every underscore would corrupt those; escaping none leaves the
+    committed file permanently one save away from failing the up-to-date test.
+    """
+    assert generator.escape_markdown('processed/<output>_bam') == r'processed/<output>\_bam'
+    assert generator.escape_markdown('dedup_method') == 'dedup_method'
+    assert generator.escape_markdown('R1_Path') == 'R1_Path'
+    assert generator.escape_markdown('_leading') == r'\_leading'

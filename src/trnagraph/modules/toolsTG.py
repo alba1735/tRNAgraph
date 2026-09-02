@@ -884,6 +884,137 @@ _VARIANT_UNS_KEY_MAP = {
 }
 
 
+def _as_plain(value):
+    '''
+    One uns value, normalised back to plain Python.
+
+    uns round-trips lossily: lists return as numpy arrays and strings as numpy str_, so a value
+    written as ['a', 'b'] compares unequal to itself after a write/read cycle. Normalising on
+    read is what lets provenance be compared and membership be handed to set operations.
+    '''
+    if isinstance(value, np.ndarray):
+        return [_as_plain(v) for v in value.tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_as_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _as_plain(v) for k, v in value.items()}
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def write_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: str,
+                       sets: Dict[str, Any], provenance: Dict[str, Any]) -> None:
+    '''
+    Record one multivariate analysis' membership and the parameters that produced it.
+
+    Stored at uns['multivariate'][config_name][analysis][tag]. `tag` is explicit and 'full' IS a
+    real key here, unlike in uns['size_splits'] where it is the reserved pseudo-tag for the
+    unsuffixed location -- membership for the full variant has to live somewhere.
+
+    Deliberately holds NO copy of the fold-change frames: those stay authoritative in
+    uns['log2FC'], leaving exactly one place to invalidate when a fit is recomputed.
+
+    Membership is normalised to SORTED LISTS. Python sets do not survive h5ad at all, and a
+    sorted list keeps a regenerated object diffable against its predecessor.
+    '''
+    entry = {'provenance': dict(provenance),
+             'sets': {str(label): sorted(str(f) for f in features)
+                      for label, features in sets.items()}}
+    adata.uns.setdefault('multivariate', {}) \
+             .setdefault(config_name, {}) \
+             .setdefault(analysis, {})[tag] = entry
+
+
+def read_multivariate(adata: ad.AnnData, config_name: str, analysis: str, tag: str,
+                      provenance: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
+    '''
+    Membership for one analysis, or None when nothing usable is stored.
+
+    Returns None unless the stored provenance matches `provenance` exactly. A set computed at
+    one significance threshold is not an answer to a question asked at another, and serving it
+    would be worse than recomputing -- the figure would be captioned with parameters that did
+    not produce it. Same reasoning that put `shrink` into uns['log2FC']'s cache key.
+    '''
+    entry = adata.uns.get('multivariate', {}).get(config_name, {}).get(analysis, {}).get(tag)
+    if not entry:
+        return None
+    if _as_plain(entry.get('provenance')) != _as_plain(provenance):
+        return None
+    return _as_plain(entry.get('sets'))
+
+
+def variant_obs(adata: ad.AnnData, tag: str) -> pd.DataFrame:
+    '''
+    One read-length variant's obs, WITHOUT resolving the variant.
+
+    build_variant_view() is the right tool for `graph`, which resolves a single variant and then
+    plots every panel from it -- but it takes a full adata.copy() (roughly 460MB on the human
+    object), so an analysis spanning two variants cannot call it once per tag. Only the obs side
+    is needed to fit a model: identity columns, plus that tag's per-obs numeric columns, which
+    already sit in adata.obsm['size_split_<tag>'] under the same unsuffixed names adata.obs uses
+    for the full variant.
+
+    Returns a NEW frame; adata is not modified and its .X, layers and uns are never touched.
+    `tag` of 'full' is the reserved pseudo-tag for the unsuffixed/default location, as in
+    --variant, and returns a copy of adata.obs itself.
+    '''
+    if tag == 'full':
+        return adata.obs.copy()
+    available = list(adata.uns.get('size_splits', {}).keys())
+    split_obs = adata.obsm.get(f'size_split_{tag}')
+    if tag not in available or split_obs is None:
+        raise InvalidParameterError(
+            f"Split tag '{tag}' not found in this AnnData object. Available split tags: "
+            f"{available or 'none (no splits added yet)'}."
+        )
+    obs = adata.obs.copy()
+    for column in split_obs.columns:
+        obs[column] = split_obs[column].reindex(obs.index).values
+    return obs
+
+
+def variant_log2fc(adata: ad.AnnData, tag: str, compare: str, readtype: str,
+                   readcount_cutoff: int = 80, config_name: str = 'default',
+                   shrink: str = 'apeGLM', overwrite: bool = False, n_cpus: Optional[int] = 1):
+    '''
+    Fold changes for ONE read-length variant, read from that variant's own cache or computed
+    into it. Returns (df, pairs).
+
+    This is what lets an analysis span variants. `graph` resolves a single --variant up front,
+    so the cross-variant plots cannot go through that path at all; they call this once per tag
+    against the UNRESOLVED object instead.
+
+    The cache lives where that variant's data lives -- uns['log2FC'] for 'full',
+    uns['size_splits'][tag]['log2FC'] for a split -- so no tag can serve or overwrite another's
+    values. The fit itself runs against a slim carrier object holding only that tag's obs (see
+    variant_obs), never a resolved copy of the whole object.
+
+    n_cpus stays at 1 by default for the same reason adataLog2FC's does: called from inside a
+    multiprocessing.Pool worker, PyDESeq2's joblib backend would spawn a nested pool and
+    deadlock. Only a caller that KNOWS it is not inside a pool may raise it.
+    '''
+    obs = variant_obs(adata, tag)
+    # A carrier for adataLog2FC, which reads .obs and .uns only. X is a single zero column: the
+    # object exists to hold the frame, and no coverage value is consulted by the fit.
+    carrier = ad.AnnData(X=np.zeros((len(obs), 1), dtype='float32'), obs=obs)
+    if tag == 'full':
+        cache_home = adata.uns
+    else:
+        cache_home = adata.uns.setdefault('size_splits', {}).setdefault(tag, {})
+    carrier.uns['log2FC'] = cache_home.get('log2FC', {})
+
+    engine = adataLog2FC(carrier, compare, readtype, readcount_cutoff=readcount_cutoff,
+                         config_name=config_name, overwrite=overwrite, n_cpus=n_cpus,
+                         shrink=shrink)
+    df, log2fc_dict = engine.main()
+    # Written back onto the ORIGINAL object, into this tag's own location. Never onto a resolved
+    # view, and never into uns['log2FC'] for a split -- that would overwrite the full variant's
+    # real data with the split's values.
+    cache_home['log2FC'] = log2fc_dict
+    return df, log2fc_dict[config_name][compare]['pairs']
+
+
 def parse_variant(adata: ad.AnnData, variant: str = 'norm:full') -> 'VariantTag':
     '''
     Parse a `--variant` string of the form "<norm>:<tag>" (tag defaults to 'full' if omitted).
