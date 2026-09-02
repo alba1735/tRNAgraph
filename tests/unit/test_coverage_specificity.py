@@ -9,6 +9,8 @@ untreated sample were averaged into one trace with nothing saying so.
 The replacement is a grid, tRNA down and group across, plus one individual plot per tRNA per
 group.
 """
+from unittest.mock import patch
+
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -310,3 +312,34 @@ def test_the_width_limit_only_applies_when_coverage_is_being_drawn():
     wide = _adata(groups=[f'g{i}' for i in range(30)], replicates=1)
 
     _grapher('group', ['pca'], wide)._validate_label_args()
+
+
+def test_the_partition_frame_is_built_once_per_visualizer():
+    """`_partition_frame` is 436 tRNAs x 3 groups x 4 categories of AnnData boolean-mask
+    subsetting on the human build -- it accounted for the 29 seconds the specificity grid still
+    spent silent after its pages were streamed, because generate_partition_split had already
+    built exactly the same thing. Memoizing it is also what makes the grid's worker pool cheap:
+    a forked worker inherits the cached frame copy-on-write instead of having it pickled into
+    every task."""
+    viz = _visualizer()
+    builds = []
+    real_build = plotsCoverage.visualizer._build_partition_frame
+
+    def _counting_build(self):
+        builds.append(1)
+        return real_build(self)
+
+    with patch.object(plotsCoverage.visualizer, "_build_partition_frame", _counting_build):
+        first = viz._partition_frame()
+        second = viz._partition_frame()
+
+    assert len(builds) == 1, f'expected one build, got {len(builds)}'
+    assert first is second
+
+
+def test_each_visualizer_builds_its_own_partition_frame():
+    """The cache is per instance, never module-level: two visualizers over different objects
+    (or different --covgrp) must not see each other's frames."""
+    one, two = _visualizer(), _visualizer()
+
+    assert one._partition_frame() is not two._partition_frame()

@@ -73,6 +73,13 @@ def _split_single_worker(covobs):
     return _WORKER_VISUALIZER.generate_split_single(covobs)
 
 
+def _partition_page_worker(args):
+    # Only the page's row/column slice travels; the frames, palette and labels are rebuilt from
+    # the shared visualizer, whose _partition_frame cache the fork inherited.
+    rows, columns = args
+    return _WORKER_VISUALIZER._partition_page_for(rows, columns)
+
+
 class visualizer():
     '''
     Generate coverage plots for each sample in an AnnData object.
@@ -95,6 +102,9 @@ class visualizer():
         # Held before the coverage_type subset so the stacked specificity overview can read
         # all four partition categories at once; every other plot uses the subset self.adata.
         self.partition_source = adata
+        # Populated on first use by _partition_frame(); see its docstring for why it is per
+        # instance and why it must exist before the grid's pool forks.
+        self._partition_frame_cache = None
         # This class owns its own directory layout: `output` is the coverage base, the
         # per-category plots go under <base>/<covtype-alias>/, and the stacked overview --
         # which shows every category at once and so has no single category to file under --
@@ -196,6 +206,25 @@ class visualizer():
         return sorted(self.partition_source.obs[self.coverage_grp].dropna().unique())
 
     def _partition_frame(self):
+        '''
+        The partition frames, built at most once per visualizer.
+
+        Both `generate_partition_split` and `generate_partition_overview` need exactly this,
+        and building it is 436 tRNAs x 3 groups x 4 categories of AnnData boolean-mask
+        subsetting on the human build -- the second build was the whole of the 29 seconds the
+        grid still spent silent once its pages were streamed. Cached on the INSTANCE rather
+        than at module level so two visualizers over different objects, or the same object
+        under a different --covgrp, cannot see each other's frames.
+
+        It also has to be populated BEFORE the grid's worker pool forks: a forked worker then
+        inherits it copy-on-write through _WORKER_VISUALIZER, instead of having the whole frame
+        pickled into every page task.
+        '''
+        if self._partition_frame_cache is None:
+            self._partition_frame_cache = self._build_partition_frame()
+        return self._partition_frame_cache
+
+    def _build_partition_frame(self):
         '''
         Coverage per position for each of tRAX's four read-specificity categories, PER GROUP:
         {covobs: {group: DataFrame(position x category)}}.
@@ -314,16 +343,40 @@ class visualizer():
         # 56 of the step's 91 seconds unreportable because no page existed to count yet.
         return self._partition_page_stream(row_pages, column_pages, frames, groups, palette, labels)
 
+    def _partition_style(self):
+        '''The grid's colours and category labels, derived rather than passed, so a pool worker
+        can rebuild them without them being pickled into every task.'''
+        palette = plotsPalette.discrete_colors(
+            plotsPalette.gradient(self.settings, 'ordered'), len(toolsTG.COVERAGE_PARTITION))
+        labels = [toolsTG.COVERAGE_CATEGORY_LABELS[c] for c in toolsTG.COVERAGE_PARTITION]
+        return palette, labels
+
+    def _partition_page_for(self, rows, columns):
+        '''One grid page, addressed only by its row/column slice -- the pool's task payload.'''
+        palette, labels = self._partition_style()
+        return self._partition_page(rows, columns, self._partition_frame(),
+                                    self._partition_groups(), palette, labels)
+
     def _partition_page_stream(self, row_pages, column_pages, frames, groups, palette, labels):
         '''
         Draw one page at a time. Split out of `_partition_pages` so that method stays an
         ordinary function whose validation runs when it is CALLED -- a generator's body does
         not run until the first page is requested, which would move the width check to after
         the PDF had been opened.
+
+        Parallel where the workers can share this visualizer, as the combined pages already
+        are: this is the slowest sub-step coverage has, and only the (rows, columns) slice
+        needs to travel because the frames are already cached on the object being shared.
+        imap, ORDERED, since these become the pages of a PDF.
         '''
-        for rows in row_pages:
-            for columns in column_pages:
+        tasks = [(rows, columns) for rows in row_pages for columns in column_pages]
+        shared = _share_with_workers(self)
+        if not shared or self.threads <= 1:
+            for rows, columns in tasks:
                 yield self._partition_page(rows, columns, frames, groups, palette, labels)
+            return
+        with Pool(self.threads) as p:
+            yield from p.imap(_partition_page_worker, tasks)
 
     def _partition_page(self, rows, columns, frames, all_groups, palette, labels):
         '''One page of the grid. Panels in a row share a y-axis so the groups are comparable.'''
