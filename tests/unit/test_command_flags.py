@@ -158,11 +158,15 @@ def test_a_missing_required_option_names_both_ways_to_supply_it():
 
 def test_the_typed_merge_bookkeeping_never_reaches_the_h5ad():
     """`cli_specified` rides on the args namespace so the merge knows what the user typed, and
-    adataBuild records that namespace into uns['trnagraphruninfo']['flags']. It is a frozenset,
-    which h5ad cannot write -- recording it failed the entire build at the moment of saving."""
-    import inspect as _inspect
+    adataBuild records that namespace into uns. It is a frozenset, which h5ad cannot write --
+    recording it failed the entire build at the moment of saving.
 
-    from trnagraph.modules import adataBuild
+    This used to assert that the string "if k != 'cli_specified'" appeared in
+    AnnDataBuilder.__init__. That guarded ONE of the three places the namespace is snapshotted,
+    so the same bug survived in the two `build_flags` sites and fired on the first
+    --readlengthsplit build. The filtering now lives in one shared helper, and the behavioural
+    guarantee -- that a snapshot can actually be written -- is in
+    test_build_flags_are_writable.py."""
+    from trnagraph.modules import toolsTG
 
-    source = _inspect.getsource(adataBuild.AnnDataBuilder.__init__)
-    assert "if k != 'cli_specified'" in source
+    assert 'cli_specified' in toolsTG.NON_RECORDED_FLAGS

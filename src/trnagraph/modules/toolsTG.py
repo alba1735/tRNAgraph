@@ -824,6 +824,31 @@ def resolve_covtype(covtype: Optional[str], basis: str) -> str:
     return COVTYPE_DEFAULTS[basis]
 
 
+#: Keys that ride on an args namespace as machinery rather than as settings the object was
+#: built with. `cli_specified` is the --config merge's record of which options the user actually
+#: typed; it is a frozenset, which h5ad cannot write at all.
+NON_RECORDED_FLAGS = frozenset({'cli_specified'})
+
+
+def sanitize_flags(args) -> Dict[str, Any]:
+    '''
+    An args namespace as a dict that an .h5ad can actually store.
+
+    Two transformations, each for a concrete failure. Bookkeeping keys are dropped, because
+    `cli_specified` is a frozenset and anndata has no writer for one -- recording it fails the
+    entire build at the moment of saving, after every expensive step has already run. And None
+    becomes the string 'None', because h5ad does not round-trip None reliably; the readers that
+    consume these snapshots expect that sentinel.
+
+    Shared by every site that records a flag snapshot. It exists as one function precisely
+    because the frozenset bug was fixed at one of the three sites and survived at the other two,
+    where it was reachable only through --readlengthsplit.
+    '''
+    values = vars(args) if not isinstance(args, dict) else args
+    return {k: (v if v is not None else 'None')
+            for k, v in values.items() if k not in NON_RECORDED_FLAGS}
+
+
 def apply_category_order(obs, order):
     '''
     Turn each declared obs column into an ordered pd.Categorical, in the declared order.

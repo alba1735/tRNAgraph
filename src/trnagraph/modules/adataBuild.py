@@ -1075,8 +1075,7 @@ class AnnDataBuilder():
         # the object is saved.
         run_flags = {}
         if self.analysis_args:
-            run_flags = {k: (v if v is not None else 'None')
-                         for k, v in vars(self.analysis_args).items() if k != 'cli_specified'}
+            run_flags = toolsTG.sanitize_flags(self.analysis_args)
         self.trnagraph_run_info = {'expname': resultsdir.split('/')[-1],
                                    'time': os.popen('date').read().rstrip(),
                                    'trnagraph_directory': resultsdir,
@@ -1445,7 +1444,7 @@ class AnnDataBuilder():
                                          results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
                 contribution = loader.compute_variant_contribution(vst_strategy=vst_strategy, dispfittype=dispfittype, minfeaturereads=minfeaturereads)
 
-                build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+                build_flags = toolsTG.sanitize_flags(args_variant)
                 merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=True)
         finally:
             if not savesplitbams:
@@ -2006,7 +2005,7 @@ def add_split(args):
                                      results_dir_name=args_variant.results_dir_name, graphs_dir_name=args_variant.graphs_dir_name)
             contribution = loader.compute_variant_contribution(vst_strategy=str(effective_vst).lower(), dispfittype=effective_dispfittype, minfeaturereads=effective_minfeaturereads)
 
-            build_flags = {k: (v if v is not None else 'None') for k, v in vars(args_variant).items()}
+            build_flags = toolsTG.sanitize_flags(args_variant)
             merge_variant_into_adata(adata, contribution, tag=tag, direction=direction, cutoff=cutoff, build_flags=build_flags, overwrite=args.overwrite)
     finally:
         if not savesplitbams:
