@@ -252,7 +252,8 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 | `maxmismatches`   | string            | —            | Maximum mismatches allowed per read, applied consistently everywhere reads are counted from BAM files                                          |
 | `minfeaturereads` | string            | —            | Minimum total raw read count a tRNA gene needs to influence the VST dispersion-trend fit (default: 30)                                         |
 | `minnontrnasize`  | integer           | `20`         | Minimum read length for non-tRNAs                                                                                                              |
-| `overwritebams`   | `true` \| `false` | `false`      | Force overwrite of existing BAM files during map/split                                                                                         |
+| `overwritebams`   | `true` \| `false` | `false`      | Re-map from FASTQ even when the BAMs already exist                                                                                             |
+| `overwritesplits` | `true` \| `false` | `false`      | Re-cut the u<N>/o<N> split BAMs even when they already exist                                                                                   |
 | `pairs`           | string            | —            | List of sample pairs to compare                                                                                                                |
 | `readlengthsplit` | integer           | —            | Read length cutoff for splitting (generates additional under/over analyses)                                                                    |
 | `savesplitbams`   | `true` \| `false` | `false`      | Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object |
@@ -270,7 +271,7 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 | `metadata`        | string            | —       | Metadata file (default: recovered from the object's own build provenance)                                                                         |
 | `minfeaturereads` | string            | —       | Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit (default: recovered from provenance, or 30) |
 | `overwrite`       | `true` \| `false` | `false` | Overwrite this cutoff's u<N>/o<N> data if already present in the object                                                                           |
-| `overwritebams`   | `true` \| `false` | `false` | Force overwrite of existing split BAM files                                                                                                       |
+| `overwritesplits` | `true` \| `false` | `false` | Re-cut the u<N>/o<N> split BAMs even when they already exist                                                                                      |
 | `readlengthsplit` | integer           | —       | New read length cutoff to add (generates u<N>/o<N> variants)                                                                                      |
 | `savesplitbams`   | `true` \| `false` | `false` | Keep the split BAM files (under --bamdir/u<N>,o<N>) instead of deleting them once merged into the AnnData object                                  |
 | `vst`             | string            | —       | VST strategy for this split's vst layer (default: recovered from provenance)                                                                      |

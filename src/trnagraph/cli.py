@@ -419,7 +419,8 @@ def build(
     dispfittype: str = typer.Option("parametric", "--dispfittype", help="DESeq2 dispersion fit type: 'parametric' (default) or 'mean' (robust for small samples)"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     readlengthsplit: Optional[int] = typer.Option(None, "-c", "--readlengthsplit", help="Read length cutoff for splitting (generates additional under/over analyses)"),
-    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing BAM files during map/split"),
+    overwritebams: bool = typer.Option(False, "--overwritebams", help="Re-map from FASTQ even when the BAMs already exist"),
+    overwritesplits: bool = typer.Option(False, "--overwritesplits", help="Re-cut the u<N>/o<N> split BAMs even when they already exist. Needed when the unsplit BAMs have been re-mapped or deduplicated since the split was taken"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) created for --readlengthsplit instead of deleting them once merged into the AnnData object"),
     vst: str = typer.Option("log1p", "--vst", help="Variance Stabilizing Transformation method [vst, log1p, none]"),
     config: Optional[str] = typer.Option(None, "--config", help="JSON file whose `flags.build` block pins this command's options, so one file can carry a whole run. A typed flag beats the file"),
@@ -438,7 +439,8 @@ def build(
             bed=bed, maxmismatches=maxmismatches,
             minfeaturereads=minfeaturereads, minnontrnasize=minnontrnasize, hub=hub, hubonly=hubonly,
             filterother=filterother, bamdir=bamdir, dispfittype=dispfittype, threads=threads,
-            readlengthsplit=readlengthsplit, overwritebams=overwritebams, savesplitbams=savesplitbams,
+            readlengthsplit=readlengthsplit, overwritebams=overwritebams,
+            overwritesplits=overwritesplits, savesplitbams=savesplitbams,
             vst=vst, quiet=quiet, cli_specified=cli_specified_params(ctx),
         )
         # Before the metadata check and before the builder is handed its arguments, so a
@@ -471,7 +473,7 @@ def addsplit(
     dispfittype: Optional[str] = typer.Option(None, "--dispfittype", help="Override DESeq2 dispersion fit type (default: recovered from provenance)"),
     vst: Optional[str] = typer.Option(None, "--vst", help="VST strategy for this split's vst layer (default: recovered from provenance)"),
     minfeaturereads: Optional[str] = typer.Option(None, "--minfeaturereads", help="Override the minimum total raw read count a tRNA gene needs for this split's VST dispersion-trend fit (default: recovered from provenance, or 30)"),
-    overwritebams: bool = typer.Option(False, "--overwritebams", help="Force overwrite of existing split BAM files"),
+    overwritesplits: bool = typer.Option(False, "--overwritesplits", help="Re-cut the u<N>/o<N> split BAMs even when they already exist. Needed when the unsplit BAMs have been re-mapped or deduplicated since the split was taken"),
     savesplitbams: bool = typer.Option(False, "--savesplitbams", help="Keep the split BAM files (under --bamdir/u<N>,o<N>) instead of deleting them once merged into the AnnData object"),
     threads: int = typer.Option(8, "-n", "--threads", help="Number of threads to use (default: 8)"),
     output: Optional[str] = typer.Option(None, "-o", "--output", help="Output h5ad path (default: overwrite the input file in place)"),
@@ -490,7 +492,7 @@ def addsplit(
         args = SimpleNamespace(
             mode='addsplit', anndata=anndata_path, readlengthsplit=readlengthsplit, metadata=metadata,
             bamdir=bamdir, database=database, gtf=gtf, dispfittype=dispfittype, vst=vst, minfeaturereads=minfeaturereads,
-            overwritebams=overwritebams, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
+            overwritesplits=overwritesplits, savesplitbams=savesplitbams, threads=threads, output=output, overwrite=overwrite, force=force,
             quiet=quiet, cli_specified=cli_specified_params(ctx),
         )
         toolsTG.load_run_config(config, 'addsplit', args, logging.getLogger('trnagraph.cli'))

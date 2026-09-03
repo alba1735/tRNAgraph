@@ -1684,7 +1684,11 @@ class AnnDataBuilder():
         Handles auto-mapping and splitting based on args.
         '''
         bamdir = args.bamdir if args.bamdir else os.path.join("processed", "bam")
+        # Two operations, two flags. They were one, which made "re-cut the splits" impossible to
+        # ask for without also re-mapping from FASTQ -- unreachable once the FASTQs have moved,
+        # which is exactly the situation a stale split is discovered in.
         overwrite = getattr(args, 'overwritebams', False)
+        overwrite_splits = getattr(args, 'overwritesplits', False)
         
         # Check if we need to map
         try:
@@ -1721,26 +1725,35 @@ class AnnDataBuilder():
             cutoff = args.readlengthsplit
             # Check if split BAMs exist -- recorded *before* this run's own splitting step runs,
             # so _apply_readlength_split_()'s later cleanup can tell "already there, untouched by
-            # this run" apart from "this run just created (or --overwritebams-regenerated) it"
-            # (see roadmap.md's "BAM deletion safety" item). --overwritebams forces a fresh split
-            # even for an already-complete tag, so that tag is this run's own output regardless.
+            # this run" apart from "this run just created (or --overwritesplits-regenerated) it"
+            # (see roadmap.md's "BAM deletion safety" item). --overwritesplits forces a fresh
+            # split even for an already-complete tag, so that tag is this run's own output
+            # regardless.
             preexisting = _split_bam_dirs_preexisting(bamdir, cutoff, samples)
-            self._split_dirs_preexisted = {tag: complete and not overwrite for tag, complete in preexisting.items()}
+            self._split_dirs_preexisted = {tag: complete and not overwrite_splits
+                                           for tag, complete in preexisting.items()}
             missing_split = not all(preexisting.values())
 
-            if missing_split or overwrite:
+            # Before deciding to REUSE a cached split, check it still belongs to the BAMs beside
+            # it. Skipped when re-cutting anyway, since the offending files are about to go.
+            if not (missing_split or overwrite_splits):
+                _refuse_stale_split_bams(bamdir, cutoff, samples, self.logger)
+
+            if missing_split or overwrite_splits:
                 self.logger.info(f"Running split step (cutoff {cutoff})...")
                 from . import toolsSplit
                 split_args = SimpleNamespace(
                     input=args.input,
                     readlengthsplit=cutoff,
                     bamdir=bamdir,
-                    overwritebams=overwrite,
+                    overwritebams=overwrite_splits,
                     threads=args.threads
                 )
                 toolsSplit.BamSplitter(split_args).process()
             else:
-                self.logger.info(f"Split BAM files found for cutoff {cutoff}. Skipping split (use --overwritebams to force).")
+                self.logger.info(f"Split BAM files found for cutoff {cutoff}, and each is newer "
+                                 f"than the BAM it was cut from. Skipping split (use "
+                                 f"--overwritesplits to force).")
 
 
 def _get_git_version_():
@@ -1778,6 +1791,64 @@ def _split_bam_dirs_preexisting(bamdir, cutoff, samples):
             os.path.isfile(os.path.join(tag_dir, f"{s}.bam")) for s in samples
         )
     return preexisting
+
+
+def _stale_split_bams(bamdir, cutoff, samples):
+    '''
+    Split BAMs that are older than the unsplit BAM they were supposedly cut from.
+
+    A split BAM is written by reading its parent, so it can only ever be newer. Older means the
+    parent has been replaced since -- and the split now describes reads that are no longer in it.
+
+    This is not hypothetical. On the hg38 c305 dataset, `preprocess map --dedup` wrote the
+    deduplicated BAMs into `processed/bam_dedup/` on top of the pre-dedup ones, leaving the
+    `u60/`/`o60/` subdirectories cut from the PRE-dedup parents in place beside them. The next
+    build found every split BAM present, logged "Split BAM files found for cutoff 60. Skipping
+    split", and counted pre-dedup reads into both split variants: `u60 + o60` came to 68.7M
+    reads against the full variant's 6.97M, a tenfold overstatement that looked entirely
+    plausible in every figure downstream. The giveaway was a `u60` split BAM of 1.44 GB whose
+    parent was 621 MB -- a length-filtered subset larger than the whole.
+
+    Returns [(tag, sample, split_path)] for every offender, so the caller can name them.
+    '''
+    stale = []
+    for tag in (f'u{cutoff}', f'o{cutoff}'):
+        tag_dir = os.path.join(bamdir, tag)
+        if not os.path.isdir(tag_dir):
+            continue
+        for sample in samples:
+            split_path = os.path.join(tag_dir, f"{sample}.bam")
+            parent_path = os.path.join(bamdir, f"{sample}.bam")
+            if not (os.path.isfile(split_path) and os.path.isfile(parent_path)):
+                continue
+            if os.path.getmtime(split_path) < os.path.getmtime(parent_path):
+                stale.append((tag, sample, split_path))
+    return stale
+
+
+def _refuse_stale_split_bams(bamdir, cutoff, samples, logger):
+    '''
+    Abort, naming the offending files, when a cached split predates its parent.
+
+    Refuses rather than silently re-splitting: re-splitting rewrites gigabytes of the user's
+    BAMs off the back of an mtime comparison, and -- more importantly -- a silent fix would have
+    produced correct numbers here while leaving the user believing their splits had been sound
+    all along. The staleness is itself the finding worth surfacing.
+    '''
+    stale = _stale_split_bams(bamdir, cutoff, samples)
+    if not stale:
+        return
+    shown = '\n'.join(f'  {path}' for _, _, path in stale[:8])
+    if len(stale) > 8:
+        shown += f'\n  ... and {len(stale) - 8} more'
+    raise toolsTG.InvalidParameterError(
+        f"{len(stale)} split BAM file(s) for cutoff {cutoff} are OLDER than the unsplit BAM they "
+        f"were cut from, so they describe reads that are no longer in it -- most often because "
+        f"the parent BAMs were re-mapped or deduplicated after the split was taken:\n{shown}\n"
+        f"Counting these would silently mix the two read sets. Re-cut them with "
+        f"--overwritesplits, or delete {os.path.join(bamdir, f'u{cutoff}')} and "
+        f"{os.path.join(bamdir, f'o{cutoff}')} and run again."
+    )
 
 
 def _empty_split_nontrna_counts(target_adata):
@@ -1965,18 +2036,22 @@ def add_split(args):
 
     # Recorded *before* this run's own splitting step runs, so the cleanup below can tell
     # "already there, untouched by this run" apart from "this run just created (or
-    # --overwritebams-regenerated) it" (see roadmap.md's "BAM deletion safety" item).
+    # --overwritesplits-regenerated) it" (see roadmap.md's "BAM deletion safety" item).
     try:
         samples = toolsTG.samplefile(effective_input).getsamples()
     except Exception as e:
         logger.error(f"Could not parse metadata file '{effective_input}' to check for existing split BAMs: {e}")
         raise
     preexisting = _split_bam_dirs_preexisting(effective_bamdir, cutoff, samples)
-    split_dirs_preexisted = {tag: complete and not args.overwritebams for tag, complete in preexisting.items()}
+    overwrite_splits = getattr(args, 'overwritesplits', False)
+    split_dirs_preexisted = {tag: complete and not overwrite_splits
+                             for tag, complete in preexisting.items()}
+    if not overwrite_splits:
+        _refuse_stale_split_bams(effective_bamdir, cutoff, samples, logger)
 
     from . import toolsSplit
     split_args = SimpleNamespace(input=effective_input, readlengthsplit=cutoff, bamdir=effective_bamdir,
-                                  overwritebams=args.overwritebams, threads=args.threads)
+                                  overwritebams=overwrite_splits, threads=args.threads)
     toolsSplit.BamSplitter(split_args).process()
 
     try:
@@ -1992,7 +2067,7 @@ def add_split(args):
             args_variant.vst = effective_vst
             args_variant.bamdir = os.path.join(effective_bamdir, tag)
             args_variant.readlengthsplit = None
-            args_variant.overwritebams = args.overwritebams
+            args_variant.overwritebams = overwrite_splits
             args_variant.threads = args.threads
             args_variant.results_dir_name, args_variant.graphs_dir_name = toolsTG.variant_dir_names(args_variant, tag=tag)
             args_variant.output = os.path.join(base_output_dir, f"{os.path.splitext(os.path.basename(args.anndata))[0]}_{tag}.h5ad")

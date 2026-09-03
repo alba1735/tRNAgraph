@@ -9,7 +9,7 @@
       "metadata": null,
       "minfeaturereads": null,
       "overwrite": null,
-      "overwritebams": null,
+      "overwritesplits": null,
       "readlengthsplit": null,
       "savesplitbams": null,
       "vst": null
@@ -28,6 +28,7 @@
       "minfeaturereads": null,
       "minnontrnasize": null,
       "overwritebams": null,
+      "overwritesplits": null,
       "pairs": null,
       "readlengthsplit": null,
       "savesplitbams": null,

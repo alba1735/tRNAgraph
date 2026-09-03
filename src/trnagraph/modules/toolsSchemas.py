@@ -385,6 +385,7 @@ class BuildFlags(BaseModel):
     dispfittype: Optional[str] = None
     readlengthsplit: Optional[int] = None
     overwritebams: Optional[bool] = None
+    overwritesplits: Optional[bool] = None
     savesplitbams: Optional[bool] = None
     vst: Optional[str] = None
 
@@ -401,7 +402,7 @@ class AddsplitFlags(BaseModel):
     dispfittype: Optional[str] = None
     vst: Optional[str] = None
     minfeaturereads: Optional[str] = None
-    overwritebams: Optional[bool] = None
+    overwritesplits: Optional[bool] = None
     savesplitbams: Optional[bool] = None
     overwrite: Optional[bool] = None
     force: Optional[bool] = None

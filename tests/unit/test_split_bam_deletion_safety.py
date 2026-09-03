@@ -65,8 +65,8 @@ def test_handle_preprocessing_marks_fully_populated_split_dirs_as_preexisting_wh
             assert (bamdir / tag / f"{name}.bam").exists()
 
 
-def test_handle_preprocessing_does_not_mark_preexisting_when_overwritebams_forces_a_fresh_split(tmp_path):
-    """--overwritebams means this run regenerates the split BAMs regardless of what was already
+def test_handle_preprocessing_does_not_mark_preexisting_when_overwritesplits_forces_a_fresh_split(tmp_path):
+    """--overwritesplits means this run regenerates the split BAMs regardless of what was already
     there, so that tag's output is this run's own to clean up afterward -- unlike the untouched
     case above, it should NOT be protected from --savesplitbams-off cleanup."""
     samplenames = ["sample0", "sample1"]
@@ -75,7 +75,7 @@ def test_handle_preprocessing_does_not_mark_preexisting_when_overwritebams_force
 
     args = SimpleNamespace(
         input=manifest, bamdir=str(bamdir), output=str(tmp_path / "exp" / "exp.h5ad"),
-        database=str(tmp_path / "db"), overwritebams=True, readlengthsplit=60, threads=1,
+        database=str(tmp_path / "db"), overwritesplits=True, readlengthsplit=60, threads=1,
     )
 
     builder = _bare_builder()
