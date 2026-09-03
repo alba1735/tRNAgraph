@@ -8,6 +8,7 @@ import contextlib
 import importlib.resources
 import itertools
 import os
+import stat
 import sys
 import logging
 import gzip
@@ -556,6 +557,55 @@ PLOT_STYLE_DEFAULTS = {
     'rasterize_over': None, # None = never rasterize
 }
 
+
+
+def write_h5ad(adata, path):
+    '''
+    Persist an AnnData object without risking the one already on disk.
+
+    anndata's own `.write()` truncates the target and streams into it, so an interruption --
+    a crash, a full disk, two processes colliding on the HDF5 file lock -- leaves a file that is
+    neither the old object nor the new one. It is not merely stale: anndata cannot open it at
+    all, which for a build representing hours of compute is data loss rather than an
+    inconvenience.
+
+    The object is written to a temporary file BESIDE the target (os.replace is only atomic
+    within one filesystem, so /tmp will not do) and renamed over it once the write has
+    succeeded. A reader therefore sees either the whole old object or the whole new one, and a
+    failed write leaves the old one exactly as it was.
+
+    The target's permissions are preserved across the replace, since mkstemp creates 0600 and
+    renaming that over a group-readable object on a shared server would quietly make it
+    unreadable to everyone else.
+    '''
+    import tempfile
+
+    path = str(path)
+    directory = os.path.dirname(os.path.abspath(path)) or '.'
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError:
+        # New file: fall back to the process umask rather than mkstemp's 0600.
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+
+    handle, tmp = tempfile.mkstemp(prefix=f'.{os.path.basename(path)}.', suffix='.tmp.h5ad',
+                                   dir=directory)
+    os.close(handle)
+    try:
+        adata.write(tmp)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        # BaseException, not Exception: a KeyboardInterrupt mid-write is exactly the case this
+        # exists for, and it must not leave the partial file behind either.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return path
 
 def resolve_plot_style(style, graph_type, **overrides):
     '''

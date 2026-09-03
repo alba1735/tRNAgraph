@@ -88,5 +88,5 @@ class anndataMerger():
             toolsTG.adataLog2FC(self.adata, 'group', 'nreads_total_unique_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
             toolsTG.adataLog2FC(self.adata, 'group', 'nreads_total_norm', readcount_cutoff=i, config_name='default', overwrite=True).main()
         # Save merged AnnData object
-        self.adata.write(f'{self.args.output}')
+        toolsTG.write_h5ad(self.adata, f'{self.args.output}')
         self.logger.info(f'Writing h5ad database object to {self.args.output}')

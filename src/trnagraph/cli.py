@@ -739,7 +739,7 @@ def log2fc(
             adata.uns.setdefault('size_splits', {}).setdefault(variant_spec.tag, {})['log2FC'] = adata_view.uns.get('log2FC', {})
 
         print('The log2FC uns dictionary has been updated.\nWriting h5ad database object to: ' + anndata_path)
-        adata.write(anndata_path)
+        toolsTG.write_h5ad(adata, anndata_path)
         print('Done!\n')
 
 @tools_app.command("csv", help="Output .h5ad to CSV")

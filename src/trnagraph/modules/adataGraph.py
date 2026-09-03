@@ -296,7 +296,7 @@ class anndataGrapher:
                 self.adata_original.uns['log2FC'] = self.adata.uns['log2FC']
             else:
                 self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['log2FC'] = self.adata.uns['log2FC']
-            self.adata_original.write(self.args.anndata)
+            toolsTG.write_h5ad(self.adata_original, self.args.anndata)
 
     def _optional_graphtype_status(self):
         '''
@@ -696,7 +696,7 @@ class anndataGrapher:
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership
-                self.adata_original.write(self.args.anndata)
+                toolsTG.write_h5ad(self.adata_original, self.args.anndata)
         if gt == 'agreement':
             # Same gate and the same write-back as venn: membership lands on the RESOLVED view,
             # so it is copied onto the original object rather than writing the view itself.
@@ -710,7 +710,7 @@ class anndataGrapher:
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership
-                self.adata_original.write(self.args.anndata)
+                toolsTG.write_h5ad(self.adata_original, self.args.anndata)
         if gt == 'volcano':
             threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.cutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  

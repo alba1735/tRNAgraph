@@ -12,6 +12,12 @@ pool, so they run sequentially in the parent after it drains.
 from trnagraph.modules import adataGraph
 
 
+def _persists(block):
+    """Writes the object back. Spelled via toolsTG.write_h5ad since a bare .write() truncates
+    the target and an interrupted write leaves it unreadable."""
+    return 'write_h5ad(self.adata_original' in block
+
+
 def test_both_object_writers_are_declared():
     assert set(adataGraph.OBJECT_WRITING_GRAPH_TYPES) == {'venn', 'agreement'}
 
@@ -24,7 +30,7 @@ def test_every_declared_writer_actually_writes_the_object():
 
     for gt in adataGraph.OBJECT_WRITING_GRAPH_TYPES:
         block = source.split(f"if gt == '{gt}':")[1].split('if gt ==')[0]
-        assert 'adata_original.write' in block, f'{gt} is listed but does not write'
+        assert _persists(block), f'{gt} is listed but does not write'
 
 
 def test_no_other_graph_type_writes_the_object():
@@ -32,7 +38,7 @@ def test_no_other_graph_type_writes_the_object():
     source = inspect.getsource(adataGraph.anndataGrapher.dispatch_plot)
 
     writers = {block.split("'")[0] for block in source.split("if gt == '")[1:]
-               if 'adata_original.write' in block.split('if gt ==')[0]}
+               if _persists(block.split('if gt ==')[0])}
     assert writers == set(adataGraph.OBJECT_WRITING_GRAPH_TYPES)
 
 

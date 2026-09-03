@@ -1156,7 +1156,7 @@ class AnnDataBuilder():
 
         # Save adata object
         with self.phase_tracker.phase():
-            adata.write(self.output)
+            toolsTG.write_h5ad(adata, self.output)
             self.logger.info(f'Writing h5ad database object to {self.output}')
 
     def _check_metadata_sample_match_(self, obs_df):
@@ -2020,6 +2020,6 @@ def add_split(args):
                     shutil.rmtree(split_dir, ignore_errors=True)
 
     output_path = os.path.abspath(args.output) if args.output else os.path.abspath(args.anndata)
-    adata.write(output_path)
+    toolsTG.write_h5ad(adata, output_path)
     logger.info(f'Writing h5ad database object to {output_path}')
     return output_path

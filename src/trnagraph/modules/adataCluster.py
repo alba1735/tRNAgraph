@@ -99,7 +99,7 @@ class anndataCluster():
             self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['cluster_runinfo'] = cluster_runinfo
         # Save the AnnData object
         self.logger.info(f'Writing h5ad database object to: {self.output}')
-        self.adata_original.write(f'{self.output}')
+        toolsTG.write_h5ad(self.adata_original, f'{self.output}')
 
     def adataPreprocess(self, adata, grpby=None):
         '''
