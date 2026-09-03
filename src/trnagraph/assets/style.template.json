@@ -10,13 +10,6 @@
     "rasterize_over": null
   },
   "colors": null,
-  "compare": {
-    "dpi": null,
-    "figsize": null,
-    "font_size": null,
-    "format": null,
-    "line_width": null
-  },
   "correlation": {
     "dpi": null,
     "figsize": null,
@@ -96,6 +89,13 @@
     "line_width": null
   },
   "trimming": {
+    "dpi": null,
+    "figsize": null,
+    "font_size": null,
+    "format": null
+  },
+  "venn": {
+    "alpha": null,
     "dpi": null,
     "figsize": null,
     "font_size": null,

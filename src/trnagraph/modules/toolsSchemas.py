@@ -255,8 +255,6 @@ class GraphFlags(BaseModel):
     clustermask: Optional[bool] = None
 
     # compare
-    comparegrp1: Optional[str] = None
-    comparegrp2: Optional[str] = None
 
     # correlation
     corrmethod: Optional[str] = None
@@ -536,8 +534,8 @@ class PairsFile(BaseModel):
 
 # Graph types that accept their own style block. Kept here rather than imported from
 # adataGraph to avoid a circular import; the test suite pins the two lists together.
-STYLE_GRAPH_TYPES = ('cluster', 'compare', 'correlation', 'count', 'coverage', 'heatmap',
-                     'logo', 'mismatch', 'pca', 'radar', 'volcano', 'trimming')
+STYLE_GRAPH_TYPES = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
+                     'logo', 'mismatch', 'pca', 'radar', 'venn', 'volcano', 'trimming')
 
 OUTPUT_FORMATS = ('pdf', 'svg', 'png')
 
@@ -562,7 +560,12 @@ GRAPH_STYLE_SUPPORT = {
     'coverage':    frozenset({'line_width'}),
     'radar':       frozenset({'line_width'}),
     'logo':        frozenset(),
-    'compare':     frozenset({'line_width'}),
+    # A Venn's circles are drawn semi-transparent so overlaps blend into a third shade -- that
+    # blending IS the diagram, which is why alpha is exposed rather than fixed. It interacts
+    # with the derived set colours (plotsPalette.related_ramp): a low alpha pulls every circle
+    # back toward the page, which is what made a lightened palette illegible. The UpSet
+    # companion draws opaque and ignores it.
+    'venn':        frozenset({'alpha'}),
     'correlation': frozenset(),
     'count':       frozenset({'line_width'}),
     'heatmap':     frozenset(),
@@ -749,7 +752,6 @@ class StyleFile(BaseModel):
     categorical: Optional[PaletteValue] = None
     defaults: Optional[StyleBlock] = None
     cluster: Optional[StyleBlock] = None
-    compare: Optional[StyleBlock] = None
     correlation: Optional[StyleBlock] = None
     count: Optional[StyleBlock] = None
     coverage: Optional[StyleBlock] = None
@@ -757,6 +759,7 @@ class StyleFile(BaseModel):
     logo: Optional[StyleBlock] = None
     mismatch: Optional[StyleBlock] = None
     pca: Optional[StyleBlock] = None
+    venn: Optional[StyleBlock] = None
     radar: Optional[StyleBlock] = None
     volcano: Optional[StyleBlock] = None
     trimming: Optional[StyleBlock] = None

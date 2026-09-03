@@ -433,10 +433,11 @@ def test_the_template_resolves_inside_the_installed_package():
 # --- line width ------------------------------------------------------------------------
 
 def test_line_width_is_accepted_by_the_graph_types_that_draw_lines_or_bar_edges():
-    """coverage/radar/mismatch/compare/count are the modules with a data trace or a bar edge.
-    The scatter types are served by marker_size, and heatmap/correlation/logo have no stroke
-    a user would want to set."""
-    for graph_type in ('coverage', 'radar', 'mismatch', 'compare', 'count'):
+    """coverage/radar/mismatch/count are the modules with a data trace or a bar edge. The
+    scatter types are served by marker_size, and heatmap/correlation/logo have no stroke a
+    user would want to set. `venn` takes alpha instead: its circles have no stroke either, and
+    what a reader needs to control there is how far an overlap darkens."""
+    for graph_type in ('coverage', 'radar', 'mismatch', 'count'):
         assert 'line_width' in GRAPH_STYLE_SUPPORT[graph_type]
 
 

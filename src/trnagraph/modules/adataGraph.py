@@ -6,7 +6,7 @@ import logging
 from . import toolsTG
 from .toolsSchemas import OUTPUT_FORMATS
 from .lazy_imports import (
-    plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
+    plotsCount, plotsCluster, plotsCorrelation,
     plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVenn, plotsAgreement, plotsVolcano
 )
 
@@ -16,8 +16,6 @@ from .lazy_imports import (
 GRAPH_LABEL_PARAMS = (
     ('clustergrp', 'obs'),
     ('clusterlabels', 'obs'),
-    ('comparegrp1', 'obs'),
-    ('comparegrp2', 'obs'),
     ('corrgroup', 'obs'),
     ('covgrp', 'obs'),
     ('covobs', 'obs'),
@@ -36,7 +34,7 @@ GRAPH_LABEL_PARAMS = (
 #: What `-g all` expands to. A named constant rather than an inline literal so that what is in
 #: it -- and what is deliberately out -- is assertable.
 #:
-#: `compare`, `venn` and `agreement` are excluded on purpose. They are deliberate analyses over
+#: `venn` and `agreement` are excluded on purpose. They are deliberate analyses over
 #: a particular experimental design rather than descriptions of whatever was built, and each
 #: needs group arguments or a config block nobody chose by typing `-g all`. Producing them
 #: unasked would hand a user figures whose sets and thresholds they never selected.
@@ -46,11 +44,11 @@ GRAPH_TYPES_ALL = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
 
 #: Graph types excluded from `-g all`'s fixed list, but folded in when their prerequisites are
 #: satisfied. Each needs a choice nobody makes by typing `-g all` -- two different grouping
-#: columns for `compare`, a `multivariate` config block for `venn` and `agreement` -- so
+#: a `multivariate` config block for `venn` and `agreement` -- so
 #: producing them unasked
 #: would hand a user figures whose parameters they never selected. Once that choice HAS been
 #: made, requiring the type to be named again is ceremony rather than a safeguard.
-OPTIONAL_GRAPH_TYPES = ('compare', 'venn', 'agreement')
+OPTIONAL_GRAPH_TYPES = ('venn', 'agreement')
 
 
 #: Graph types that persist their results back onto the .h5ad. They cannot share the worker
@@ -140,7 +138,7 @@ class anndataGrapher:
         # Every entry names the obs COLUMN whose `colors` block that graph type reads, except
         # `venn`: a diagram's circles are not levels of one column -- they cross grouping level,
         # variant and read type -- so its colours are keyed by set label under `colors.venn`.
-        self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
+        self.cmap_dict = {'cluster':self.args.clustergrp, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
                           'venn':'venn', 'volcano':self.args.volgrp}
         # Load all graph types if specified
@@ -302,22 +300,13 @@ class anndataGrapher:
         '''
         Whether each opt-in graph type's prerequisites are met: {name: None or reason}.
 
-        `compare` needs two DIFFERENT grouping columns -- the fold change is taken between
-        --comparegrp2 values within each --comparegrp1 value, so one column for both is not a
-        comparison. Both default to 'group', which is why an ordinary run does not get it.
-
-        `venn` needs the `multivariate` config block that declares the grouping and thresholds
-        its sets are built from.
+        `venn` and `agreement` both need the `multivariate` config block that declares the
+        grouping and thresholds their sets are built from.
         '''
-        grp1 = getattr(self.args, 'comparegrp1', None)
-        grp2 = getattr(self.args, 'comparegrp2', None)
-        compare = None if (grp1 and grp2 and grp1 != grp2) else (
-            f"--comparegrp1 and --comparegrp2 both name '{grp1}', so there is no comparison to "
-            f"take; set them to different obs columns")
         multivariate = None if getattr(self.config, 'multivariate', None) is not None else (
             'no `multivariate` block in --config, which declares the grouping and thresholds its '
             'sets are built from')
-        return {'compare': compare, 'venn': multivariate, 'agreement': multivariate}
+        return {'venn': multivariate, 'agreement': multivariate}
 
     def _colormap_key(self, gt):
         '''
@@ -407,23 +396,6 @@ class anndataGrapher:
             # time before the first fold change is fitted, and a typo should cost nothing.
             problems.append(f"--shrink '{shrink}' is not a shrinkage method; expected one of: "
                             f"{', '.join(toolsTG.SHRINK_METHODS)}.")
-        # Gated on compare actually being requested, because --comparegrp1 and --comparegrp2
-        # BOTH DEFAULT to 'group': an unconditional check would abort every ordinary run of a
-        # command that never asked for a compare plot. compare is excluded from `-g all` by
-        # design, and this runs before the 'all' expansion, so it appears in graphtypes only
-        # when named explicitly -- which is exactly when the collision matters.
-        graphtypes = getattr(self.args, 'graphtypes', []) or []
-        grp1 = getattr(self.args, 'comparegrp1', None)
-        if 'compare' in graphtypes and grp1 is not None and grp1 == getattr(self.args, 'comparegrp2', None):
-            # The compare plot takes a fold change BETWEEN --comparegrp2 values within each
-            # --comparegrp1 value, so one column for both is not a comparison. Left
-            # unchecked, log2fc_compare_df pivots on a duplicated column and pandas raises
-            # "Grouper for 'group' not 1-dimensional", which names neither flag.
-            problems.append(
-                f"--comparegrp1 and --comparegrp2 both name '{grp1}'; they must name different "
-                f"columns, since the fold change is taken between --comparegrp2 values within "
-                f"each --comparegrp1 value"
-            )
         corrmask = getattr(self.args, 'corrmask', None)
         if corrmask is not None and corrmask not in plotsCorrelation.CORR_MASK_CHOICES:
             # Checked here rather than where the matrix is drawn: correlation is one of ten
@@ -501,10 +473,6 @@ class anndataGrapher:
                 if self.args.clustergrp in self.adata.obs.columns:
                     return max(1, int(self.adata.obs[self.args.clustergrp].nunique()))
                 return 3
-            if gt == 'compare':
-                if self.args.comparegrp2 in self.adata.obs.columns:
-                    return max(1, 2 * int(self.adata.obs[self.args.comparegrp2].nunique()))
-                return 2
             if gt == 'correlation':
                 return max(1, len([c for c in self.adata.obs.columns if '_norm' in c]))
             if gt == 'count':
@@ -646,8 +614,6 @@ class anndataGrapher:
                     self.logger.warning('No cluster run information found in AnnData object. Please run the cluster command first.\n')
             else:
                 threaded = plotsCluster.visualizer(adata_c, self.args.clustergrp, self.args.clusteroverview, self.args.clusternumeric, self.args.clusterlabels, self.args.clustermask, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings).generate_plots()
-        if gt == 'compare':
-            threaded = plotsCompare.visualizer(adata_c, self.args.comparegrp1, self.args.comparegrp2, colormap, output, threaded=threaded, read_basis=self.read_basis, settings=settings)
         if gt == 'correlation':
             threaded = plotsCorrelation.visualizer(adata_c, self.args.corrmethod, self.args.corrgroup, output, threaded=threaded, is_full_variant=self.variant_spec.tag == 'full', read_basis=self.read_basis, settings=settings, corr_mask=getattr(self.args, 'corrmask', None))
         if gt == 'count':
@@ -692,7 +658,8 @@ class anndataGrapher:
             threaded = plotsVenn.visualizer(adata_c, block, output, config_name=self.config_name,
                                             settings=settings, read_basis=self.read_basis,
                                             variant_tag=self.variant_spec.tag, threaded=threaded,
-                                            colormap=colormap, cutoff=self.args.cutoff)
+                                            colormap=colormap, colors=self.args.colormap,
+                                            cutoff=self.args.cutoff)
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership

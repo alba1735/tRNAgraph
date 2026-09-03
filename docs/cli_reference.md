@@ -301,7 +301,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`, `agreement`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`, `agreement`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
 - **`--config`**: JSON configuration file for filtering, and optionally a `flags.graph` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...). The same file carries a block per command, so one file can drive a whole run. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
@@ -314,12 +314,12 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `compare`, `venn` and `agreement` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — two different columns for `--comparegrp1`/`--comparegrp2`, and a `multivariate` block for `venn` and `agreement`. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; each of the others is only produced when you ask for it by name (`-g compare`, `-g venn`, `-g agreement`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. `venn` and `agreement` are excluded for a related but distinct reason: both need a `multivariate` block in `--config` declaring the grouping and thresholds they are built from, and figures produced from cutoffs nobody chose invite wrong conclusions. See **Compare Options**, **Venn Options** and **Agreement Options** below.
+> `venn` and `agreement` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — a `multivariate` block in `--config` for each. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the other two are only produced when you ask for them by name (`-g venn`, `-g agreement`) or when that block is present. Both are excluded because they need a `multivariate` block declaring the grouping and thresholds they are built from, and figures produced from cutoffs nobody chose invite wrong conclusions. See **Venn Options** and **Agreement Options** below.
 
 > [!IMPORTANT]
 > Every option below that names something inside the object -- a grouping column
 > (`--covgrp`, `--volgrp`, `--heatgrp`, `--clustergrp`, `--corrgroup`, `--radargrp`,
-> `--logogrp`, `--pcamarkers`, `--pcacolors`, `--covobs`, `--comparegrp1`/`--comparegrp2`,
+> `--logogrp`, `--pcamarkers`, `--pcacolors`, `--covobs`,
 > `--clusterlabels`), a coverage type (`--covtype`), or a readtype (`--diffrts`,
 > `--pcareadtypes`) -- is checked against the object before any plotting begins. An
 > unrecognised value **aborts the run**, reporting every bad label at once with its near
@@ -335,20 +335,6 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--clusteroverview`**: Generate overview plot. Default: `False`. Forced on when `-g all` is used.
 - **`--clustermask`**: Mask unclustered points. Default: `False`.
 - **`--clusternumeric`**: Treat the `--clustergrp` category as numeric rather than categorical, which changes how it is coloured and ordered. Default: `False`.
-
-**Compare Options:**
-
-Only used by `-g compare`, which `all` does not include.
-
-- **`--comparegrp1`**: AnnData `obs` column drawn as the coloured **series** within each figure. Default: `group`.
-- **`--comparegrp2`**: AnnData `obs` column the fold change is taken **between**. Default: `group`.
-
-> [!IMPORTANT]
-> The direction is the opposite of what the names suggest, and this reference previously described it backwards. The fold change is taken **between `--comparegrp2` values, within each `--comparegrp1` value**. So `--comparegrp2` is the axis being compared, and `--comparegrp1` is the series the bars are coloured by. One figure is written per pair of `--comparegrp2` values, per count grouping (`amino` and `iso`).
-
-> Fold changes come from the same PyDESeq2 negative-binomial fit as the heatmap and volcano, taken over the `amino` or `iso` axis, with BH-adjusted p-values. Each `--comparegrp1` value is fitted separately on its own subset rather than as an interaction term. Because the fit re-derives size factors from the raw counts, a dataset in which every feature moves together is read as a library-size difference and reported as no change.
->
-> The two must name **different** columns: with one column for both, there is no comparison to make, and the run now aborts saying so rather than failing inside pandas with `Grouper for 'group' not 1-dimensional`. Because both flags default to `group`, reaching this plot always means setting at least one of them. A comparison also needs a `--comparegrp2` value shared across every value of `--comparegrp1`; where none exists — always the case when `--comparegrp1` is a per-observation-unique column such as `sample` — that count grouping is skipped with a warning rather than failing. A count grouping is likewise skipped, naming both columns, when a `--comparegrp1` value has only one sample per `--comparegrp2` value: an unreplicated design leaves no residual variation to estimate dispersion from, so no fold change can be fitted.
 
 **Venn Options:**
 

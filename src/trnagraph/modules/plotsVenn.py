@@ -51,6 +51,13 @@ END_READTYPES = ('fiveprime', 'threeprime')
 #: six-ellipse figure cannot represent all 63 regions, so counts would be missing from the
 #: picture with nothing saying so.
 MAX_VENN_SETS = 5
+
+#: Opacity of a Venn circle. The circles are drawn semi-transparent so overlaps blend into a
+#: third shade -- that blending IS the diagram, which is why this is a tuned default rather
+#: than 1.0. Overridable from --style's `venn.alpha`, because it trades the readability of an
+#: overlap against the readability of a single circle and the right side of that trade depends
+#: on how many circles a diagram carries. matplotlib-venn's own default is 0.4.
+VENN_ALPHA = 0.35
 #: matplotlib-venn's area-proportional layouts.
 PROPORTIONAL_MAX_SETS = 3
 
@@ -152,7 +159,7 @@ def _label_anchor(ellipse, centre=(0.5, 0.5), samples=720):
             float(ys[far] + _LABEL_MARGIN * outward[1]))
 
 
-def draw_ellipse_venn(ax, sets, colors=None):
+def draw_ellipse_venn(ax, sets, colors=None, alpha=None):
     '''
     Draw a 4- or 5-set Venn with fixed ellipses, returning (placed, unplaceable).
 
@@ -176,7 +183,7 @@ def draw_ellipse_venn(ax, sets, colors=None):
     palette = colors or plotsPalette.venn_colors(len(labels))
     for (cx, cy, width, height, angle), colour in zip(layout, palette):
         ax.add_patch(Ellipse((cx, cy), width, height, angle=angle, facecolor=colour,
-                             edgecolor='none', alpha=0.35))
+                             edgecolor='none', alpha=VENN_ALPHA if alpha is None else alpha))
         ax.add_patch(Ellipse((cx, cy), width, height, angle=angle, facecolor='none',
                              edgecolor=plotsPalette.REFERENCE_LINE, linewidth=0.8))
 
@@ -225,26 +232,78 @@ def upset_intersection_sizes(sets):
     return {region: len(members) for region, members in exclusive_regions(sets).items()}
 
 
-def venn_palette(labels, colormap=None):
-    '''
-    The colour for each set in `labels`, honouring a `colors.venn` block from --style.
+#: How "main" a read-length variant is, deciding which circle keeps the level's own colour.
+#: The unsplit population ranks above full-length, which ranks above fragment -- so a
+#: Day 0 x {o60, u60} pair draws full-length in Day 0's own blue and the fragment in a
+#: darker, rotated shade of it, rather than two blues a reader has to squint at.
+def _variant_rank(tag):
+    if tag == 'full':
+        return 2
+    return 1 if str(tag)[:1] == 'o' else 0
 
-    The style entry is keyed by SET LABEL rather than by grouping level, because a diagram can
-    carry the same level more than once -- the four-circle case crosses two timepoints with two
-    read-length variants, so "Day 0" names two different circles. Keying on the level would
-    hand both the same colour and destroy the diagram.
 
-    A partial mapping is a SUBSTITUTION into the default palette, not a replacement for it:
-    naming one circle leaves the rest where they were, so a style file does not have to name all
-    five to change one. Unnamed sets keep their positional default, which means a partial
-    override can repeat a colour the file also named explicitly -- predictable beats clever here,
-    since the alternative is a palette that shifts under you when you add an entry.
+def _derived_level_colors(plan_sets, colors):
     '''
-    labels = list(labels)
+    Colour per set label for circles that are one grouping level seen through several variants.
+
+    Returns {} unless a level appears more than once AND --style names a colour for it, which
+    is the only case where there is a base to derive from and something to tell apart. Sets
+    with no level -- the two automatic diagrams -- are left to the positional palette.
+
+    The derivation is plotsPalette.related_ramp, the same one the agreement volcano's tiers
+    use: darken and rotate hue off the level's own colour rather than lighten it. Lightening
+    is what a style file had to do by hand, and it washes out twice on a Venn, once in the
+    tint and again in the alpha the circles are blended with.
+    '''
+    if not colors:
+        return {}
+    by_level = {}
+    for spec in plan_sets:
+        if spec.level is None or spec.level_column is None:
+            continue
+        by_level.setdefault((spec.level_column, spec.level), []).append(spec)
+
+    derived = {}
+    for (column, level), specs in by_level.items():
+        if len(specs) < 2:
+            continue
+        base = (colors.get(column) or {}).get(level)
+        if base is None:
+            continue
+        # Strongest tier LAST out of related_ramp, and strongest goes to the most "main"
+        # variant, so the colour the style file actually named still appears on the figure.
+        ordered = sorted(specs, key=lambda spec: _variant_rank(spec.tag))
+        ramp = plotsPalette.related_ramp(base, len(ordered))
+        for spec, colour in zip(ordered, ramp):
+            derived[spec.label] = colour
+    return derived
+
+
+def venn_palette(plan_sets, colormap=None, colors=None):
+    '''
+    The colour for each set in `plan_sets`, in order.
+
+    Three sources, most specific first. An explicit `colors.venn` entry keyed by SET LABEL
+    always wins -- keyed by label rather than by grouping level because a diagram can carry the
+    same level more than once (the four-circle case crosses two timepoints with two read-length
+    variants, so "Day 0" names two different circles), and keying on the level would hand both
+    the same colour and destroy the diagram.
+
+    Failing that, a level seen through several variants derives a ramp from that level's own
+    entry elsewhere in `colors` -- so naming `colors.timepoint` once is enough, and the four
+    hand-tinted `colors.venn` hexes a crossed diagram used to need are no longer required.
+
+    Failing both, the positional default palette. A partial mapping is a SUBSTITUTION into it,
+    not a replacement: naming one circle leaves the rest where they were, which means a partial
+    override can repeat a colour the file also named explicitly -- predictable beats clever
+    here, since the alternative is a palette that shifts under you when you add an entry.
+    '''
+    plan_sets = list(plan_sets)
+    labels = [spec.label for spec in plan_sets]
     defaults = plotsPalette.venn_colors(len(labels))
-    if not colormap:
-        return defaults
-    return [colormap.get(label, default) for label, default in zip(labels, defaults)]
+    derived = _derived_level_colors(plan_sets, colors)
+    return [(colormap or {}).get(label) or derived.get(label) or default
+            for label, default in zip(labels, defaults)]
 
 
 def draw_upset(sets, title=None, settings=None, colors=None):
@@ -310,7 +369,7 @@ def _color_upset_dots(axes, by_label):
     dots.set_facecolors(faces)
 
 
-def draw_venn(ax, sets, colors=None):
+def draw_venn(ax, sets, colors=None, alpha=None):
     '''
     Draw a Venn onto `ax`, dispatching on set count (see venn_layout).
 
@@ -328,11 +387,12 @@ def draw_venn(ax, sets, colors=None):
             f'{len(labels)} sets cannot be drawn as a Venn; use draw_upset(). '
             f'venn_layout() decides this.')
     if layout == 'ellipse':
-        return draw_ellipse_venn(ax, sets, colors=colors)
+        return draw_ellipse_venn(ax, sets, colors=colors, alpha=alpha)
     members = [set(sets[label]) for label in labels]
     draw = venn2 if len(labels) == 2 else venn3
     palette = colors or plotsPalette.venn_colors(len(labels))
-    return draw(members, set_labels=labels, ax=ax, set_colors=tuple(palette))
+    return draw(members, set_labels=labels, ax=ax, set_colors=tuple(palette),
+                alpha=VENN_ALPHA if alpha is None else alpha)
 
 
 def resolve_results_dir(adata):
@@ -571,7 +631,7 @@ def _set_members(adata, spec, cutoff):
 
 def visualizer(adata, block, output, config_name='default', settings=None,
                read_basis=None, variant_tag='full', threaded=False, colormap=None,
-               cutoff=20):
+               colors=None, cutoff=20):
     '''
     Draw every Venn this object supports, store the membership, and write the tables.
 
@@ -612,14 +672,14 @@ def visualizer(adata, block, output, config_name='default', settings=None,
         subtitle = f'present at mean >= {cutoff:g} normalized reads'
         # Resolved ONCE per diagram and handed to both renderings: the pairing only works while
         # a row and its circle are the same colour.
-        palette = venn_palette(sets, colormap)
+        palette = venn_palette(plan.sets, colormap, colors=colors)
         layout = venn_layout(len(sets))
         if layout == 'upset_only':
             messages.append(f'{plan.name}: {len(sets)} sets cannot be drawn as a Venn; '
                             f'writing the UpSet plot only.')
         else:
             fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (6, 6)))
-            draw_venn(ax, sets, colors=palette)
+            draw_venn(ax, sets, colors=palette, alpha=(settings or {}).get('alpha'))
             ax.set_title(f'{plan.title}\n({subtitle})', fontsize=10)
             path = f'{individual_output}{plan.name}_venn.pdf'
             fig.savefig(path, bbox_inches='tight')

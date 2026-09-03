@@ -29,7 +29,6 @@ class ExternalLazyLoader:
 
 plotsCount = LazyLoader('plotsCount')
 plotsCluster = LazyLoader('plotsCluster')
-plotsCompare = LazyLoader('plotsCompare')
 plotsCorrelation = LazyLoader('plotsCorrelation')
 plotsCoverage = LazyLoader('plotsCoverage')
 plotsHeatmap = LazyLoader('plotsHeatmap')

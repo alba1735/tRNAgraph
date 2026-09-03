@@ -177,7 +177,7 @@ def test_a_configured_figsize_changes_the_rendered_figure():
 
 
 INDIVIDUAL_PLOT_MODULES = ['plotsVolcano.py', 'plotsCorrelation.py', 'plotsPca.py',
-                           'plotsCount.py', 'plotsCompare.py', 'plotsMismatch.py',
+                           'plotsCount.py', 'plotsMismatch.py',
                            'plotsCluster.py', 'plotsRadar.py', 'plotsHeatmap.py',
                            'plotsCoverage.py', 'plotsSeqlogo.py']
 
@@ -240,7 +240,7 @@ def test_linewidth_for_falls_back_to_the_modules_default(settings):
 
 
 LINE_WIDTH_MODULES = ['plotsCoverage.py', 'plotsRadar.py', 'plotsMismatch.py',
-                      'plotsCompare.py', 'plotsCount.py']
+                      'plotsCount.py']
 
 
 @pytest.mark.parametrize('name', LINE_WIDTH_MODULES)

@@ -1426,7 +1426,18 @@ class adataLog2FC:
                 col_name = f'{pair[0]}-{pair[1]}'
                 # contrast=[factor, test_level, ref_level] -> log2FoldChange = log2(test/ref);
                 # test=pair[1], ref=pair[0] matches the previous log2(mean(pair[1])/mean(pair[0])) convention.
-                stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True)
+                # n_cpus is passed here as well as to DeseqDataSet above, and for the same
+                # reason: DeseqStats does not inherit its dds's inference object, it builds
+                # its own, and PyDESeq2's default is every available CPU via joblib's loky
+                # backend. Left unset, summary() and lfc_shrink() each tried to open a real
+                # process pool from inside adataGraph.py's already-forked workers -- the
+                # exact nested-pool situation the DeseqDataSet call was pinned to 1 to
+                # avoid, reached by a second route. joblib downgraded it to n_jobs=1 with a
+                # UserWarning per call rather than deadlocking, so it showed up as hundreds
+                # of lines of 'Loky-backed parallel loops cannot be called in a
+                # multiprocessing' rather than as a hang, but the hole was the same one.
+                stat_res = DeseqStats(dds, contrast=['condition', pair[1], pair[0]], quiet=True,
+                                      n_cpus=self.n_cpus)
                 stat_res.summary()
                 if self.shrink != 'none':
                     # Leaves p-values untouched by construction -- shrinkage moves the effect

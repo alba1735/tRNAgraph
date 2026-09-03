@@ -140,19 +140,6 @@ def agreement_table(frames, contrasts, drawn, log2fc, padj, call_padj=None):
                                        'n_agree', 'n_contrasts', 'contrasts'])
 
 
-#: Where a derived ramp's weakest tier ends up on the colour wheel. Magenta, reached by the
-#: SHORT way round from wherever the level's own colour starts -- which turns a yellow into a
-#: red and a blue into a purple under one rule, reproducing both families of the published
-#: figure without a per-colour table.
-_ROTATE_TOWARD = 330.0 / 360.0
-#: How far round that arc, and how much darker and more saturated, the weakest tier sits.
-#: Blending toward WHITE was tried first and washed out entirely off a light base colour like a
-#: yellow, where lightness alone has almost no headroom.
-_ROTATE_FRACTION = 0.62
-_DARKEN = 0.55
-_SATURATE = 1.25
-
-
 def direction_ramp(level, n_tiers, colormap=None, settings=None, role='agreement_up'):
     '''
     The `n_tiers` colours for one direction, palest tier first.
@@ -167,8 +154,6 @@ def direction_ramp(level, n_tiers, colormap=None, settings=None, role='agreement
     is the published figure's direction, and it is also the only one with room to work -- a light
     base colour has almost no lightness left to give.
     '''
-    from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_rgb
-
     # `gradients_set`, not `gradients`: every role resolves to a Colormap whether or not the
     # user named it, so reading the resolved value made this branch always win and the
     # derivation never ran.
@@ -187,28 +172,10 @@ def direction_ramp(level, n_tiers, colormap=None, settings=None, role='agreement
         # because they are near-white and near-black, neither of which reads as a category.
         return [cmap(value) for value in np.linspace(0.95, 0.35, n_tiers)]
 
-    rgb = to_rgb(base)
-    if n_tiers == 1:
-        return [rgb]
-
-    hue, saturation, value = rgb_to_hsv(np.array(rgb))
-    # Shortest signed arc to the target hue, so each family turns the way its own colour is
-    # already closest to -- yellow backwards to red, blue forwards to purple.
-    delta = (_ROTATE_TOWARD - hue + 0.5) % 1.0 - 0.5
-    # Left UNWRAPPED on purpose. Rotating a yellow backwards takes its hue below zero, and
-    # wrapping it to ~0.999 before interpolating sends the midpoint the long way round --
-    # through cyan -- instead of through orange. Wrapping happens per stop, after the walk.
-    weakest = np.array([hue + delta * _ROTATE_FRACTION,
-                        min(saturation * _SATURATE, 1.0),
-                        value * _DARKEN])
-    strongest = np.array([hue, saturation, value])
-    # Interpolated in HSV rather than RGB: a straight RGB line between a yellow and a dark red
-    # passes through a muddy brown, which reads as a third category rather than a midpoint.
-    ramp = []
-    for step in np.linspace(0.0, 1.0, n_tiers):
-        stop = weakest + (strongest - weakest) * step
-        ramp.append(tuple(hsv_to_rgb(np.array([stop[0] % 1.0, stop[1], stop[2]]))))
-    return ramp
+    # The derivation itself lives in plotsPalette, shared with the Venn's level x variant
+    # circles: the same relationship between two colours has to look the same on both figures,
+    # or a reader learns the encoding twice.
+    return plotsPalette.related_ramp(base, n_tiers)
 
 
 #: Colour for a feature with no significance call on the drawn contrast. Shared with the

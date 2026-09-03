@@ -103,6 +103,60 @@ SEQUENTIAL_ORDERED = 'mako_r'
 DIVERGING_LFC = 'vlag'
 
 
+# --- Deriving a related series from one base colour -----------------------------------
+# Two figures need several colours that are all recognisably ONE thing: the agreement volcano's
+# tiers of a condition, and a Venn crossing a grouping level with a read-length variant. Both
+# derive them from that level's own entry in --style, so naming a colour once is enough.
+#
+# The derivation DARKENS and rotates hue rather than lightening. Blending toward white was tried
+# first and washed out entirely off a light base like a yellow, where lightness alone has almost
+# no headroom left -- and on a Venn it washes out twice, since the circles are alpha-blended over
+# the page as well.
+
+#: Where a derived ramp's weakest tier ends up on the colour wheel. Magenta, reached by the
+#: SHORT way round from wherever the base starts -- which turns a yellow into a red and a blue
+#: into a purple under one rule, with no per-colour table.
+RAMP_ROTATE_TOWARD = 330.0 / 360.0
+#: How far round that arc, and how much darker and more saturated, the weakest tier sits.
+RAMP_ROTATE_FRACTION = 0.62
+RAMP_DARKEN = 0.55
+RAMP_SATURATE = 1.25
+
+
+def related_ramp(base, n_tiers):
+    '''
+    `n_tiers` colours derived from one base colour, weakest first, strongest LAST.
+
+    The strongest tier is `base` itself, so a series always contains the colour the style file
+    actually named; weaker tiers darken while rotating toward magenta. Interpolated in HSV
+    rather than RGB, because a straight RGB line between a yellow and a dark red passes through
+    a muddy brown that reads as a third category rather than a midpoint.
+
+    The hue walk is left UNWRAPPED until the final step: rotating a yellow backwards takes its
+    hue below zero, and wrapping to ~0.999 before interpolating sends the midpoint the long way
+    round -- through cyan -- instead of through orange.
+    '''
+    import numpy as np
+    from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_rgb
+
+    rgb = to_rgb(base)
+    if n_tiers <= 1:
+        return [rgb]
+    hue, saturation, value = rgb_to_hsv(np.array(rgb))
+    # Shortest signed arc to the target hue, so each family turns the way its own colour is
+    # already closest to -- yellow backwards to red, blue forwards to purple.
+    delta = (RAMP_ROTATE_TOWARD - hue + 0.5) % 1.0 - 0.5
+    weakest = np.array([hue + delta * RAMP_ROTATE_FRACTION,
+                        min(saturation * RAMP_SATURATE, 1.0),
+                        value * RAMP_DARKEN])
+    strongest = np.array([hue, saturation, value])
+    ramp = []
+    for step in np.linspace(0.0, 1.0, n_tiers):
+        stop = weakest + (strongest - weakest) * step
+        ramp.append(tuple(hsv_to_rgb(np.array([stop[0] % 1.0, stop[1], stop[2]]))))
+    return ramp
+
+
 # --- Differential-expression direction -----------------------------------------------
 # Volcano point colors when --style names no color for the compared groups.
 DE_UP = '#d62728'
