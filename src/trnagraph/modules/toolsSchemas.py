@@ -134,6 +134,10 @@ class MultivariateConfig(BaseModel):
 
     Thresholds default to the project-wide pair (see plotsThresholds). Membership uses the
     stricter of the two, since a set-overlap claim is stronger than a single volcano's.
+
+    The read-count filter is NOT here: `--cutoff` governs it for every figure at once. A
+    separate `presence_cutoff` in this block meant a tRNA could sit in a Venn circle at 20 reads
+    and be missing from every volcano beside it, having never been fitted at 80.
     '''
     model_config = ConfigDict(extra='forbid')
 
@@ -142,8 +146,6 @@ class MultivariateConfig(BaseModel):
     #: The level every contrast is measured against. Defaults to the first category of an
     #: ordered `order` declaration, and to the first level present otherwise.
     reference: Optional[str] = None
-    #: Minimum mean normalized count, per group, for a feature to count as PRESENT.
-    presence_cutoff: float = 20.0
     #: Significance thresholds for the DE-hit membership mode.
     log2fc: float = 1.5
     padj: float = 0.001
@@ -272,7 +274,7 @@ class GraphFlags(BaseModel):
     # heatmap (diffrts is shared with volcano)
     heatgrp: Optional[str] = None
     diffrts: Optional[List[str]] = None
-    heatcutoff: Optional[int] = None
+    cutoff: Optional[int] = None
     heatbound: Optional[int] = None
     heatsubplots: Optional[bool] = None
     heatorient: Optional[Literal['vertical', 'horizontal']] = None
@@ -302,7 +304,6 @@ class GraphFlags(BaseModel):
 
     # volcano
     volgrp: Optional[str] = None
-    volcutoff: Optional[int] = None
     shrink: Optional[Literal['apeGLM', 'none']] = None
     volxlim: Optional[float] = None
     vollabels: Optional[int] = None
@@ -628,7 +629,8 @@ PaletteValue = Union[str, List[str]]
 # heatmap draws two of these at once (`lfc` and `significance`), the seqlogo draws two more
 # (`score` and `sequence`), and `ordered` is shared by coverage and cluster -- so a per-graph
 # type `cmap` key could not express what the plots actually do.
-GRADIENT_ROLES = ('correlation', 'significance', 'score', 'sequence', 'ordered', 'lfc')
+GRADIENT_ROLES = ('correlation', 'significance', 'score', 'sequence', 'ordered', 'lfc',
+                  'agreement_up', 'agreement_down')
 
 
 def _check_colors(values, field):
@@ -714,6 +716,11 @@ class GradientBlock(BaseModel):
     # diverging scale for log2 fold change, centered on zero -- wants an odd number of stops
     # with a neutral middle when given as a list.
     lfc: Optional[PaletteValue] = None
+    # agreement volcano tiers, one ramp per direction: `up` for features favouring the contrast
+    # level, `down` for the reference. Left unset, each is derived from that level's `colors`
+    # entry, so the figure matches the rest of the set without naming anything here.
+    agreement_up: Optional[PaletteValue] = None
+    agreement_down: Optional[PaletteValue] = None
 
     @field_validator(*GRADIENT_ROLES)
     @classmethod

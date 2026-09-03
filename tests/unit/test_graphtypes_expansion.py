@@ -32,9 +32,11 @@ def test_all_no_longer_swallows_an_explicitly_named_type():
 
 
 def test_a_ready_optional_type_joins_all():
-    types, skipped = adataGraph.resolve_graphtypes(['all'], {'venn': None, 'compare': 'no groups'})
+    types, skipped = adataGraph.resolve_graphtypes(
+        ['all'], {'venn': None, 'agreement': None, 'compare': 'no groups'})
 
     assert 'venn' in types
+    assert 'agreement' in types
     assert skipped == [('compare', 'no groups')]
 
 

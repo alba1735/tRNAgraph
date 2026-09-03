@@ -1,7 +1,6 @@
 {
   "multivariate": {
     "grouping": "group",
-    "presence_cutoff": 20,
     "venn": [
       {
         "name": "growthphase_frag_full",

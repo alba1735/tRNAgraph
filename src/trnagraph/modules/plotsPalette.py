@@ -180,8 +180,11 @@ BACKGROUND = 'white'
 # came from: modules call gradient()/categorical() with the `settings` dict they are already
 # given, and get back a drawable value whether or not the user configured anything.
 
-# Role -> the colormap name this module defaults it to.
-GRADIENT_ROLES = ('correlation', 'significance', 'score', 'sequence', 'ordered', 'lfc')
+#: Fallback ramps for the two agreement roles, used only when the direction's level has no
+#: `colors` entry to derive from. Warm for the contrast level and cool for the reference,
+#: matching the published figure's blue-vs-yellow split.
+SEQUENTIAL_AGREEMENT_UP = 'YlOrRd'
+SEQUENTIAL_AGREEMENT_DOWN = 'Blues'
 
 _GRADIENT_DEFAULTS = {
     'correlation': SEQUENTIAL_CORRELATION,
@@ -190,7 +193,15 @@ _GRADIENT_DEFAULTS = {
     'sequence': SEQUENTIAL_SEQUENCE,
     'ordered': SEQUENTIAL_ORDERED,
     'lfc': DIVERGING_LFC,
+    'agreement_up': SEQUENTIAL_AGREEMENT_UP,
+    'agreement_down': SEQUENTIAL_AGREEMENT_DOWN,
 }
+
+#: Derived from the defaults map rather than typed out a second time. The two used to be
+#: separate literals, and adding a role to toolsSchemas without adding it here made
+#: gradient() raise KeyError for a role a style file could legitimately set.
+#: test_style_palette.py pins this against toolsSchemas.GRADIENT_ROLES.
+GRADIENT_ROLES = tuple(_GRADIENT_DEFAULTS)
 
 
 def _default_gradient(role):
@@ -239,6 +250,21 @@ def resolve_gradients(spec):
     return {role: (build_colormap(spec[role]) if spec.get(role) is not None
                    else _default_gradient(role))
             for role in GRADIENT_ROLES}
+
+
+def gradient_roles_set(spec):
+    '''
+    The role names a style file explicitly set, as a set.
+
+    resolve_gradients() deliberately returns a usable Colormap for EVERY role, so its output
+    cannot answer "did the user choose this one". Roles whose real default is a derivation
+    rather than a colormap need that answer.
+    '''
+    if spec is None:
+        return set()
+    if hasattr(spec, 'model_dump'):
+        spec = spec.model_dump(exclude_none=True)
+    return {role for role in GRADIENT_ROLES if spec.get(role) is not None}
 
 
 def gradient(settings, role):
@@ -328,13 +354,13 @@ READTYPE_MARKERS = {
 READTYPE_MARKER_FALLBACK = {'glyph': '○', 'marker': 'o', 'filled': False}
 
 
-def readtype_marker(readtype):
+def bare_readtype(readtype):
     '''
-    The marker for one read type, given either a bare name or a full obs column.
+    A read type stripped of its obs-column decoration: 'nreads_fiveprime_unique_norm' -> 'fiveprime'.
 
-    Accepts 'fiveprime', 'nreads_fiveprime_norm' or 'nreads_fiveprime_unique_norm' alike --
-    callers hold the column name, and making each of them strip it first is how the previous
-    attempt came to match on strings that no longer existed.
+    One place that knows the column shape. Callers hold resolved column names and each of them
+    stripping it independently is how the previous attempt came to match on strings that no
+    longer existed.
     '''
     # Imported here, not at module scope: this module is read from everywhere and the
     # no-top-level-imports rule is what keeps it cheap.
@@ -342,8 +368,16 @@ def readtype_marker(readtype):
 
     bare = str(readtype)
     match = re.fullmatch(r'nreads_(.+?)(_unique)?_norm', bare)
-    if match:
-        bare = match.group(1)
+    return match.group(1) if match else bare
+
+
+def readtype_marker(readtype):
+    '''
+    The marker for one read type, given either a bare name or a full obs column.
+
+    Accepts 'fiveprime', 'nreads_fiveprime_norm' or 'nreads_fiveprime_unique_norm' alike.
+    '''
+    bare = bare_readtype(readtype)
     if bare in READTYPE_MARKERS:
         return READTYPE_MARKERS[bare]
     fallback = dict(READTYPE_MARKER_FALLBACK)

@@ -20,9 +20,12 @@ from trnagraph.modules import plotsVenn
 from trnagraph.modules.toolsSchemas import MultivariateConfig
 
 
+#: The read-count cutoff is `--cutoff` now, passed in by the caller rather than declared in the
+#: multivariate block, so these fixtures name it here.
+CUTOFF = 1
+
 DECLARED = {
     'grouping': 'timepoint',
-    'presence_cutoff': 1,
     'venn': [{
         'name': 'd0_d70_frag_full',
         'sets': [
@@ -88,7 +91,7 @@ def test_membership_actually_honours_the_level():
     block = MultivariateConfig.model_validate(DECLARED)
     plan = plotsVenn.declared_venn_plans(adata, block)[0]
 
-    members = {s.label: plotsVenn._set_members(adata, s, block.presence_cutoff) for s in plan.sets}
+    members = {s.label: plotsVenn._set_members(adata, s, CUTOFF) for s in plan.sets}
 
     o60_d0 = next(v for k, v in members.items() if 'D0' in k and 'o60' in k)
     u60_d0 = next(v for k, v in members.items() if 'D0' in k and 'u60' in k)

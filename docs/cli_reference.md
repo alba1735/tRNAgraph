@@ -301,7 +301,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `compare`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`, `agreement`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
 - **`--config`**: JSON configuration file for filtering, and optionally a `flags.graph` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...). The same file carries a block per command, so one file can drive a whole run. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
@@ -314,7 +314,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `compare` and `venn` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — two different columns for `--comparegrp1`/`--comparegrp2`, and a `multivariate` block for `venn`. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; each of the other two is only produced when you ask for it by name (`-g compare`, `-g venn`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. `venn` is excluded for a related but distinct reason: it needs a `multivariate` block in `--config` declaring the grouping and thresholds its sets are built from, and set-overlap figures produced from cutoffs nobody chose invite wrong conclusions. See **Compare Options** and **Venn Options** below.
+> `compare`, `venn` and `agreement` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — two different columns for `--comparegrp1`/`--comparegrp2`, and a `multivariate` block for `venn` and `agreement`. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; each of the others is only produced when you ask for it by name (`-g compare`, `-g venn`, `-g agreement`). It cannot produce anything at default settings — it needs two _different_ `obs` columns, and the defaults leave `--comparegrp1` and `--comparegrp2` both set to `group` — so it depends on metadata beyond what a minimal experiment carries and is only meaningful when reached for on purpose. Including it in `all` would abort every ordinary run, since naming the plot is what makes the two flags' shared `group` default a contradiction. `venn` and `agreement` are excluded for a related but distinct reason: both need a `multivariate` block in `--config` declaring the grouping and thresholds they are built from, and figures produced from cutoffs nobody chose invite wrong conclusions. See **Compare Options**, **Venn Options** and **Agreement Options** below.
 
 > [!IMPORTANT]
 > Every option below that names something inside the object -- a grouping column
@@ -355,10 +355,20 @@ Only used by `-g compare`, which `all` does not include.
 Only used by `-g venn`. Set-overlap diagrams over feature populations: which tRNAs are detected as one species, the other, or both. Configured entirely through `--config`'s `multivariate` block, not through flags.
 
 - **`multivariate.grouping`**: `obs` column the analysis is taken over. Default: `group`.
-- **`multivariate.presence_cutoff`**: mean normalized count, per group, for a feature to count as present in a circle. Default: `20`.
 - **`multivariate.venn`**: optional list of complex diagrams, each with its circles enumerated.
 
 Two diagrams — fragment vs full-length, and 5' vs 3' — are drawn automatically whenever the data supports them, with nothing to declare. See [Multivariate Analyses](advanced_usage.md#multivariate-analyses-multivariate) for the block's full shape, how circles are declared, and how diagram size decides the layout.
+
+**Agreement Options:**
+
+Only used by `-g agreement`. A volcano for one contrast, with each tRNA coloured by how many of the other contrasts it moved the same way in — so a consistent responder and a one-off look different. Marker shape carries read type, so `--diffrts` appear on one figure instead of several. Uses the same `multivariate` block as `-g venn`.
+
+- **`multivariate.reference`**: the level every contrast is measured against. Defaults to the first level, which for an ordered column is the one `order` declares.
+- **`multivariate.log2fc`** / **`multivariate.padj`**: how strong a contrast must be to count toward agreement. Defaults: `1.5` and `0.001`.
+
+One figure per contrast against the reference, plus a combined overview, under `<output>/agreement/`. A tRNA is coloured when it clears p ≤ 0.05 on the contrast being drawn, and the tier counts how many contrasts clear `padj` in the same direction — so `0 of 2` means a real result here that was not strong anywhere. `total` is never drawn: it is the sum of the other read types, so it would plot the same reads twice. A per-tRNA table goes to `results/multivariate/`.
+
+Colours come from the `colors` entry of the grouping column, darkening and shifting hue as agreement falls. Set `gradients.agreement_up` / `agreement_down` in `--style` to override.
 
 **Correlation Options:**
 
@@ -398,7 +408,6 @@ Two diagrams — fragment vs full-length, and 5' vs 3' — are drawn automatical
 
 - **`--heatgrp`**: Grouping variable. Default: `group`.
 - **`--diffrts`**: Read types for differential analysis (shared with volcano). Bare readtypes only (`total`, `wholecounts`, `fiveprime`, `threeprime`, `other`) — the read basis comes from `--allreads`, so a value carrying a `_unique` suffix is rejected. Default: all five.
-- **`--heatcutoff`**: Read count cutoff. Default: `80`.
 - **`--heatbound`**: How many features to show from each end of the ranking — the heatmap is bounded to the top and bottom N counts rather than rendering every feature. Default: `25`.
 
 > [!NOTE]
@@ -411,7 +420,7 @@ Two diagrams — fragment vs full-length, and 5' vs 3' — are drawn automatical
 
 - **`--volgrp`**: Grouping variable used both to define the pairwise group comparisons and to look up per-group colors in `--style`'s `colors` block (the same `<obs_column>: {<value>: <color>}` shape used by PCA, keyed on `--volgrp`'s value, e.g. `"group"`). Default: `group`.
 - **`--diffrts`**: Read types to generate per-readtype tRNA volcano plots for, shared with heatmap. See the heatmap entry above for accepted values.
-- **`--volcutoff`**: Read count cutoff. Default: `80`.
+- **`--cutoff`**: Minimum mean normalized readcount for a feature to be plotted. Governs the volcano, heatmap and agreement fits and Venn presence. Default: `20`.
 - **`--vollabels`**: Number of top significant markers to label on each plot, ranked by `|log2FC| * -log10(p-value)`. Default: `100` (labeling every significant marker has unbounded cost on large datasets); pass `0` to disable labels entirely, or any other value to label exactly that many.
 - **`--volxlim`**: Force the x-axis half-width to this log2 fold change. By default the axis is capped at the 95th percentile of `|log2FC|` whenever the largest value exceeds 1.5x that percentile, and points beyond the cap are drawn as triangles at the boundary — so one extreme feature cannot compress every other one. Nothing is ever dropped, only pinned to the edge.
 

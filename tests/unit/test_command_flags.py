@@ -82,10 +82,10 @@ def test_the_filters_stay_at_the_top_level():
     """obs/var filters are not CLI flags and are not scoped to one command: they say which
     subset of the object every AnnData-consuming command sees."""
     config = RunConfig.model_validate({
-        'name': 'x', 'obs_r': {'amino': ['Und']}, 'flags': {'graph': {'heatcutoff': 20}},
+        'name': 'x', 'obs_r': {'amino': ['Und']}, 'flags': {'graph': {'cutoff': 20}},
     })
     assert config.obs_r == {'amino': ['Und']}
-    assert config.flags.graph.heatcutoff == 20
+    assert config.flags.graph.cutoff == 20
 
 
 def _rejection_lines(payload):
@@ -101,10 +101,10 @@ def test_an_old_style_bare_flags_block_says_where_its_keys_now_go():
     inputs are not permitted', which is true and useless. Named rather than aliased: the tool
     is pre-publication with effectively one user, and a permanent alias for a key that has
     changed meaning is worse than a clear error."""
-    lines = _rejection_lines({'name': 'x', 'flags': {'heatcutoff': 20, 'covgrp': 'timepoint'}})
+    lines = _rejection_lines({'name': 'x', 'flags': {'cutoff': 20, 'covgrp': 'timepoint'}})
 
     assert 'flags.graph' in lines, lines
-    assert 'heatcutoff' in lines and 'covgrp' in lines, lines
+    assert 'cutoff' in lines and 'covgrp' in lines, lines
 
 
 def test_a_key_in_the_wrong_command_block_is_pointed_at_the_right_one():

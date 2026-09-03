@@ -117,7 +117,7 @@ def cli_specified_params(ctx) -> frozenset:
 
     A --config file may set most `graph` options, and a typed flag has to beat the file. That
     cannot be detected by comparing against the default, because nearly every graph option has
-    a real default (`heatcutoff=80`, `covgrp='group'`) rather than a None sentinel, so
+    a real default (`cutoff=20`, `covgrp='group'`) rather than a None sentinel, so
     "explicitly set to 80" and "left alone" look identical. Click records where each value came
     from, which answers it directly and leaves all 44 signatures and their --help text alone.
     """
@@ -614,7 +614,7 @@ def graph(
     combinedpdfonly: bool = typer.Option(False, "--combinedpdfonly", help="Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output"),
     heatgrp: str = typer.Option("group", "--heatgrp", help="Specify group to use for heatmap"),
     diffrts: List[str] = typer.Option(['wholecounts', 'fiveprime', 'threeprime', 'other', 'total'], "--diffrts", help="Specify readtypes to use for heatmap/volcano. Bare readtypes only -- the read basis is set once for the whole command by --allreads"),
-    heatcutoff: int = typer.Option(80, "--heatcutoff", help="Specify readcount cutoff to use for heatmap"),
+    cutoff: int = typer.Option(20, "--cutoff", help="Minimum mean normalized readcount for a feature to be plotted"),
     heatbound: int = typer.Option(25, "--heatbound", help="Specify range to use for bounding the heatmap to top and bottom counts"),
     heatsubplots: bool = typer.Option(False, "--heatsubplots", help="Specify wether to generate subplots for each comparasion in addition to the sum"),
     heatorient: str = typer.Option("vertical", "--heatorient", help="Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page"),
@@ -634,7 +634,6 @@ def graph(
     logornamode: bool = typer.Option(False, "--logornamode", help="Specify wether to print the output as RNA rather than DNA"),
     mismatchpseudocount: int = typer.Option(10, "--mismatchpseudocount", help="Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots (default: 10, matching tRAX)"),
     volgrp: str = typer.Option("group", "--volgrp", help="Specify group to use for volcano plot"),
-    volcutoff: int = typer.Option(80, "--volcutoff", help="Specify readcount cutoff to use for volcano plot"),
     shrink: str = typer.Option("apeGLM", "--shrink", help="How to shrink log2 fold changes: apeGLM (default) or none. p-values are unaffected either way"),
     volxlim: Optional[float] = typer.Option(None, "--volxlim", help="Force the volcano x-axis half-width to this log2 fold change. By default it is capped near the 95th percentile of |log2FC|, with outliers pinned to the edge"),
     vollabels: Optional[int] = typer.Option(100, "--vollabels", help="Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels"),
@@ -655,11 +654,11 @@ def graph(
             clusteroverview=clusteroverview, clusternumeric=clusternumeric, clustermask=clustermask, comparegrp1=comparegrp1,
             comparegrp2=comparegrp2, corrmethod=corrmethod, corrgroup=corrgroup, corrmask=corrmask, covgrp=covgrp, covobs=covobs, covtype=covtype,
             covgap=covgap, covmethod=covmethod, combinedpdfonly=combinedpdfonly, heatgrp=heatgrp, diffrts=diffrts,
-            heatcutoff=heatcutoff, heatbound=heatbound, heatsubplots=heatsubplots, heatorient=heatorient, pcamarkers=pcamarkers, pcacolors=pcacolors,
+            cutoff=cutoff, heatbound=heatbound, heatsubplots=heatsubplots, heatorient=heatorient, pcamarkers=pcamarkers, pcacolors=pcacolors,
             pcareadtypes=pcareadtypes, radargrp=radargrp, radarmethod=radarmethod, radarscaled=radarscaled, logogrp=logogrp,
             logomanualgrp=logomanualgrp, logomanualname=logomanualname, logopseudocount=logopseudocount, logosize=logosize,
             ccatail=ccatail, pseudogenes=pseudogenes, logornamode=logornamode, mismatchpseudocount=mismatchpseudocount,
-            volgrp=volgrp, volcutoff=volcutoff, volxlim=volxlim, vollabels=vollabels, shrink=shrink,
+            volgrp=volgrp, volxlim=volxlim, vollabels=vollabels, shrink=shrink,
             # Which options were typed rather than defaulted, so a --config `flags` block
             # can be applied without overriding anything the user asked for explicitly.
             cli_specified=cli_specified_params(ctx),

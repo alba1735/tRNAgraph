@@ -570,7 +570,8 @@ def _set_members(adata, spec, cutoff):
 
 
 def visualizer(adata, block, output, config_name='default', settings=None,
-               read_basis=None, variant_tag='full', threaded=False, colormap=None):
+               read_basis=None, variant_tag='full', threaded=False, colormap=None,
+               cutoff=20):
     '''
     Draw every Venn this object supports, store the membership, and write the tables.
 
@@ -595,11 +596,11 @@ def visualizer(adata, block, output, config_name='default', settings=None,
         os.makedirs(results_dir, exist_ok=True)
 
     messages.append(toolsTG.builder(individual_output))
-    provenance_base = {'config': config_name, 'presence_cutoff': block.presence_cutoff,
+    provenance_base = {'config': config_name, 'cutoff': cutoff,
                        'membership': 'expression-presence'}
 
     for plan in plans:
-        sets = {spec.label: _set_members(adata, spec, block.presence_cutoff)
+        sets = {spec.label: _set_members(adata, spec, cutoff)
                 for spec in plan.sets}
         provenance = dict(provenance_base, plan=plan.name,
                           readtypes=sorted({s.readtype for s in plan.sets}),
@@ -608,7 +609,7 @@ def visualizer(adata, block, output, config_name='default', settings=None,
         # in a run would otherwise share the same key and overwrite its predecessor.
         toolsTG.write_multivariate(adata, config_name, 'venn', plan.name, sets, provenance)
 
-        subtitle = f'present at mean >= {block.presence_cutoff:g} normalized reads'
+        subtitle = f'present at mean >= {cutoff:g} normalized reads'
         # Resolved ONCE per diagram and handed to both renderings: the pairing only works while
         # a row and its circle are the same colour.
         palette = venn_palette(sets, colormap)

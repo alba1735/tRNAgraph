@@ -639,18 +639,21 @@ class demoPipeline:
             self._run_command(cmd, "Running graph command...")
 
             # `venn` is excluded from `-g all` and needs a `multivariate` config block, so the
-            # default graph run above cannot reach it. A second invocation exercises it, gated on
-            # a split existing: the declared four-set diagram crosses growth phase with the
-            # u60/o60 variants, which a build without --readlengthsplit does not have.
+            # default graph run above cannot reach them. A second invocation exercises both,
+            # gated on a split existing: the declared four-set diagram crosses growth phase with
+            # the u60/o60 variants, which a build without --readlengthsplit does not have.
+            # Both types read the same `multivariate` block, so they share one invocation rather
+            # than needing a second config to keep in step.
             if has_split:
-                venn_cmd = (
+                multivariate_cmd = (
                     f"{self.trnagraph_path} graph "
-                    f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} -g venn "
+                    f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} -g venn -g agreement "
                     "--config config/vibrChol1.venn.json --style config/style.json"
                 )
-                self._run_command(venn_cmd, "Running graph command for Venn diagrams...")
+                self._run_command(multivariate_cmd,
+                                  "Running graph command for multivariate plots...")
             else:
-                self.logger.info("No split variant present; skipping the Venn graph step.")
+                self.logger.info("No split variant present; skipping the multivariate graph step.")
 
             self.logger.info("Done.")
 

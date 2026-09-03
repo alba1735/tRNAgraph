@@ -38,6 +38,7 @@ plotsSeqlogo = LazyLoader('plotsSeqlogo')
 plotsPca = LazyLoader('plotsPca')
 plotsRadar = LazyLoader('plotsRadar')
 plotsVenn = LazyLoader('plotsVenn')
+plotsAgreement = LazyLoader('plotsAgreement')
 plotsVolcano = LazyLoader('plotsVolcano')
 
 # Legacy plot modules

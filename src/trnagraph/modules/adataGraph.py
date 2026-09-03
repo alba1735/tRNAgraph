@@ -7,7 +7,7 @@ from . import toolsTG
 from .toolsSchemas import OUTPUT_FORMATS
 from .lazy_imports import (
     plotsCount, plotsCluster, plotsCompare, plotsCorrelation,
-    plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVenn, plotsVolcano
+    plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVenn, plotsAgreement, plotsVolcano
 )
 
 #: Every `graph` option whose value names something inside the AnnData object, with the
@@ -46,10 +46,18 @@ GRAPH_TYPES_ALL = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
 
 #: Graph types excluded from `-g all`'s fixed list, but folded in when their prerequisites are
 #: satisfied. Each needs a choice nobody makes by typing `-g all` -- two different grouping
-#: columns for `compare`, a `multivariate` config block for `venn` -- so producing them unasked
+#: columns for `compare`, a `multivariate` config block for `venn` and `agreement` -- so
+#: producing them unasked
 #: would hand a user figures whose parameters they never selected. Once that choice HAS been
 #: made, requiring the type to be named again is ceremony rather than a safeguard.
-OPTIONAL_GRAPH_TYPES = ('compare', 'venn')
+OPTIONAL_GRAPH_TYPES = ('compare', 'venn', 'agreement')
+
+
+#: Graph types that persist their results back onto the .h5ad. They cannot share the worker
+#: pool: two processes writing one HDF5 file fail with `BlockingIOError: unable to lock file`
+#: part-way through a run. Latent while `venn` was the only writer, and immediate as soon as a
+#: single invocation asked for both. They run in the parent instead, after the pool drains.
+OBJECT_WRITING_GRAPH_TYPES = ('venn', 'agreement')
 
 
 def resolve_graphtypes(requested, optional_status):
@@ -243,7 +251,7 @@ class anndataGrapher:
 
     def _precompute_and_persist_log2fc(self):
         '''
-        Precompute log2FC for every {heatgrp,volgrp} x diffrts x {heatcutoff,volcutoff} combo
+        Precompute log2FC for every {heatgrp,volgrp,multivariate grouping} x diffrts combo
         (plus volcano's fixed overview readtypes) the CURRENT invocation's flags actually need,
         and persist anything newly computed back to the original h5ad -- so a later `graph` run
         with matching flags (e.g. regenerating figures) hits the cache instead of recomputing.
@@ -264,10 +272,11 @@ class anndataGrapher:
         '''
         threads = getattr(self.args, 'threads', None) or None
         any_computed = False
-        if 'heatmap' in self.args.graphtypes or 'volcano' in self.args.graphtypes:
-            for grp in list(set([self.args.heatgrp, self.args.volgrp])):
+        groupings = self._log2fc_groupings()
+        if groupings:
+            for grp in groupings:
                 for readtype in self.resolved_diffrts():
-                    for cutoff in list(set([self.args.heatcutoff, self.args.volcutoff])):
+                    for cutoff in [self.args.cutoff]:
                         log2fc = toolsTG.adataLog2FC(self.adata, grp, readtype, readcount_cutoff=cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, shrink=getattr(self.args, 'shrink', 'apeGLM'))
                         log2fc.main()
                         any_computed = any_computed or log2fc.computed_fresh
@@ -275,7 +284,7 @@ class anndataGrapher:
             # The volcano combined overview page always uses these two read types (mirroring
             # PCA's default --pcareadtypes), regardless of what --diffrts requests.
             for readtype in plotsVolcano.OVERVIEW_TRNA_READTYPES:
-                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.volcutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, shrink=getattr(self.args, 'shrink', 'apeGLM'))
+                log2fc = toolsTG.adataLog2FC(self.adata, self.args.volgrp, readtype, readcount_cutoff=self.args.cutoff, config_name=self.config_name, overwrite=self.args.regen_uns, n_cpus=threads, shrink=getattr(self.args, 'shrink', 'apeGLM'))
                 log2fc.main()
                 any_computed = any_computed or log2fc.computed_fresh
         if any_computed or self.args.regen_uns:
@@ -305,10 +314,48 @@ class anndataGrapher:
         compare = None if (grp1 and grp2 and grp1 != grp2) else (
             f"--comparegrp1 and --comparegrp2 both name '{grp1}', so there is no comparison to "
             f"take; set them to different obs columns")
-        venn = None if getattr(self.config, 'multivariate', None) is not None else (
+        multivariate = None if getattr(self.config, 'multivariate', None) is not None else (
             'no `multivariate` block in --config, which declares the grouping and thresholds its '
             'sets are built from')
-        return {'compare': compare, 'venn': venn}
+        return {'compare': compare, 'venn': multivariate, 'agreement': multivariate}
+
+    def _colormap_key(self, gt):
+        '''
+        Which `colors` entry a graph type reads: an obs column, or None for no colouring.
+
+        Two graph types cannot answer from cmap_dict alone. `coverage` falls back to 'group'
+        when --covgrp is unset, and `agreement` takes its levels from `multivariate.grouping`,
+        which lives in the config rather than in an arg -- without that, colormap resolved to
+        None and the agreement figure silently drew with the built-in ramps instead of the
+        style file's own colours.
+        '''
+        if gt == 'coverage' and not self.args.covgrp:
+            return self.cmap_dict.get('group')
+        if gt == 'agreement':
+            block = getattr(self.config, 'multivariate', None)
+            return block.grouping if block is not None else None
+        return self.cmap_dict.get(gt)
+
+    def _log2fc_groupings(self):
+        '''
+        Every obs column a log2FC fit is needed for, so the precompute can run them all.
+
+        `agreement` groups by `multivariate.grouping`, which need not equal --volgrp. Fitting
+        inside the worker pool deadlocks (only the pre-Pool precompute may exceed one process),
+        so a grouping that reaches a plot without reaching this list would hang the run rather
+        than fail it. Conditioned on the plot actually being requested: an unused grouping here
+        costs a full set of DESeq2 fits.
+        '''
+        groupings = []
+        if 'heatmap' in self.args.graphtypes:
+            groupings.append(self.args.heatgrp)
+        if 'volcano' in self.args.graphtypes:
+            groupings.append(self.args.volgrp)
+        if 'agreement' in self.args.graphtypes:
+            block = getattr(self.config, 'multivariate', None)
+            if block is not None:
+                groupings.append(block.grouping)
+        return list(dict.fromkeys(groupings))
 
     def resolved_diffrts(self):
         '''
@@ -509,15 +556,8 @@ class anndataGrapher:
             for i in self.args.__dict__:
                 self.logger.info(f'{i}: {self.args.__dict__[i]}')
             self.logger.info('')
-        # Remove coverage from self.args.graphtypes and add it to non_pooled_graphs
-        non_pooled_graphs = []
-        # if 'bar' in self.args.graphtypes:
-        #     self.args.graphtypes.remove('bar')
-        #     if 'count' not in self.args.graphtypes:
-        #         self.args.graphtypes.append('count')
-        if 'coverage' in self.args.graphtypes:
-            self.args.graphtypes.remove('coverage')
-            non_pooled_graphs.append('coverage')
+        self.args.graphtypes, non_pooled_graphs = self._partition_pooled_graphtypes(
+            self.args.graphtypes)
         # One shared outer tracker spans every graph type -- weighted by _compute_graph_weight()
         # so coverage's hundreds/thousands of plots are proportionally represented next to the
         # other types' handful each.
@@ -555,6 +595,18 @@ class anndataGrapher:
                 with self.phase_tracker.phase():
                     self.plot(gt)
 
+    def _partition_pooled_graphtypes(self, requested):
+        '''
+        Split the requested types into (pooled, non-pooled), preserving order.
+
+        `coverage` is held back because it runs its own inner pool. The OBJECT_WRITING types are
+        held back because they write the .h5ad, and concurrent writers collide on the file lock.
+        '''
+        non_pooled = [gt for gt in requested
+                      if gt == 'coverage' or gt in OBJECT_WRITING_GRAPH_TYPES]
+        pooled = [gt for gt in requested if gt not in non_pooled]
+        return pooled, non_pooled
+
     def style_for(self, gt):
         '''Resolved presentation settings for one graph type, CLI flags already applied.'''
         return toolsTG.resolve_plot_style(getattr(self, 'style', None), gt,
@@ -576,11 +628,7 @@ class anndataGrapher:
         settings = self.style_for(gt)
         # Define the colormap to use for the graph type
         colormap = None
-        cmapgrp = gt
-        if gt == 'coverage':
-            if not self.args.covgrp:
-                cmapgrp = 'group'
-        cmappar = self.cmap_dict.get(cmapgrp, None)
+        cmappar = self._colormap_key(gt)
         if self.args.colormap:
             if cmappar in self.args.colormap:
                 colormap = self.args.colormap[cmappar]
@@ -622,7 +670,7 @@ class anndataGrapher:
             self.logger.info('Generating coverage specificity grid pdf...')
             pcV.generate_partition_overview()
         if gt == 'heatmap':
-            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.heatcutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings, orientation=getattr(self.args, 'heatorient', 'vertical'))
+            threaded = plotsHeatmap.visualizer(adata_c, self.args.heatgrp, self.resolved_diffrts(), self.args.cutoff, self.args.heatbound, self.args.heatsubplots, output, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, settings=settings, orientation=getattr(self.args, 'heatorient', 'vertical'))
         if gt == 'logo':
             plotsSeqlogo.visualizer(adata_c, self.args.logogrp, self.args.logomanualgrp, self.args.logomanualname, self.args.logopseudocount, self.args.logosize, self.args.ccatail, self.args.pseudogenes, self.args.logornamode, output, read_basis=self.read_basis, settings=settings).generate_plots()
         if gt == 'mismatch':
@@ -644,13 +692,27 @@ class anndataGrapher:
             threaded = plotsVenn.visualizer(adata_c, block, output, config_name=self.config_name,
                                             settings=settings, read_basis=self.read_basis,
                                             variant_tag=self.variant_spec.tag, threaded=threaded,
-                                            colormap=colormap)
+                                            colormap=colormap, cutoff=self.args.cutoff)
+            membership = adata_c.uns.get('multivariate')
+            if membership:
+                self.adata_original.uns['multivariate'] = membership
+                self.adata_original.write(self.args.anndata)
+        if gt == 'agreement':
+            # Same gate and the same write-back as venn: membership lands on the RESOLVED view,
+            # so it is copied onto the original object rather than writing the view itself.
+            block = plotsVenn.require_multivariate_config(self.config)
+            threaded = plotsAgreement.visualizer(
+                adata_c, block, output, config_name=self.config_name, settings=settings,
+                readtypes=self.resolved_diffrts(), cutoff=self.args.cutoff,
+                colormap=colormap, threaded=threaded, toplabels=self.args.vollabels,
+                xlim=self.args.volxlim, overwrite=self.args.regen_uns,
+                shrink=getattr(self.args, 'shrink', 'apeGLM'))
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership
                 self.adata_original.write(self.args.anndata)
         if gt == 'volcano':
-            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.volcutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
+            threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.cutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  
         if threaded:
             threaded += f'{gt.capitalize()} plots generated!\n'

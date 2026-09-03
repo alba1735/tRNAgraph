@@ -113,9 +113,9 @@ def test_a_list_replaces_rather_than_extends():
 
 def test_unset_flags_are_left_alone():
     """model_dump(exclude_none=True) is what keeps an unmentioned key from being nulled out."""
-    args = _merge({'heatcutoff': 200}, heatcutoff=80, covgrp='group')
+    args = _merge({'cutoff': 200}, cutoff=80, covgrp='group')
 
-    assert (args.heatcutoff, args.covgrp) == (200, 'group')
+    assert (args.cutoff, args.covgrp) == (200, 'group')
 
 
 def test_a_false_boolean_is_applied_not_treated_as_unset():
@@ -128,40 +128,40 @@ def test_a_false_boolean_is_applied_not_treated_as_unset():
 # --- precedence -----------------------------------------------------------------------
 
 def test_a_typed_flag_beats_the_file():
-    args = _merge({'heatcutoff': 200}, typed=frozenset({'heatcutoff'}), heatcutoff=999)
+    args = _merge({'cutoff': 200}, typed=frozenset({'cutoff'}), cutoff=999)
 
-    assert args.heatcutoff == 999
+    assert args.cutoff == 999
 
 
 def test_an_untyped_flag_takes_the_file_value():
-    args = _merge({'heatcutoff': 200}, typed=frozenset({'covgrp'}), heatcutoff=80)
+    args = _merge({'cutoff': 200}, typed=frozenset({'covgrp'}), cutoff=80)
 
-    assert args.heatcutoff == 200
+    assert args.cutoff == 200
 
 
 def test_the_file_applies_in_full_when_nothing_was_typed():
     """Namespaces built directly -- the Python API and tests -- carry no cli_specified."""
     grapher = object.__new__(adataGraph.anndataGrapher)
     grapher.logger = __import__('logging').getLogger('test')
-    grapher.config = GraphFilterConfig(name='t', flags=CommandFlags(graph=GraphFlags(volcutoff=5)))
-    grapher.args = types.SimpleNamespace(volcutoff=80)
+    grapher.config = GraphFilterConfig(name='t', flags=CommandFlags(graph=GraphFlags(cutoff=5)))
+    grapher.args = types.SimpleNamespace(cutoff=80)
     grapher._apply_config_flags()
 
-    assert grapher.args.volcutoff == 5
+    assert grapher.args.cutoff == 5
 
 
 def test_no_flags_block_changes_nothing():
     grapher = object.__new__(adataGraph.anndataGrapher)
     grapher.logger = __import__('logging').getLogger('test')
     grapher.config = GraphFilterConfig(name='t')
-    grapher.args = types.SimpleNamespace(heatcutoff=80)
+    grapher.args = types.SimpleNamespace(cutoff=80)
     grapher._apply_config_flags()
 
-    assert grapher.args.heatcutoff == 80
+    assert grapher.args.cutoff == 80
 
 
 def test_cli_specified_params_reports_only_typed_options():
-    """Comparing against defaults cannot work: heatcutoff=80 is both a default and typeable."""
+    """Comparing against defaults cannot work: cutoff=80 is both a default and typeable."""
     seen = {}
     app = typer.Typer()
 

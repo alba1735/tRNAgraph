@@ -48,6 +48,8 @@
     "rasterize_over": null
   },
   "gradients": {
+    "agreement_down": null,
+    "agreement_up": null,
     "correlation": null,
     "lfc": null,
     "ordered": null,

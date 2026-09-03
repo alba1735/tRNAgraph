@@ -71,7 +71,7 @@ def _make_grapher(adata, graphtypes=('volcano',), diffrts=('total',), regen_uns=
     grapher.read_basis = toolsTG.READ_BASIS_UNIQUE
     grapher.args = SimpleNamespace(
         anndata='fake.h5ad', graphtypes=list(graphtypes), heatgrp='group', volgrp='group', diffrts=list(diffrts),
-        heatcutoff=READCOUNT_CUTOFF, volcutoff=READCOUNT_CUTOFF, regen_uns=regen_uns, threads=threads,
+        cutoff=READCOUNT_CUTOFF, regen_uns=regen_uns, threads=threads,
     )
     return grapher
 

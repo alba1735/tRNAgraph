@@ -147,7 +147,7 @@ Every command that takes `--config` reads the same file and applies only its own
       "graphtypes": ["heatmap", "volcano"],
       "variant": "norm:u60",
       "heatgrp": "treatment",
-      "heatcutoff": 200,
+      "cutoff": 200,
       "diffrts": ["fiveprime", "threeprime"]
     }
   }
@@ -165,14 +165,14 @@ Run `trnagraph tools template --config` to drop a blank `config.template.json` l
 
 #### The `flags` block
 
-One block per command, named by the bare subcommand: `makedb`, `trim`, `map`, `build`, `addsplit`, `cluster`, `graph` and `log2fc`. Inside a block, each option is keyed by its long flag name without the leading dashes (`--heatcutoff` becomes `"heatcutoff"`). A command only ever reads its own block and ignores the rest.
+One block per command, named by the bare subcommand: `makedb`, `trim`, `map`, `build`, `addsplit`, `cluster`, `graph` and `log2fc`. Inside a block, each option is keyed by its long flag name without the leading dashes (`--cutoff` becomes `"cutoff"`). A command only ever reads its own block and ignores the rest.
 
 `tools csv`, `merge`, `info`, `test` and `template` have no block: their options are paths, output destinations and one-shot selectors, with nothing an analysis would want to fix.
 
 **A flag typed on the command line always beats the file**, so a saved config can be reused and adjusted in place:
 
 ```bash
-trnagraph graph -i data.h5ad --config analysis.json --heatcutoff 50   # 50 wins
+trnagraph graph -i data.h5ad --config analysis.json --cutoff 50   # 50 wins
 ```
 
 Each key that the file sets, and each one it sets that you overrode, is named in the run log, along with the config's `name`.
@@ -322,10 +322,10 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 | `covmethod`           | string                             | `mean`                                             | Specify method to use for coverage plots when combining multiple groups                                                          |
 | `covobs`              | string                             | `trna`                                             | Specify the basis for each individual coverage plot                                                                              |
 | `covtype`             | string                             | —                                                  | Coverage category to plot: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino', or 'total' for their sum                  |
+| `cutoff`              | integer                            | `20`                                               | Minimum mean normalized readcount for a feature to be plotted                                                                    |
 | `diffrts`             | list of strings                    | `wholecounts, fiveprime, threeprime, other, total` | Specify readtypes to use for heatmap/volcano                                                                                     |
 | `graphtypes`          | list of strings                    | `all`                                              | Specify graphs to create, if not specified it will default to 'all'                                                              |
 | `heatbound`           | integer                            | `25`                                               | Specify range to use for bounding the heatmap to top and bottom counts                                                           |
-| `heatcutoff`          | integer                            | `80`                                               | Specify readcount cutoff to use for heatmap                                                                                      |
 | `heatgrp`             | string                             | `group`                                            | Specify group to use for heatmap                                                                                                 |
 | `heatorient`          | `"vertical"` \| `"horizontal"`     | `vertical`                                         | Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page                |
 | `heatsubplots`        | `true` \| `false`                  | `false`                                            | Specify wether to generate subplots for each comparasion in addition to the sum                                                  |
@@ -346,7 +346,6 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 | `regen_uns`           | `true` \| `false`                  | `false`                                            | Force regenerate uns log2fc data if it would be generated again                                                                  |
 | `shrink`              | `"apeGLM"` \| `"none"`             | `apeGLM`                                           | How to shrink log2 fold changes: apeGLM (default) or none                                                                        |
 | `variant`             | string                             | `norm:full`                                        | Select which normalization:split-tag to plot, e.g                                                                                |
-| `volcutoff`           | integer                            | `80`                                               | Specify readcount cutoff to use for volcano plot                                                                                 |
 | `volgrp`              | string                             | `group`                                            | Specify group to use for volcano plot                                                                                            |
 | `vollabels`           | integer                            | `100`                                              | Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels                                |
 | `volxlim`             | number                             | —                                                  | Force the volcano x-axis half-width to this log2 fold change                                                                     |
@@ -366,14 +365,13 @@ A list value **replaces** the default rather than adding to it, which is what le
 
 ### Multivariate Analyses (`multivariate`)
 
-Venn diagrams of which tRNAs are present in which conditions. `graph -g venn` only runs when a `--config` file has this block, since the presence threshold is something you have to choose.
+Which tRNAs are present in which conditions (`graph -g venn`), and which ones respond consistently across a timecourse (`graph -g agreement`). Both only run when a `--config` file has this block, since the reference level and thresholds are things you have to choose.
 
 ```json
 {
   "name": "my_experiment",
   "multivariate": {
     "grouping": "condition",
-    "presence_cutoff": 20,
     "venn": [
       {
         "name": "treated_vs_control",
@@ -390,11 +388,12 @@ Venn diagrams of which tRNAs are present in which conditions. `graph -g venn` on
 }
 ```
 
-| Key               | Meaning                                                                     |
-| ----------------- | --------------------------------------------------------------------------- |
-| `grouping`        | The `obs` column your conditions live in.                                   |
-| `presence_cutoff` | Mean normalized reads a tRNA needs to count as present, averaged per group. |
-| `venn`            | Diagrams to draw. Leave it out and you still get the two automatic ones.    |
+| Key              | Meaning                                                                         |
+| ---------------- | ------------------------------------------------------------------------------- |
+| `grouping`       | The `obs` column your conditions live in.                                       |
+| `reference`      | The level every contrast is measured against. Defaults to the first level.      |
+| `log2fc`, `padj` | How strong a contrast must be to count toward agreement. Default 1.5 and 0.001. |
+| `venn`           | Diagrams to draw. Leave it out and you still get the two automatic ones.        |
 
 Two diagrams are drawn without being asked for: fragment vs full-length (needs a read-length split) and 5' vs 3' (needs both end-specific read types). If the data can't support one, it's skipped with a message.
 
@@ -404,6 +403,14 @@ For anything else, list one entry per diagram with a `name` and its `sets`. **On
 - Four or more circles also get an **UpSet plot** ([Lex et al. 2014](https://doi.org/10.1109/TVCG.2014.2346248)) next to the Venn, which stays readable at any size. Both come from the same numbers.
 - Read types follow `--allreads`; unique counts by default. Presence uses the same cutoff as differential expression, so a tRNA in a circle and a point on a volcano passed the same test.
 - Figures land in `<output>/venn/individual/`. Tables of which tRNAs are in which region go to the build's `results/multivariate/`. If the build directory recorded in the object is gone — normal when it was built on a server — the tables are skipped; the memberships are still in the object ([Data Structure](data_structure.md#multivariate-analyses-multivariate)).
+
+#### Agreement volcanoes
+
+`-g agreement` draws one volcano per contrast against `reference`, colouring each tRNA by how many of the other contrasts it moved the same way in. Marker shape carries read type, so your `--diffrts` land on one figure instead of several.
+
+A point is coloured when it clears p ≤ 0.05 on the contrast being drawn; the tier counts how many contrasts clear `padj` in the same direction. So `2 of 2` is a consistent responder, and `0 of 2` is a real result on this contrast that was not strong anywhere. `total` is never drawn — it is the sum of the other read types, so it would plot the same reads twice.
+
+Colours come from the grouping column's `colors` entry, darkening and shifting hue as agreement falls; `gradients.agreement_up` / `agreement_down` override that. Figures go to `<output>/agreement/` with a combined overview beside `individual/`, and per-tRNA tables to `results/multivariate/`.
 
 ### Style Files (`--style`)
 

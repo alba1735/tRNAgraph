@@ -576,8 +576,14 @@ def resolve_plot_style(style, graph_type, **overrides):
     # already statically guards the failure mode a NEW threaded parameter reintroduces (a
     # helper reading it without being given it, invisible until it runs inside a pool).
     # Every graph type gets every gradient role -- see plotsPalette.resolve_gradients.
-    resolved['gradients'] = plotsPalette.resolve_gradients(
-        getattr(style, 'gradients', None) if style is not None else None)
+    spec = getattr(style, 'gradients', None) if style is not None else None
+    resolved['gradients'] = plotsPalette.resolve_gradients(spec)
+    # Which roles the file ACTUALLY named. resolve_gradients fills every role with its default,
+    # so a non-None resolved colormap is not evidence the user chose anything -- and a role whose
+    # default is "derive it from `colors` instead" (the agreement ramps) cannot tell the two
+    # apart without this. Recorded rather than inferred by comparing against the default, which
+    # would misread a user who names the default colormap explicitly.
+    resolved['gradients_set'] = plotsPalette.gradient_roles_set(spec)
     resolved['categorical'] = getattr(style, 'categorical', None) if style is not None else None
     return resolved
 

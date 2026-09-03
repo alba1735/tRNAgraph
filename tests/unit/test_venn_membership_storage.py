@@ -38,7 +38,7 @@ def _adata(tmp_path):
 def test_both_plans_keep_their_own_membership(tmp_path):
     adata = _adata(tmp_path)
 
-    plotsVenn.visualizer(adata, MultivariateConfig(presence_cutoff=1),
+    plotsVenn.visualizer(adata, MultivariateConfig(), cutoff=1,
                          output=f'{tmp_path}/', config_name='default')
 
     entries = adata.uns['multivariate']['default']['venn']
@@ -49,7 +49,7 @@ def test_both_plans_keep_their_own_membership(tmp_path):
 def test_each_entry_records_the_plan_that_produced_it(tmp_path):
     adata = _adata(tmp_path)
 
-    plotsVenn.visualizer(adata, MultivariateConfig(presence_cutoff=1),
+    plotsVenn.visualizer(adata, MultivariateConfig(), cutoff=1,
                          output=f'{tmp_path}/', config_name='default')
 
     entries = adata.uns['multivariate']['default']['venn']
