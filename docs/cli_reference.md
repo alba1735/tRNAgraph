@@ -152,7 +152,13 @@ trnagraph analyze build -i <metadata> -d <database> -o <out_dir> [options]
 - **`--hubonly`**: Only generates the track hub and skips AnnData generation. Default: `False`
 - **`--filterother`**: Dumps reads counted in the `other` type category (the `other` row in `typecounts.txt`/`adata.uns['type_counts']`) to a separate BAM file for manual inspection -- i.e. reads matching no tRNA, bed, or GTF-annotated feature (being classified `other` and matching no other feature are the same condition; there's no separate/narrower `other` tag). Default: `False`
 - **`--bamdir`**: Custom directory to look for BAM files if they are not in the default location. Default: `processed/bam`
-- **`--dispfittype`**: Dispersion fit type for DESeq2. parametric`(default, standard for DESeq2),`mean`(robust for small sample sizes). Default:`parametric`
+- **`--dispfittype`**: Dispersion fit type for DESeq2: `parametric` (default, standard for DESeq2) or `mean` (robust for small sample sizes). Default: `parametric`
+
+> [!NOTE]
+> This setting is recorded on the object and **inherited by the fold-change fits at graph time**, so a volcano and the build it came from use the same dispersion model. It previously reached only the build-time DESeq2 and the VST.
+>
+> It describes the **feature** axis, not replicates. A dispersion trend is a curve of dispersion against mean expression fitted across features, so it needs many of them — three replicates per group is entirely standard and is a different axis. Below 50 features a `mean` trend is used regardless of this flag, because a parametric curve through that few points cannot be fitted (PyDESeq2 falls back on its own and says so); below 2 the fit is skipped with a reason, since a dispersion prior cannot be estimated at all. A whole-object fit has hundreds of tRNAs and is never affected.
+
 - **`-c`, `--readlengthsplit`**: Read length cutoff for splitting. When specified, adds `u<N>`/`o<N>` split variants to the _same_ output `.h5ad` as additional layers/obsm/uns entries (see [Data Structure: Split Variants](data_structure.md#split-variants---readlengthsplit)) — no separate `_uN.h5ad`/`_oN.h5ad` files are written. Further cutoffs can be added later to an existing object via `analyze addsplit`. Default: `None` (disabled)
 - **`--overwritebams`**: Re-map from FASTQ even when the BAMs already exist. Default: `False`
 - **`--overwritesplits`**: Re-cut the `u<N>`/`o<N>` split BAMs even when they already exist. Default: `False`

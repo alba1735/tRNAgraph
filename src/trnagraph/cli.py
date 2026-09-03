@@ -109,6 +109,21 @@ def configure_logging(log_path: str, quiet: bool) -> logging.Logger:
         stream_handler._is_console_handler = True
         logger.addHandler(stream_handler)
 
+    # Third-party warnings (PyDESeq2 convergence notes, NumPy RuntimeWarnings, pandas
+    # deprecations) go through the `warnings` module to stderr, which the log file never saw.
+    # A run's log should be a complete record of what the run said: with them missing, someone
+    # reading an archived log got a materially different story from someone watching the
+    # terminal, which is exactly how a several-hundred-line warning storm went unnoticed until
+    # a human happened to be looking at one. captureWarnings routes them to the 'py.warnings'
+    # logger, which needs the same handlers -- it is a child of root, not of 'trnagraph'.
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger('py.warnings')
+    warnings_logger.propagate = False
+    for handler in warnings_logger.handlers[:]:
+        warnings_logger.removeHandler(handler)
+    for handler in logger.handlers:
+        warnings_logger.addHandler(handler)
+
     return logger
 
 def cli_specified_params(ctx) -> frozenset:
@@ -182,6 +197,13 @@ def handle_output(quiet: bool, tool: str, destination: Optional[str] = None, nam
         sys.stderr.write(f"WARNING: {tool} failed -- see {log_path} for details.\n")
         raise
     finally:
+        # Detached from 'py.warnings' FIRST: the handler objects are shared with it, so closing
+        # them while it still held a reference would leave the next invocation writing through
+        # a closed stream.
+        warnings_logger = logging.getLogger('py.warnings')
+        for handler in warnings_logger.handlers[:]:
+            warnings_logger.removeHandler(handler)
+        logging.captureWarnings(False)
         for handler in logger.handlers[:]:
             handler.close()
             logger.removeHandler(handler)

@@ -781,7 +781,7 @@ class AnalysisPipeline:
         hub_builder.run()
 
 
-def _precompute_default_log2fc(view, threads=None):
+def _precompute_default_log2fc(view, threads=None, dispfittype='parametric'):
     '''
     Precompute log2FC for the 'group' comparison's two overview readtypes
     (nreads_total_unique_norm, nreads_total_norm) across the standard tRNA-seq read-count
@@ -797,8 +797,10 @@ def _precompute_default_log2fc(view, threads=None):
     independent "use everything" default.
     '''
     for cutoff in [20, 40, 80, 100, 200]:  # common read cutoffs for tRNAseq
-        toolsTG.adataLog2FC(view, 'group', 'nreads_total_unique_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
-        toolsTG.adataLog2FC(view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True, n_cpus=threads).main()
+        toolsTG.adataLog2FC(view, 'group', 'nreads_total_unique_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True,
+                            n_cpus=threads, dispfittype=dispfittype).main()
+        toolsTG.adataLog2FC(view, 'group', 'nreads_total_norm', readcount_cutoff=cutoff, config_name='default', overwrite=True,
+                            n_cpus=threads, dispfittype=dispfittype).main()
 
 
 # The acceptor-stem regions the obs['fragment'] heuristic averages coverage over. Named
@@ -1651,7 +1653,8 @@ class AnnDataBuilder():
             self.logger.warning(f"Could not compute replicate correlation: {exc}")
 
         # Add 'group' log2FC value/pval to uns since it is the default for the volcano/heatmap and saves time later
-        _precompute_default_log2fc(adata, threads=self.analysis_args.threads)
+        _precompute_default_log2fc(adata, threads=self.analysis_args.threads,
+                                   dispfittype=getattr(self.analysis_args, 'dispfittype', 'parametric'))
 
         return adata
 
@@ -1949,7 +1952,11 @@ def merge_variant_into_adata(target_adata, contribution: VariantContribution, ta
     temp_spec = toolsTG.VariantTag(raw=f'norm:{tag}', norm='norm', tag=tag)
     temp_view = toolsTG.build_variant_view(target_adata, temp_spec)
     variant_threads = build_flags.get('threads')
-    _precompute_default_log2fc(temp_view, threads=variant_threads if isinstance(variant_threads, int) else None)
+    # From this variant's OWN recorded build flags, not the caller's scope: merge_variant_into_
+    # adata() is reached from both `analyze build` and `analyze addsplit`, and each split records
+    # the value it was actually built with.
+    _precompute_default_log2fc(temp_view, threads=variant_threads if isinstance(variant_threads, int) else None,
+                               dispfittype=build_flags.get('dispfittype') or 'parametric')
     target_adata.uns['size_splits'][tag]['log2FC'] = temp_view.uns.get('log2FC', {})
 
     return target_adata

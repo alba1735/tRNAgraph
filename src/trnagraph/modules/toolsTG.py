@@ -1114,7 +1114,7 @@ def variant_log2fc(adata: ad.AnnData, tag: str, compare: str, readtype: str,
 
     engine = adataLog2FC(carrier, compare, readtype, readcount_cutoff=readcount_cutoff,
                          config_name=config_name, overwrite=overwrite, n_cpus=n_cpus,
-                         shrink=shrink)
+                         shrink=shrink, dispfittype=recorded_dispfittype(adata))
     df, log2fc_dict = engine.main()
     # Written back onto the ORIGINAL object, into this tag's own location. Never onto a resolved
     # view, and never into uns['log2FC'] for a split -- that would overwrite the full variant's
@@ -1241,8 +1241,41 @@ def _as_pair_list(pairs) -> List[Tuple[str, str]]:
     return [tuple(str(level) for level in pair) for pair in pairs]
 
 
+def recorded_dispfittype(adata) -> str:
+    '''
+    The dispersion fit type this object was BUILT with, or 'parametric' if unrecorded.
+
+    Lets a graph-time fit inherit `analyze build --dispfittype` without a second flag naming the
+    same thing on every downstream command. An object built before the value was recorded, or a
+    slim carrier holding only a frame, reads as the PyDESeq2 default -- which is what those fits
+    were already using.
+    '''
+    try:
+        flags = adata.uns.get('trnagraphruninfo', {}).get('flags', {})
+        return dict(flags).get('dispfittype') or 'parametric'
+    except (AttributeError, TypeError, ValueError):
+        return 'parametric'
+
+
+#: A dispersion TREND is a curve of dispersion against mean expression fitted across FEATURES,
+#: so it needs many features -- replicate count is a different axis entirely and is not what
+#: these thresholds are about. A whole-object fit has hundreds of tRNAs and is never affected;
+#: only a caller that subsets the feature axis hard can fall below them.
+#:
+#: Below MIN_FEATURES_FOR_PARAMETRIC_TREND, PyDESeq2's parametric fit does not converge and it
+#: falls back to a mean-based trend ON ITS OWN, announcing it with a UserWarning per fit. Doing
+#: it up front is the same statistics without the noise: measured across 9 samples x N features,
+#: 'mean' is clean from 2 features upward while 'parametric' warned at every size tried.
+MIN_FEATURES_FOR_PARAMETRIC_TREND = 50
+#: Below this, nothing can be fitted at all: the dispersion prior's median-absolute-deviation is
+#: taken over an empty slice and the Cox-Reid log-determinant degenerates, so PyDESeq2 emits
+#: NumPy RuntimeWarnings and returns values not worth plotting. Skipped with a named reason
+#: rather than silently fitted.
+MIN_FEATURES_FOR_ANY_FIT = 2
+
+
 class adataLog2FC:
-    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, shrink: str = 'apeGLM'):
+    def __init__(self, adata: ad.AnnData, compare: str, readtype: str, readcount_cutoff: int = 80, config_name: str = 'default', overwrite: bool = False, n_cpus: Optional[int] = 1, shrink: str = 'apeGLM', dispfittype: Optional[str] = None):
         self.adata = adata
         self.compare = compare
         self.readtype = readtype
@@ -1269,6 +1302,10 @@ class adataLog2FC:
                 f"Unknown --shrink method {shrink!r}. Expected one of: "
                 + ', '.join(SHRINK_METHODS))
         self.shrink = shrink
+        # How the dispersion trend is fitted. `--dispfittype` reached the build-time DESeq2 and
+        # VST but never these fits, so one object got a parametric trend at build and a
+        # parametric-with-silent-fallback trend at graph time, with no way to say otherwise.
+        self.dispfittype = dispfittype or recorded_dispfittype(adata)
         self.log2fc_dict: Dict[str, Any] = {}
         # Set by main(): whether THIS call actually computed a fresh fit (cache miss) rather than
         # reusing a cached df (cache hit). Callers that precompute several combos and want to
@@ -1355,8 +1392,23 @@ class adataLog2FC:
         # unconditionally, so an empty-but-column-less df breaks them with a KeyError.
         pair_columns = sorted(c for p in pairs for c in (f'log2_{p[0]}-{p[1]}', f'pval_{p[0]}-{p[1]}'))
         df_pairs = pd.DataFrame(index=keep_features, columns=pair_columns, dtype=float)
-        if not pairs or len(keep_features) == 0:
+        if not pairs or len(keep_features) < MIN_FEATURES_FOR_ANY_FIT:
+            if pairs and len(keep_features) > 0:
+                # Named rather than left to NumPy: a bare "Mean of empty slice" from inside
+                # PyDESeq2 says nothing about which subset produced it.
+                logger.warning(
+                    f'Skipping the {self.compare} fold-change fit over {index_col}: '
+                    f'{len(keep_features)} feature(s) pass the cutoff, and a dispersion estimate '
+                    f'needs at least {MIN_FEATURES_FOR_ANY_FIT}. This subset is too narrow to '
+                    f'model; widen it or lower --cutoff.'
+                )
             return df_pairs, pairs
+
+        # Chosen from the FEATURE count, and it overrides self.dispfittype rather than deferring
+        # to it: a parametric trend through too few points is not a preference, it is a fit that
+        # cannot be made, and PyDESeq2 falls back here anyway.
+        fit_type = (self.dispfittype if len(keep_features) >= MIN_FEATURES_FOR_PARAMETRIC_TREND
+                    else 'mean')
 
         # Build the RAW per-(trna, sample) counts matrix PyDESeq2 needs, and each sample's
         # condition (self.compare is a per-sample covariate: samples sharing a value are
@@ -1404,7 +1456,8 @@ class adataLog2FC:
                 levels = [reference] + [lv for lv in sorted(set(meta_df['condition'])) if lv != reference]
                 meta = meta_df.assign(condition=pd.Categorical(meta_df['condition'], categories=levels))
             model = DeseqDataSet(counts=counts_df, metadata=meta, design_factors='condition',
-                                 size_factors_fit_type='poscounts', quiet=True, n_cpus=self.n_cpus)
+                                 size_factors_fit_type='poscounts', fit_type=fit_type,
+                                 quiet=True, n_cpus=self.n_cpus)
             model.deseq2()
             return model
 

@@ -96,7 +96,11 @@ def test_log2fc_df_pins_deseq2_to_a_single_cpu():
     found hung 24+ hours later with orphaned loky resource-tracker children attached). joblib's
     n_jobs=1 is the one setting that avoids creating any nested pool at all (it runs sequentially
     in-process, not just with a smaller pool), so log2fc_df() must always pin n_cpus=1."""
-    adata = _make_adata({"trnaA": {"A": 400, "B": 400}}, n_per_group=3)
+    # Two features, not one: a single-feature matrix is now skipped before the fit (a
+    # dispersion prior cannot be estimated from it), so a one-tRNA fixture would never
+    # construct a DeseqDataSet at all and this would pass without testing anything.
+    adata = _make_adata({"trnaA": {"A": 400, "B": 400},
+                         "trnaB": {"A": 300, "B": 300}}, n_per_group=3)
     log2fc = adataLog2FC(adata, compare="group", readtype=READTYPE, readcount_cutoff=80)
 
     with patch("trnagraph.modules.toolsTG.DeseqDataSet", wraps=toolsTG.DeseqDataSet) as mock_dds:
