@@ -401,7 +401,7 @@ For anything else, list one entry per diagram with a `name` and its `sets`. **On
 - Two or three circles are drawn to scale. Four and five use fixed ellipses where only the numbers mean anything. Past five, no diagram can show every overlap, so you get the UpSet plot alone.
 - Four or more circles also get an **UpSet plot** ([Lex et al. 2014](https://doi.org/10.1109/TVCG.2014.2346248)) next to the Venn, which stays readable at any size. Both come from the same numbers.
 - Read types follow `--allreads`; unique counts by default. Presence uses the same cutoff as differential expression, so a tRNA in a circle and a point on a volcano passed the same test.
-- Figures land in `<output>/venn/individual/`. Tables of which tRNAs are in which region go to the build's `results/multivariate/`. If the build directory recorded in the object is gone — normal when it was built on a server — the tables are skipped; the memberships are still in the object ([Data Structure](data_structure.md#multivariate-analyses-multivariate)).
+- Figures land in `<output>/venn/individual/`. Tables of which tRNAs are in which region, largest region first, go to a `results/` directory **sister to your `--output` directory**, mirroring the figure path — so `graphs/<config>/<type>/` pairs with `results/<config>/<type>/` and the table is found by the same route as the plot. The memberships are also stored in the object ([Data Structure](data_structure.md#multivariate-analyses-multivariate)).
 
 #### Agreement volcanoes
 
@@ -409,7 +409,7 @@ For anything else, list one entry per diagram with a `name` and its `sets`. **On
 
 A point is coloured when it clears p ≤ 0.05 on the contrast being drawn; the tier counts how many contrasts clear `padj` in the same direction. So `2 of 2` is a consistent responder, and `0 of 2` is a real result on this contrast that was not strong anywhere. `total` is never drawn — it is the sum of the other read types, so it would plot the same reads twice.
 
-Colours come from the grouping column's `colors` entry, darkening and shifting hue as agreement falls; `gradients.agreement_up` / `agreement_down` override that. Figures go to `<output>/agreement/` with a combined overview beside `individual/`, and per-tRNA tables to `results/multivariate/`.
+Colours come from the grouping column's `colors` entry, darkening and shifting hue as agreement falls; `gradients.agreement_up` / `agreement_down` override that. Figures go to `<output>/agreement/` with a combined overview beside `individual/`, and per-tRNA tables to a `results/` directory **sister to your `--output` directory**, mirroring the figure path — so `graphs/<config>/<type>/` pairs with `results/<config>/<type>/` and the table is found by the same route as the plot.
 
 ### Style Files (`--style`)
 

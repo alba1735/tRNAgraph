@@ -370,3 +370,72 @@ def test_the_scatter_draws_no_labels_when_disabled():
         plt.close(fig)
 
     assert drawn == []
+
+
+# --- the exported table -------------------------------------------------------------------
+
+def test_the_results_directory_is_a_sister_of_the_figure_directory():
+    """Tables under results/, figures under graphs/, so a reader finds the table by the same
+    route they found the plot."""
+    from trnagraph.modules import toolsTG
+
+    assert toolsTG.results_mirror('/out/graphs') == '/out/results'
+
+
+def test_the_sister_holds_whatever_the_output_directory_is_called():
+    """A user who points --output at figures/ still gets a sister, not a results/ nested inside
+    their figures -- and a user whose project lives in ~/graphs_2024/ does not have that
+    rewritten out from under them, which plotsHeatmap's replace('graphs', 'results') does."""
+    from trnagraph.modules import toolsTG
+
+    assert toolsTG.results_mirror('/out/figures') == '/out/results'
+    assert toolsTG.results_mirror('/home/u/graphs_2024/out/graphs') == \
+        '/home/u/graphs_2024/out/results'
+
+
+def _export(rows):
+    return plotsDecoupling.ranked_table(_label_table(rows), _plan(), 'A-B', 'trna')
+
+
+def test_the_table_is_ordered_the_way_the_labels_are():
+    """One notion of "notable" across the figure and the file beside it: called features first,
+    then by distance from the diagonal. A table that disagreed with its own plot about what
+    mattered would be worse than no table."""
+    out = _export({'coupled_big': (4.0, 3.9, True, True),
+                   'decoupled': (3.0, 0.5, True, False),
+                   'uncalled_far': (0.9, -0.9, False, False)})
+
+    assert list(out['trna']) == ['decoupled', 'coupled_big', 'uncalled_far']
+    assert list(out['rank']) == [1, 2, 3]
+
+
+def test_a_feature_that_moved_a_lot_in_both_channels_is_not_decoupled():
+    """Significance alone is the wrong sort for this figure: a strong hit sitting on the diagonal
+    is the coupled case, which is the opposite of what it is looking for."""
+    out = _export({'on_diagonal': (5.0, 5.0, True, True),
+                   'off_diagonal': (2.0, 0.2, True, False)})
+
+    assert out.iloc[0]['trna'] == 'off_diagonal'
+    assert out.set_index('trna').loc['on_diagonal', 'decoupling'] == pytest.approx(0.0)
+
+
+def test_the_table_carries_what_a_reader_needs_to_re_sort_it():
+    out = _export({'a': (3.0, 0.5, True, False)})
+
+    for column in ('rank', 'trna', 'contrast', 'decoupling', 'min_padj', 'tier'):
+        assert column in out.columns
+    assert 'log2_X' in out.columns and 'padj_Y' in out.columns
+    assert out.iloc[0]['tier'] == 'X only'
+
+
+def test_min_padj_is_the_stronger_of_the_two_channels():
+    """Carried so a reader who does want to sort by raw significance can, without recomputing."""
+    out = _export({'a': (3.0, 0.5, True, False)})
+
+    assert out.iloc[0]['min_padj'] == pytest.approx(0.0)
+
+
+def test_the_decoupling_column_is_distance_from_the_diagonal():
+    out = _export({'a': (3.0, 0.5, True, False)})
+
+    assert out.iloc[0]['decoupling'] == pytest.approx(2.5)

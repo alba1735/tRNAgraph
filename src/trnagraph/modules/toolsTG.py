@@ -1241,6 +1241,27 @@ def _as_pair_list(pairs) -> List[Tuple[str, str]]:
     return [tuple(str(level) for level in pair) for pair in pairs]
 
 
+def results_mirror(output_root: str) -> str:
+    '''
+    Where a run's tables belong: a `results` directory SISTER to its figure output directory.
+
+    Tables under results/, figures under graphs/, so `graphs/<config>/<type>/` pairs with
+    `results/<config>/<type>/` and a reader finds the table by the same route they found the plot.
+
+    Derived from the output directory's PARENT rather than by rewriting a path component named
+    'graphs'. Two reasons. A user who points --output at `figures/` still gets a sister rather
+    than a `results/` nested inside their figures, and a user whose project lives in
+    `~/graphs_2024/` does not have that rewritten out from under them -- which
+    `output.replace('graphs', 'results')`, the form plotsHeatmap still uses, does.
+
+    Deliberately NOT the directory recorded in the object's build provenance, which is what these
+    tables used to be filed under. That directory is stamped at build time and is routinely gone
+    by the time anyone graphs -- the demo object records a scratch path, the hg38 object a server
+    path -- so anchoring on it meant the tables were skipped exactly when they were most wanted.
+    '''
+    return os.path.join(os.path.dirname(os.path.normpath(output_root)), 'results')
+
+
 def recorded_dispfittype(adata) -> str:
     '''
     The dispersion fit type this object was BUILT with, or 'parametric' if unrecorded.

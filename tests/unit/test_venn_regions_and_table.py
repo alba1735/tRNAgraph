@@ -76,48 +76,30 @@ def test_the_table_is_readable_as_a_dataframe(tmp_path):
 
     df = pd.read_csv(path, sep='\t', comment='#')
 
-    assert list(df.columns) == ['region', 'n', 'features']
+    assert list(df.columns) == ['rank', 'region', 'n', 'features']
     assert set(df['region']) == {'A', 'B', 'A & B'}
     assert df.loc[df['region'] == 'A & B', 'n'].item() == 2
 
 
-def _adata_with_build_dir(build_dir):
-    import anndata as ad
-    import numpy as np
-    obs = pd.DataFrame({'trna': ['t1'], 'sample': ['s1']}, index=['o0'])
-    adata = ad.AnnData(X=np.zeros((1, 1), dtype='float32'), obs=obs)
-    if build_dir is not None:
-        adata.uns['trnagraphruninfo'] = {'trnagraph_directory': str(build_dir),
-                                         'expname': 'demo'}
-    return adata
+def test_the_largest_region_comes_first(tmp_path):
+    """The file opens on what most features share rather than on whichever region the set order
+    happened to enumerate first -- the same "most notable first" the decoupling table uses."""
+    path = tmp_path / 'venn.tsv'
+    plotsVenn.write_membership_table(path, SETS, provenance={})
+    df = pd.read_csv(path, sep='\t', comment='#')
+
+    assert list(df['n']) == sorted(df['n'], reverse=True)
+    assert df.iloc[0]['rank'] == 1
 
 
-def test_the_table_lands_beside_the_other_result_files(tmp_path):
-    """results/multivariate/ is a SIBLING of results/u60 and results/o60, not inside either:
-    a Venn spanning two variants belongs to neither, and filing it under one would say
-    something false about what produced it."""
-    (tmp_path / 'results').mkdir()
+def test_the_table_mirrors_the_figure_path_rather_than_the_build_directory():
+    """These tables used to be filed under the directory recorded in the object's build
+    provenance, and skipped outright when it was gone -- which it usually is: the demo object
+    records a scratch path and the hg38 object a server path, so the tables went missing exactly
+    when they were most wanted. They now sit in the results/ twin of the figure's own output
+    path, so a reader finds the table by the route they found the plot."""
+    from trnagraph.modules import toolsTG
 
-    directory, message = plotsVenn.resolve_results_dir(_adata_with_build_dir(tmp_path))
-
-    assert directory == str(tmp_path / 'results' / 'multivariate')
-    assert message is None
-
-
-def test_a_build_directory_that_no_longer_exists_warns_and_skips(tmp_path):
-    """Not hypothetical: the demo object records a scratch path from the run that built it.
-    There is no fallback-directory convention in tRNAgraph, and inventing one would scatter
-    output. The object still holds the membership, so only the convenience copy is lost."""
-    missing = tmp_path / 'gone'
-
-    directory, message = plotsVenn.resolve_results_dir(_adata_with_build_dir(missing))
-
-    assert directory is None
-    assert str(missing) in message, 'names the path it looked for'
+    assert toolsTG.results_mirror('/out/graphs') == '/out/results'
 
 
-def test_an_object_without_build_provenance_warns_and_skips():
-    directory, message = plotsVenn.resolve_results_dir(_adata_with_build_dir(None))
-
-    assert directory is None
-    assert 'trnagraphruninfo' in message

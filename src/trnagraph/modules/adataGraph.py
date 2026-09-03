@@ -166,9 +166,15 @@ class anndataGrapher:
         # Apply the config's obs/var filters. The file was already read and its `flags` block
         # applied at the top of __init__; only the filtering waits until here, because it
         # needs the variant view built above.
+        # results/ is a SISTER of the figure output directory and is derived BEFORE the config
+        # name is appended, so the two trees stay parallel: graphs/<config>/<type>/ pairs with
+        # results/<config>/<type>/. Computed once here rather than by each plot module munging
+        # its own output string.
+        self.results_root = toolsTG.results_mirror(self.args.output)
         if self.config is not None:
             config = self.config
             self.args.output += '/' + config.name
+            self.results_root = os.path.join(self.results_root, config.name)
             self.config_name = config.name
             self.logger.info(toolsTG.builder(self.args.output))
             if config.obs is not None or config.obs_r is not None:
@@ -519,7 +525,26 @@ class anndataGrapher:
         for, which meant a default run and an --allreads run emitted exactly the same two
         files into two directories.
         '''
-        output = self.args.output + '/' + gt + '/'
+        return self._qualified_dir(self.args.output, gt)
+
+    def _results_dir_for(self, gt):
+        '''
+        The results/ twin of `_output_dir_for(gt)`, qualified identically.
+
+        Built through the same helper rather than alongside it, so a variant or read-basis
+        segment can never appear on one tree and not the other -- which would file a table under
+        a path claiming it came from a different run than the figure beside it.
+
+        None when there is no results root, which happens only for a grapher constructed without
+        __init__ (test doubles). The plot modules treat that as "write no tables" rather than
+        failing, so a partially-built object cannot crash a figure it could otherwise draw.
+        '''
+        root = getattr(self, 'results_root', None)
+        return self._qualified_dir(root, gt) if root else None
+
+    def _qualified_dir(self, root, gt):
+        '''`<root>/<gt>/` plus the variant and read-basis segments this run needs.'''
+        output = root + '/' + gt + '/'
         if self.variant_spec.raw != 'norm:full':
             output += self.variant_spec.raw.replace(':', '_') + '/'
         if gt not in BASIS_IN_FILENAME_TYPES and self.read_basis != toolsTG.READ_BASIS_UNIQUE:
@@ -614,6 +639,7 @@ class anndataGrapher:
             if cmappar in self.args.colormap:
                 colormap = self.args.colormap[cmappar]
         output = self._output_dir_for(gt)
+        results_dir = self._results_dir_for(gt)
         if threaded:
             threaded += toolsTG.builder(output) + '\n'
         else:
@@ -672,7 +698,7 @@ class anndataGrapher:
                                             settings=settings, read_basis=self.read_basis,
                                             variant_tag=self.variant_spec.tag, threaded=threaded,
                                             colormap=colormap, colors=self.args.colormap,
-                                            cutoff=self.args.cutoff)
+                                            cutoff=self.args.cutoff, results_dir=results_dir)
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership
@@ -686,7 +712,7 @@ class anndataGrapher:
                 readtypes=self.resolved_diffrts(), cutoff=self.args.cutoff,
                 colormap=colormap, threaded=threaded, toplabels=self.args.vollabels,
                 xlim=self.args.volxlim, overwrite=self.args.regen_uns,
-                shrink=getattr(self.args, 'shrink', 'apeGLM'))
+                shrink=getattr(self.args, 'shrink', 'apeGLM'), results_dir=results_dir)
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership
@@ -697,7 +723,8 @@ class anndataGrapher:
                 adata_c, block, output, config_name=self.config_name, settings=settings,
                 read_basis=self.read_basis, cutoff=self.args.cutoff, colormap=colormap,
                 threaded=threaded, overwrite=self.args.regen_uns,
-                shrink=getattr(self.args, 'shrink', 'apeGLM'), toplabels=self.args.vollabels)
+                shrink=getattr(self.args, 'shrink', 'apeGLM'), toplabels=self.args.vollabels,
+                results_dir=results_dir)
         if gt == 'volcano':
             threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.cutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  

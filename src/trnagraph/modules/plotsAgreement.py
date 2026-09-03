@@ -465,7 +465,7 @@ def _log2fc_frames(adata, grouping, readtypes, cutoff, config_name, overwrite=Fa
 
 def visualizer(adata, block, output, config_name='default', settings=None, readtypes=None,
                cutoff=20, colormap=None, threaded=False, toplabels=100, xlim=None,
-               overwrite=False, shrink='apeGLM'):
+               overwrite=False, shrink='apeGLM', results_dir=None):
     '''
     Draw an agreement volcano for every reference-anchored contrast, and write their tables.
 
@@ -475,7 +475,7 @@ def visualizer(adata, block, output, config_name='default', settings=None, readt
     '''
     import matplotlib.pyplot as plt
 
-    from . import plotsThresholds, plotsVenn, toolsTG
+    from . import plotsThresholds, toolsTG
 
     grouping = block.grouping
     if grouping not in adata.obs.columns:
@@ -493,12 +493,8 @@ def visualizer(adata, block, output, config_name='default', settings=None, readt
 
     individual_output = f'{output}individual/'
     messages = [toolsTG.builder(individual_output)]
-    results_dir, results_message = plotsVenn.resolve_results_dir(adata)
-    if results_message:
-        messages.append(results_message)
-        logger.warning(results_message)
-    else:
-        os.makedirs(results_dir, exist_ok=True)
+    if results_dir:
+        messages.append(toolsTG.builder(results_dir))
 
     provenance_base = {'config': config_name, 'cutoff': cutoff, 'grouping': grouping,
                        'reference': reference, 'log2fc': block.log2fc, 'padj': block.padj,

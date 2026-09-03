@@ -395,34 +395,6 @@ def draw_venn(ax, sets, colors=None, alpha=None):
                 alpha=VENN_ALPHA if alpha is None else alpha)
 
 
-def resolve_results_dir(adata):
-    '''
-    Where this object's multivariate tables belong: (directory, skip message).
-
-    `results/multivariate/` is a SIBLING of the per-variant result directories rather than a
-    child of one, because a Venn spanning u60 and o60 belongs to neither and filing it under one
-    would say something false about what produced it.
-
-    The location comes from the object's own build provenance. When that directory is gone --
-    the build output was moved, or built somewhere temporary, which is the case for the demo
-    object -- this returns (None, message) and the caller skips the convenience copy. There is
-    deliberately NO fallback directory: inventing one scatters output to wherever a graph run
-    happened to be pointed, and the membership is still in the object, which is the source of
-    truth regardless.
-    '''
-    runinfo = adata.uns.get('trnagraphruninfo') or {}
-    build_dir = runinfo.get('trnagraph_directory') if hasattr(runinfo, 'get') else None
-    if not build_dir:
-        return None, ("Skipping the multivariate result tables: this object has no "
-                      "uns['trnagraphruninfo']['trnagraph_directory'], so there is no results/ "
-                      "tree to write them beside. The membership is stored in the object itself.")
-    if not os.path.isdir(str(build_dir)):
-        return None, (f"Skipping the multivariate result tables: the build directory recorded in "
-                      f"this object, {build_dir}, no longer exists. The membership is stored in "
-                      f"the object itself.")
-    return os.path.join(str(build_dir), 'results', 'multivariate'), None
-
-
 def exclusive_regions(sets):
     '''
     {region label: [feature, ...]} where every feature appears in exactly ONE region.
@@ -458,9 +430,13 @@ def write_membership_table(path, sets, provenance):
     regions = exclusive_regions(sets)
     lines = ['# tRNAgraph Venn membership']
     lines += [f'# {key}: {value}' for key, value in provenance.items()]
-    lines.append('\t'.join(['region', 'n', 'features']))
-    for region, features in regions.items():
-        lines.append('\t'.join([region, str(len(features)), ','.join(features)]))
+    lines.append('\t'.join(['rank', 'region', 'n', 'features']))
+    # Largest region first, so the file opens on what most features share rather than on
+    # whichever region the set order happened to enumerate first. Ties keep enumeration order,
+    # which is the order the diagram's own labels run in.
+    ordered = sorted(regions.items(), key=lambda item: -len(item[1]))
+    for rank, (region, features) in enumerate(ordered, start=1):
+        lines.append('\t'.join([str(rank), region, str(len(features)), ','.join(features)]))
     path = str(path)
     with open(path, 'w') as handle:
         handle.write('\n'.join(lines) + '\n')
@@ -631,7 +607,7 @@ def _set_members(adata, spec, cutoff):
 
 def visualizer(adata, block, output, config_name='default', settings=None,
                read_basis=None, variant_tag='full', threaded=False, colormap=None,
-               colors=None, cutoff=20):
+               colors=None, cutoff=20, results_dir=None):
     '''
     Draw every Venn this object supports, store the membership, and write the tables.
 
@@ -648,12 +624,8 @@ def visualizer(adata, block, output, config_name='default', settings=None,
     if not plans:
         return '\n'.join(messages) + '\n' if threaded else None
 
-    results_dir, results_message = resolve_results_dir(adata)
-    if results_message:
-        messages.append(results_message)
-        logger.warning(results_message)
-    else:
-        os.makedirs(results_dir, exist_ok=True)
+    if results_dir:
+        messages.append(toolsTG.builder(results_dir))
 
     messages.append(toolsTG.builder(individual_output))
     provenance_base = {'config': config_name, 'cutoff': cutoff,

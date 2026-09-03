@@ -52,6 +52,8 @@ def stub_fits(monkeypatch):
 def _run(tmp_path, adata=None, **kw):
     kw.setdefault('readtypes', ['nreads_fiveprime_unique_norm'])
     kw.setdefault('cutoff', 20)
+    # adataGraph derives this once and hands it down; the module no longer builds it itself.
+    kw.setdefault('results_dir', str(tmp_path).replace('graphs', 'results'))
     plotsAgreement.visualizer(adata if adata is not None else _adata(),
                               MultivariateConfig(grouping='timepoint'),
                               f'{tmp_path}/', **kw)
@@ -89,25 +91,26 @@ def test_the_stored_provenance_names_the_thresholds(stub_fits, tmp_path):
     assert provenance['reference'] == REF
 
 
-def test_tables_are_skipped_when_the_build_directory_is_gone(stub_fits, tmp_path):
-    """Same rule the Venn follows: results/ lives beside the build, and there is deliberately
-    no fallback directory. The membership is on the object either way."""
-    adata = _adata()
-    adata.uns['trnagraphruninfo'] = {'trnagraph_directory': '/nonexistent/path'}
-    _run(tmp_path, adata=adata)
+def test_a_table_is_written_per_contrast_beside_the_figures(stub_fits, tmp_path):
+    """The tables used to be filed under the directory recorded in the object's build
+    provenance and skipped outright when it was gone -- which it usually is, so they went
+    missing exactly when they were most wanted. They now sit in the results/ twin of the
+    figures' own path, which every run has by construction."""
+    _run(tmp_path / 'graphs')
 
-    assert (tmp_path / 'individual' / 'Day 0-Day 70_agreement.pdf').exists()
-
-
-def test_a_table_is_written_per_contrast_when_the_build_directory_exists(stub_fits, tmp_path):
-    adata = _adata()
-    build = tmp_path / 'build'
-    build.mkdir()
-    adata.uns['trnagraphruninfo'] = {'trnagraph_directory': str(build)}
-    _run(tmp_path, adata=adata)
-
-    written = sorted(p.name for p in (build / 'results' / 'multivariate').glob('*.tsv'))
+    written = sorted(p.name for p in (tmp_path / 'results').glob('*.tsv'))
     assert written == ['Day 0-Day 35_agreement.tsv', 'Day 0-Day 70_agreement.tsv']
+
+
+def test_the_table_no_longer_depends_on_build_provenance(stub_fits, tmp_path):
+    """An object whose build directory is gone -- the demo object records a scratch path, the
+    hg38 object a server path -- still gets its tables."""
+    adata = _adata()
+    adata.uns['trnagraphruninfo'] = {'trnagraph_directory': str(tmp_path / 'gone')}
+    _run(tmp_path / 'graphs', adata=adata)
+
+    assert sorted(p.name for p in (tmp_path / 'results').glob('*.tsv')) == [
+        'Day 0-Day 35_agreement.tsv', 'Day 0-Day 70_agreement.tsv']
 
 
 def test_a_single_level_column_is_refused_by_name(stub_fits, tmp_path):

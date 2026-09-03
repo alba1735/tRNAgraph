@@ -355,26 +355,60 @@ def draw_bars(ax, table, plan, contrast, tier_colors, settings=None):
     return ax
 
 
+def ranked_table(table, plan, contrast, index_col):
+    '''
+    The figure's numbers as a table ordered most notable first, rendered from the frame it draws.
+
+    Ordered the way the LABELS are ordered, so the rows at the top of the file are the points
+    whose names are on the figure -- one notion of "notable" across both, rather than a table
+    that disagrees with the plot beside it about what mattered.
+
+    That order is: features called in at least one channel first, then by `decoupling` (distance
+    from the diagonal) descending. A feature called in both channels but sitting on the diagonal
+    moved a great deal and is not decoupled at all, so significance alone is the wrong sort for
+    this figure. `min_padj` is carried anyway, for a reader who does want to sort by it.
+    '''
+    x_label, y_label = (channel.label for channel in plan.channels)
+    out = pd.DataFrame({
+        index_col: table['feature'].to_numpy(),
+        'contrast': contrast,
+        f'log2_{x_label}': table['x'].to_numpy(),
+        f'log2_{y_label}': table['y'].to_numpy(),
+        f'padj_{x_label}': table['x_padj'].to_numpy(),
+        f'padj_{y_label}': table['y_padj'].to_numpy(),
+        f'called_{x_label}': table['called_x'].to_numpy(),
+        f'called_{y_label}': table['called_y'].to_numpy(),
+        'decoupling': (table['x'] - table['y']).abs().to_numpy(),
+        'min_padj': table[['x_padj', 'y_padj']].min(axis=1).to_numpy(),
+        'tier': [_tier_label(_tier_of(row), x_label, y_label)
+                 for _, row in table.iterrows()],
+    })
+    # Called in EITHER channel, not the count of channels called. Ranking by the count puts a
+    # feature that moved hard in both -- sitting on the diagonal, the coupled case -- above one
+    # that only one channel saw, which is the exact opposite of what this figure looks for, and
+    # would make the table disagree with the labels drawn on the plot beside it.
+    out['is_called'] = (table['called_x'] | table['called_y']).astype(int).to_numpy()
+    out = out.sort_values(['is_called', 'decoupling'],
+                          ascending=[False, False], kind='mergesort')
+    # A rank column so "the top twenty" is answerable by eye, and so re-sorting the file in a
+    # spreadsheet does not lose the order the figure was drawn in.
+    out.insert(0, 'rank', np.arange(1, len(out) + 1))
+    return out.drop(columns='is_called')
+
+
 def _write_table(table, plan, contrast, index_col, results_dir, name):
-    '''The figure's own numbers as a TSV, rendered from the same frame the scatter draws.'''
+    '''Write one ranked table, or None when this run has nowhere to put it.'''
     if not results_dir:
         return None
+    os.makedirs(results_dir, exist_ok=True)
     path = os.path.join(results_dir, f'{name}_{index_col}_decoupling.tsv')
-    out = table.rename(columns={
-        'feature': index_col,
-        'x': f'log2_{plan.channels[0].label}', 'y': f'log2_{plan.channels[1].label}',
-        'x_padj': f'padj_{plan.channels[0].label}', 'y_padj': f'padj_{plan.channels[1].label}',
-        'called_x': f'called_{plan.channels[0].label}',
-        'called_y': f'called_{plan.channels[1].label}',
-    })
-    out.insert(1, 'contrast', contrast)
-    out.to_csv(path, sep='\t', index=False)
+    ranked_table(table, plan, contrast, index_col).to_csv(path, sep='\t', index=False)
     return path
 
 
 def visualizer(adata, block, output, config_name='default', settings=None, read_basis=None,
                cutoff=20, colormap=None, threaded=False, overwrite=False, shrink='apeGLM',
-               toplabels=100):
+               toplabels=100, results_dir=None):
     '''
     Draw every declared decoupling pair, over every reference-anchored contrast.
 
@@ -383,7 +417,7 @@ def visualizer(adata, block, output, config_name='default', settings=None, read_
     `multivariate.grouping`/`reference` -- the same universe `-g agreement` uses -- so every
     figure in a run shares one denominator rather than mixing pairwise combinations.
     '''
-    from . import plotsAgreement, plotsVenn
+    from . import plotsAgreement
 
     grouping = block.grouping
     if grouping not in adata.obs.columns:
@@ -403,11 +437,8 @@ def visualizer(adata, block, output, config_name='default', settings=None, read_
 
     individual_output = f'{output}individual/'
     messages.append(toolsTG.builder(individual_output))
-    results_dir, results_message = plotsVenn.resolve_results_dir(adata)
-    if results_message:
-        messages.append(results_message)
-    elif results_dir:
-        os.makedirs(results_dir, exist_ok=True)
+    if results_dir:
+        messages.append(toolsTG.builder(results_dir))
 
     for plan in plans:
         tier_colors = _tier_colors(plan, colormap)
@@ -477,6 +508,11 @@ def visualizer(adata, block, output, config_name='default', settings=None, read_
                 toolsTG.save_current(path, settings)
                 plt.close(fig)
                 messages.append(f'Saving decoupling bars: {path}')
+
+                written = _write_table(table, plan, contrast, axis_name, results_dir,
+                                       f'{plan.name}_{contrast}')
+                if written:
+                    messages.append(f'Saving decoupling table: {written}')
 
     return _emit(messages, threaded)
 
