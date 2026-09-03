@@ -30,6 +30,7 @@ class ExternalLazyLoader:
 plotsCount = LazyLoader('plotsCount')
 plotsCluster = LazyLoader('plotsCluster')
 plotsCorrelation = LazyLoader('plotsCorrelation')
+plotsDecoupling = LazyLoader('plotsDecoupling')
 plotsCoverage = LazyLoader('plotsCoverage')
 plotsHeatmap = LazyLoader('plotsHeatmap')
 plotsMismatch = LazyLoader('plotsMismatch')

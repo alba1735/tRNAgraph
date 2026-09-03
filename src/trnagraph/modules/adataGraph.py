@@ -6,7 +6,7 @@ import logging
 from . import toolsTG
 from .toolsSchemas import OUTPUT_FORMATS
 from .lazy_imports import (
-    plotsCount, plotsCluster, plotsCorrelation,
+    plotsCount, plotsCluster, plotsCorrelation, plotsDecoupling,
     plotsCoverage, plotsHeatmap, plotsMismatch, plotsSeqlogo, plotsPca, plotsRadar, plotsVenn, plotsAgreement, plotsVolcano
 )
 
@@ -48,7 +48,7 @@ GRAPH_TYPES_ALL = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
 #: producing them unasked
 #: would hand a user figures whose parameters they never selected. Once that choice HAS been
 #: made, requiring the type to be named again is ceremony rather than a safeguard.
-OPTIONAL_GRAPH_TYPES = ('venn', 'agreement')
+OPTIONAL_GRAPH_TYPES = ('venn', 'agreement', 'decoupling')
 
 
 #: Graph types that persist their results back onto the .h5ad. They cannot share the worker
@@ -140,7 +140,8 @@ class anndataGrapher:
         # variant and read type -- so its colours are keyed by set label under `colors.venn`.
         self.cmap_dict = {'cluster':self.args.clustergrp, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
-                          'venn':'venn', 'volcano':self.args.volgrp}
+                          'venn':'venn', 'decoupling':'decoupling',
+                          'volcano':self.args.volgrp}
         # Load all graph types if specified
         requested = ([self.args.graphtypes] if isinstance(self.args.graphtypes, str)
                      else list(self.args.graphtypes))
@@ -306,7 +307,16 @@ class anndataGrapher:
         multivariate = None if getattr(self.config, 'multivariate', None) is not None else (
             'no `multivariate` block in --config, which declares the grouping and thresholds its '
             'sets are built from')
-        return {'venn': multivariate, 'agreement': multivariate}
+        # decoupling needs one thing more: the block must actually enumerate channel pairs.
+        # Nothing else can be inferred -- which two ways of measuring the same features are worth
+        # comparing is a claim about the experiment, and an object carrying several split tags
+        # gives no basis for picking one.
+        block = getattr(self.config, 'multivariate', None)
+        decoupling = multivariate or (
+            None if getattr(block, 'decoupling', None) else
+            'no `multivariate.decoupling` block in --config, which enumerates the channel pairs '
+            'the figure plots against each other')
+        return {'venn': multivariate, 'agreement': multivariate, 'decoupling': decoupling}
 
     def _colormap_key(self, gt):
         '''
@@ -340,7 +350,10 @@ class anndataGrapher:
             groupings.append(self.args.heatgrp)
         if 'volcano' in self.args.graphtypes:
             groupings.append(self.args.volgrp)
-        if 'agreement' in self.args.graphtypes:
+        if 'agreement' in self.args.graphtypes or 'decoupling' in self.args.graphtypes:
+            # Both group by `multivariate.grouping`. decoupling's split-tag channels still fit on
+            # demand -- the precompute caches the 'full' tag only -- but those go through
+            # variant_log2fc at n_cpus=1, so they are slow inside the pool rather than unsafe.
             block = getattr(self.config, 'multivariate', None)
             if block is not None:
                 groupings.append(block.grouping)
@@ -678,6 +691,13 @@ class anndataGrapher:
             if membership:
                 self.adata_original.uns['multivariate'] = membership
                 toolsTG.write_h5ad(self.adata_original, self.args.anndata)
+        if gt == 'decoupling':
+            block = plotsVenn.require_multivariate_config(self.config)
+            threaded = plotsDecoupling.visualizer(
+                adata_c, block, output, config_name=self.config_name, settings=settings,
+                read_basis=self.read_basis, cutoff=self.args.cutoff, colormap=colormap,
+                threaded=threaded, overwrite=self.args.regen_uns,
+                shrink=getattr(self.args, 'shrink', 'apeGLM'), toplabels=self.args.vollabels)
         if gt == 'volcano':
             threaded = plotsVolcano.visualizer(adata_c, self.args.volgrp, self.resolved_diffrts(), self.args.cutoff, output, colormap=colormap, toplabels=self.args.vollabels, threaded=threaded, config_name=self.config_name, overwrite=self.args.regen_uns, is_full_variant=self.variant_spec.tag == 'full', xlim=self.args.volxlim, settings=settings)
         # Return threaded output  

@@ -314,7 +314,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 
 - **`-i`, `--input`** (Required): Input AnnData file.
 - **`-o`, `--output`**: Output directory. Default: `figures`.
-- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`, `agreement`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
+- **`-g`, `--graphtypes`**: List of graphs to generate (`all`, `cluster`, `correlation`, `decoupling`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar`, `venn`, `volcano`, `agreement`). Default: `all`. `all` now **unions** with anything else named, so `-g all -g venn` gives you both — it previously replaced the list and dropped the extra silently. Repeatable rather than space-separated: `-g volcano -g pca`, not `-g volcano pca` (the latter parses as one graph type plus two stray positional arguments and errors out).
 - **`-n`, `--threads`**: Number of threads to use. Default: `0` (all available cores).
 - **`--config`**: JSON configuration file for filtering, and optionally a `flags.graph` block pinning most `graph` options (grouping columns, cutoffs, readtypes, `--variant`, `--allreads`, ...). The same file carries a block per command, so one file can drive a whole run. A flag typed on the command line always beats the file. `--input`/`--output`/`--config`/`--style`/`--threads`/`--quiet`/`--verbose` are not settable, and `--format` belongs to `--style`. See [Run Configuration](advanced_usage.md#run-configuration---config).
 - **`--style`**: JSON style file carrying the color palette and presentation settings (figure size, marker/font/line size, dpi, alpha, output format). See [Style Files](advanced_usage.md#style-files---style).
@@ -327,7 +327,7 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 > The PCA and volcano _combined overview_ pages always show both read bases side by side, whatever `--allreads` is set to. That is deliberate: it is the only place you can see how much transcript-level multi-mapping actually moves your data, and a labelled comparison is not the same thing as two plots silently disagreeing.
 
 > [!NOTE]
-> `venn` and `agreement` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — a `multivariate` block in `--config` for each. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the other two are only produced when you ask for them by name (`-g venn`, `-g agreement`) or when that block is present. Both are excluded because they need a `multivariate` block declaring the grouping and thresholds they are built from, and figures produced from cutoffs nobody chose invite wrong conclusions. See **Venn Options** and **Agreement Options** below.
+> `venn`, `agreement` and `decoupling` are not part of `all`'s fixed list, but are folded in automatically when their prerequisites are satisfied — a `multivariate` block in `--config` for each, and for `decoupling` a `multivariate.decoupling` block enumerating its channel pairs. When a prerequisite is missing the type is left out and the run logs why, so a missing figure is never confused with an empty result. Naming one explicitly always includes it, so the run fails with an instruction rather than quietly skipping. `all` expands to `cluster`, `correlation`, `count`, `coverage`, `heatmap`, `logo`, `mismatch`, `pca`, `radar` and `volcano`; the other two are only produced when you ask for them by name (`-g venn`, `-g agreement`, `-g decoupling`) or when that block is present. Both are excluded because they need a `multivariate` block declaring the grouping and thresholds they are built from, and figures produced from cutoffs nobody chose invite wrong conclusions. See **Venn Options** and **Agreement Options** below.
 
 > [!IMPORTANT]
 > Every option below that names something inside the object -- a grouping column
@@ -348,6 +348,47 @@ trnagraph graph -i <input.h5ad> -o <output_dir> [options]
 - **`--clusteroverview`**: Generate overview plot. Default: `False`. Forced on when `-g all` is used.
 - **`--clustermask`**: Mask unclustered points. Default: `False`.
 - **`--clusternumeric`**: Treat the `--clustergrp` category as numeric rather than categorical, which changes how it is coloured and ordered. Default: `False`.
+
+**Decoupling Options:**
+
+Only used by `-g decoupling`. Asks whether a tRNA moves the same way in two different ways of measuring it — fragment against full length, or 5' against 3'. Configured entirely through `--config`'s `multivariate.decoupling` block, not through flags.
+
+The same between-sample contrast is fitted **separately in each channel**, and the two are plotted against each other: one point per tRNA, one figure per contrast, the diagonal being perfect coupling. A point significant in one channel but not the other is the decoupled case, and that is what the colour shows. Contrasts come from `multivariate.grouping`/`reference` and are reference-anchored, so every figure shares one denominator.
+
+```json
+"multivariate": {
+  "grouping": "timepoint",
+  "reference": "Day 0",
+  "decoupling": [
+    {
+      "name": "frag_vs_full",
+      "title": "Fragment vs full length",
+      "channels": [
+        { "label": "Fragment", "variant": "norm:u60" },
+        { "label": "Full length", "variant": "norm:o60" }
+      ]
+    },
+    {
+      "name": "fiveprime_vs_threeprime",
+      "channels": [
+        { "label": "5' end", "readtype": "fiveprime" },
+        { "label": "3' end", "readtype": "threeprime" }
+      ]
+    }
+  ]
+}
+```
+
+A channel names a `variant` (the same spelling `--variant` takes), a `readtype`, or both; each comparison takes exactly two. Pairs are listed rather than derived by crossing a flat list, because crossing would also pair channels with no common axis — a fragment against a 5' end differs in two ways at once and says nothing.
+
+Output is a scatter over the `trna` axis (the combined overview, plus one per contrast under `individual/`), the `amino` and `iso` axes as paired bar charts under `individual/`, and a TSV of each figure's own numbers under `results/multivariate/`. Colours come from `colors.decoupling` in `--style`, keyed by channel label.
+
+Points are labelled using **`--vollabels`**, the same setting the volcano and agreement figures take: `0` draws none, `N` draws at most N. Labels are ranked by **distance from the diagonal** — the decoupling itself — among features called in at least one channel, rather than by significance as on a volcano, since that is the quantity this figure is about. The number is a ceiling rather than a promise: a label that cannot be placed without landing on a more decoupled one is dropped instead of drawn overlapping, and the run reports how many were placed.
+
+> [!NOTE]
+> A pair whose channels this object cannot supply is **skipped on its own**, naming what was missing; the other pairs still draw. Whether a read-length split exists is a property of the sequencing protocol — OTTR-seq carries both fragments and full-length reads, while ARM-seq and DM-tRNA-seq favour one — so a 5'/3' pair keeps working on an object with no split at all.
+
+> Fold changes come from the same PyDESeq2 fit as the volcano and heatmap, with BH-adjusted p-values, at the project-wide `p = 0.05` / `p = 0.001` thresholds. Each channel is fitted on its own, so the comparison is between _changes_ rather than between levels and each channel's size factors cancel inside its own fold change. A true interaction test (`~channel * condition`) is a separate, planned piece of work; this figure is the descriptive answer to the same question.
 
 **Venn Options:**
 

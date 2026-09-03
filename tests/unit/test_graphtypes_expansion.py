@@ -33,10 +33,12 @@ def test_all_no_longer_swallows_an_explicitly_named_type():
 
 def test_a_ready_optional_type_joins_all():
     types, skipped = adataGraph.resolve_graphtypes(
-        ['all'], {'venn': None, 'agreement': 'no multivariate block'})
+        ['all'], {'venn': None, 'agreement': 'no multivariate block',
+                  'decoupling': 'no multivariate.decoupling block'})
 
     assert 'venn' in types
-    assert skipped == [('agreement', 'no multivariate block')]
+    assert skipped == [('agreement', 'no multivariate block'),
+                       ('decoupling', 'no multivariate.decoupling block')]
 
 
 def test_an_unready_optional_type_is_left_out_with_its_reason():

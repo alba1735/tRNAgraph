@@ -123,6 +123,73 @@ class VennPlan(BaseModel):
     sets: List[VennSet]
 
 
+class ChannelDeclaration(BaseModel):
+    '''
+    One measurement channel of `-g decoupling`, as a user declares it in `--config`.
+
+    A channel is a way of MEASURING the same features in the same samples: a read-length
+    variant (`"norm:u60"`, the same spelling `--variant` takes) or a read type (`"fiveprime"`).
+    Deliberately NOT a `VennSetDeclaration` with one field forbidden: that model carries a
+    grouping `level` too, and a level is what a decoupling contrast varies rather than what
+    distinguishes its channels. Reusing it and rejecting one of its four fields would document
+    a mismatch rather than enforce a rule.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    label: Optional[str] = None
+    variant: Optional[str] = None
+    readtype: Optional[str] = None
+
+
+class DecouplingDeclaration(BaseModel):
+    '''
+    One decoupling figure: two channels, compared across the same contrasts.
+
+    Pairs are enumerated rather than derived by crossing a flat channel list, for the reason
+    `VennDeclaration` enumerates circles: a product is how an unwanted figure happens by
+    accident, and here it would also pair channels that have no common axis -- a fragment
+    against a 5' end says nothing, since they differ in two ways at once.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    name: str
+    title: Optional[str] = None
+    channels: List['ChannelDeclaration']
+
+    @field_validator('channels')
+    @classmethod
+    def _exactly_two(cls, v):
+        if len(v) != 2:
+            raise ValueError(
+                f'a decoupling comparison needs exactly two channels, got {len(v)}. The figure '
+                f'plots one channel against the other; declare another entry for a further pair.')
+        return v
+
+
+class DecouplingChannel(BaseModel):
+    '''
+    A channel once resolved: the variant tag and obs column its fold changes are fitted from.
+
+    Distinct from ChannelDeclaration for the reason VennSet is distinct from its declaration --
+    by this point the variant string has become a tag, the bare read type an obs column for the
+    run's basis, and the label has been filled in.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    label: str
+    readtype: str
+    tag: str = 'full'
+
+
+class DecouplingPlan(BaseModel):
+    '''One decoupling figure to draw: its output name, title, and its two resolved channels.'''
+    model_config = ConfigDict(extra='forbid')
+
+    name: str
+    title: str
+    channels: List['DecouplingChannel']
+
+
 class MultivariateConfig(BaseModel):
     '''
     The `multivariate` block: which analysis the set-membership plots describe.
@@ -152,6 +219,10 @@ class MultivariateConfig(BaseModel):
     #: Complex diagrams, each with its circles enumerated. The two simple Venns are NOT listed
     #: here -- they are drawn automatically whenever the data supports them.
     venn: Optional[List['VennDeclaration']] = None
+    #: Channel pairs for `-g decoupling`, each naming the two ways of measuring the same
+    #: features that the figure plots against each other. Its presence is what gates that
+    #: graph type, the way this block as a whole gates `venn` and `agreement`.
+    decoupling: Optional[List['DecouplingDeclaration']] = None
 
 
 class RunConfig(BaseModel):
