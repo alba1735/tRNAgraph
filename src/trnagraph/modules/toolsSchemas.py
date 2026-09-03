@@ -75,6 +75,43 @@ class VennSet(BaseModel):
     readtype: str
     tag: str = 'full'
     level: Optional[str] = None
+    # Which obs column `level` is a value of. Carried on the set rather than looked up at use
+    # time so a set is self-contained: _set_members() filters on it directly.
+    level_column: Optional[str] = None
+
+
+class VennSetDeclaration(BaseModel):
+    '''
+    One circle as a user declares it in `--config`.
+
+    Every field is optional and narrows the population: a grouping `level`, a read-length
+    `variant` (`"norm:u60"`, the same spelling --variant takes), a bare `readtype`. Omitted
+    fields fall back to the run's defaults, so `{"level": "Day 0"}` is a legitimate circle.
+
+    Distinct from VennSet, which is the RESOLVED form: by then the variant string has become a
+    tag, the bare readtype an obs column, and the label has been filled in.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    label: Optional[str] = None
+    level: Optional[str] = None
+    variant: Optional[str] = None
+    readtype: Optional[str] = None
+
+
+class VennDeclaration(BaseModel):
+    '''
+    One complex Venn, with its circles enumerated.
+
+    Enumerated rather than described as axes to cross, because a product is how a request for
+    45 circles happens by accident (three timepoints x three variants x five read types). Listing
+    each circle makes the unreasonable request unexpressible rather than merely rejected.
+    '''
+    model_config = ConfigDict(extra='forbid')
+
+    name: str
+    title: Optional[str] = None
+    sets: List[VennSetDeclaration]
 
 
 class VennPlan(BaseModel):
@@ -110,6 +147,9 @@ class MultivariateConfig(BaseModel):
     #: Significance thresholds for the DE-hit membership mode.
     log2fc: float = 1.5
     padj: float = 0.001
+    #: Complex diagrams, each with its circles enumerated. The two simple Venns are NOT listed
+    #: here -- they are drawn automatically whenever the data supports them.
+    venn: Optional[List['VennDeclaration']] = None
 
 
 class RunConfig(BaseModel):

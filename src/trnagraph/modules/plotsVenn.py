@@ -16,7 +16,9 @@ import logging
 import os
 
 import matplotlib.pyplot as plt
+import numpy as np
 
+from . import plotsPalette
 from . import toolsTG
 
 from .toolsSchemas import VennPlan, VennSet
@@ -44,9 +46,273 @@ SPLIT_READTYPE = 'total'
 END_READTYPES = ('fiveprime', 'threeprime')
 
 
+#: The largest diagram that can be drawn HONESTLY. Four and five sets have known-good ellipse
+#: arrangements; six does not -- the reference implementations switch to triangles there, and a
+#: six-ellipse figure cannot represent all 63 regions, so counts would be missing from the
+#: picture with nothing saying so.
+MAX_VENN_SETS = 5
+#: matplotlib-venn's area-proportional layouts.
+PROPORTIONAL_MAX_SETS = 3
+
+
+def venn_layout(n_sets):
+    '''
+    Which layout a diagram of `n_sets` circles gets: 'proportional' or 'ellipse'.
+
+    Two and three are drawn area-proportionally, where the overlap is legible without reading a
+    number. Four to six cannot be laid out proportionally with circles at all and use fixed
+    ellipses, where the areas mean nothing and every region carries its count.
+
+    Beyond five, returns 'upset_only'. Emitting a figure that cannot show every region is worse
+    than not emitting one, and the UpSet companion drawn beside each complex diagram is exact at
+    any size, so nothing is lost but the shape.
+    '''
+    if n_sets < 2:
+        raise InvalidVennError(
+            f'A Venn diagram needs at least 2 sets to show an overlap, got {n_sets}. '
+            f'One set is a count, not a comparison.')
+    if n_sets > MAX_VENN_SETS:
+        # Not an error: the analysis is fine, only the Venn SHAPE cannot carry it. The UpSet
+        # companion written beside every complex diagram is exact at any number of sets, so the
+        # question still gets answered -- in the representation that can answer it.
+        return 'upset_only'
+    return 'proportional' if n_sets <= PROPORTIONAL_MAX_SETS else 'ellipse'
+
+
+#: Ellipse arrangements for the diagram sizes matplotlib-venn cannot draw, as
+#: (centre x, centre y, width, height, rotation degrees) in axes coordinates. These are the
+#: classical 4- and 5-set Venn constructions -- every one of the 2**n - 1 regions exists as a
+#: distinct area, which is the property that makes them usable and that no arrangement of six
+#: ellipses has.
+ELLIPSE_LAYOUTS = {
+    4: [(0.350, 0.400, 0.72, 0.45, 140.0),
+        (0.450, 0.500, 0.72, 0.45, 140.0),
+        (0.544, 0.500, 0.72, 0.45, 40.0),
+        (0.644, 0.400, 0.72, 0.45, 40.0)],
+    5: [(0.428, 0.449, 0.87, 0.50, 155.0),
+        (0.469, 0.543, 0.87, 0.50, 82.0),
+        (0.558, 0.523, 0.87, 0.50, 10.0),
+        (0.578, 0.432, 0.87, 0.50, 118.0),
+        (0.489, 0.383, 0.87, 0.50, 46.0)],
+}
+
+#: Samples per axis when locating region centroids. 600 puts roughly 30 points in the smallest
+#: region of the 5-set arrangement, which is enough for a stable centroid without being slow.
+_PLACEMENT_GRID = 600
+
+
+def _membership_masks(layout, grid=_PLACEMENT_GRID):
+    '''
+    A grid over the unit square, labelled with which ellipses contain each point.
+
+    Returns (xs, ys, masks) where `masks` is an integer bitmask per point: bit i set when the
+    point lies inside ellipse i. Regions are then found by grouping points by mask, which is
+    what lets label placement follow the ACTUAL geometry rather than a table of coordinates that
+    could drift out of step with it.
+    '''
+    axis = np.linspace(0.0, 1.0, grid)
+    xs, ys = np.meshgrid(axis, axis)
+    masks = np.zeros(xs.shape, dtype=np.int32)
+    for i, (cx, cy, width, height, angle) in enumerate(layout):
+        theta = np.radians(angle)
+        dx, dy = xs - cx, ys - cy
+        # Rotate into the ellipse's own frame, then apply the unit-circle test.
+        rx = dx * np.cos(theta) + dy * np.sin(theta)
+        ry = -dx * np.sin(theta) + dy * np.cos(theta)
+        inside = (rx / (width / 2)) ** 2 + (ry / (height / 2)) ** 2 <= 1.0
+        masks |= inside.astype(np.int32) << i
+    return xs, ys, masks
+
+
+#: How far beyond its ellipse's outward extremity a set label sits, in axes coordinates.
+_LABEL_MARGIN = 0.04
+
+
+def _label_anchor(ellipse, centre=(0.5, 0.5), samples=720):
+    '''
+    Where one ellipse's set label goes: just past the boundary point farthest from the middle.
+
+    A fixed offset from each ellipse's CENTRE collides whenever two ellipses share a centre
+    coordinate, which the 4-set arrangement does by construction -- two pairs sit at the same
+    height, so their labels printed on top of one another. The outward extremity is distinct for
+    every ellipse in both arrangements, because that is what a Venn layout is: one shape rotated
+    about a common middle. It also keeps the label clear of the region counts, which live between
+    the ellipses rather than at their tips.
+    '''
+    cx, cy, width, height, angle = ellipse
+    theta = np.radians(angle)
+    t = np.linspace(0.0, 2 * np.pi, samples, endpoint=False)
+    # The ellipse boundary, parameterised and rotated into the diagram's frame.
+    xs = cx + (width / 2) * np.cos(t) * np.cos(theta) - (height / 2) * np.sin(t) * np.sin(theta)
+    ys = cy + (width / 2) * np.cos(t) * np.sin(theta) + (height / 2) * np.sin(t) * np.cos(theta)
+    far = int(np.argmax((xs - centre[0]) ** 2 + (ys - centre[1]) ** 2))
+    outward = np.array([xs[far] - centre[0], ys[far] - centre[1]])
+    outward /= np.linalg.norm(outward)
+    return (float(xs[far] + _LABEL_MARGIN * outward[0]),
+            float(ys[far] + _LABEL_MARGIN * outward[1]))
+
+
+def draw_ellipse_venn(ax, sets, colors=None):
+    '''
+    Draw a 4- or 5-set Venn with fixed ellipses, returning (placed, unplaceable).
+
+    `placed` maps each populated region to (count, x, y); `unplaceable` lists any populated
+    region the geometry cannot show. That second return value is the point of the whole approach:
+    a region with no representable area is REPORTED, never silently absent from a figure the
+    reader will take as complete.
+
+    Areas carry no meaning at this size -- unlike the 2- and 3-set proportional layouts -- so
+    every region is labelled with its count.
+    '''
+    from matplotlib.patches import Ellipse
+
+    labels = list(sets)
+    layout = ELLIPSE_LAYOUTS.get(len(labels))
+    if layout is None:
+        raise InvalidVennError(
+            f'No ellipse arrangement for {len(labels)} sets; {sorted(ELLIPSE_LAYOUTS)} are '
+            f'available. venn_layout() decides which sizes reach here.')
+
+    palette = colors or plotsPalette.venn_colors(len(labels))
+    for (cx, cy, width, height, angle), colour in zip(layout, palette):
+        ax.add_patch(Ellipse((cx, cy), width, height, angle=angle, facecolor=colour,
+                             edgecolor='none', alpha=0.35))
+        ax.add_patch(Ellipse((cx, cy), width, height, angle=angle, facecolor='none',
+                             edgecolor=plotsPalette.REFERENCE_LINE, linewidth=0.8))
+
+    xs, ys, masks = _membership_masks(layout)
+    regions = exclusive_regions(sets)
+    placed, unplaceable = {}, []
+    for region, members in regions.items():
+        wanted = 0
+        for i, label in enumerate(labels):
+            if label in region.split(' & '):
+                wanted |= 1 << i
+        selection = masks == wanted
+        if not selection.any():
+            unplaceable.append(region)
+            continue
+        x, y = float(xs[selection].mean()), float(ys[selection].mean())
+        placed[region] = (len(members), x, y)
+        ax.text(x, y, str(len(members)), ha='center', va='center', fontsize=8)
+
+    anchors = [_label_anchor(ellipse) for ellipse in layout]
+    for (x, y), label in zip(anchors, labels):
+        ax.text(x, y, label, ha='center', va='center', fontsize=9)
+
+    # Square limits, sized to the labels rather than to the ellipses, so the aspect stays equal
+    # (the arrangement is only a Venn while it is undistorted) and no label sits on the frame.
+    span = max(abs(v - 0.5) for anchor in anchors for v in anchor) + 0.08
+    ax.set_xlim(0.5 - span, 0.5 + span)
+    ax.set_ylim(0.5 - span, 0.5 + span)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    if unplaceable:
+        logger.warning(f'{len(unplaceable)} populated region(s) have no representable area in a '
+                       f'{len(labels)}-set diagram and are absent from the figure: {unplaceable}. '
+                       f'The UpSet plot beside it carries every region.')
+    return placed, unplaceable
+
+
+def upset_intersection_sizes(sets):
+    '''
+    {region label: size} as an UpSet plot would report them.
+
+    Derived from exclusive_regions() rather than computed independently, which is the whole
+    point: the UpSet plot and the Venn beside it are two renderings of ONE computation, so they
+    cannot drift. Independent derivations would be two chances to be wrong and no way to notice.
+    '''
+    return {region: len(members) for region, members in exclusive_regions(sets).items()}
+
+
+def venn_palette(labels, colormap=None):
+    '''
+    The colour for each set in `labels`, honouring a `colors.venn` block from --style.
+
+    The style entry is keyed by SET LABEL rather than by grouping level, because a diagram can
+    carry the same level more than once -- the four-circle case crosses two timepoints with two
+    read-length variants, so "Day 0" names two different circles. Keying on the level would
+    hand both the same colour and destroy the diagram.
+
+    A partial mapping is a SUBSTITUTION into the default palette, not a replacement for it:
+    naming one circle leaves the rest where they were, so a style file does not have to name all
+    five to change one. Unnamed sets keep their positional default, which means a partial
+    override can repeat a colour the file also named explicitly -- predictable beats clever here,
+    since the alternative is a palette that shifts under you when you add an entry.
+    '''
+    labels = list(labels)
+    defaults = plotsPalette.venn_colors(len(labels))
+    if not colormap:
+        return defaults
+    return [colormap.get(label, default) for label, default in zip(labels, defaults)]
+
+
+def draw_upset(sets, title=None, settings=None, colors=None):
+    '''
+    The UpSet companion for one diagram, returned as a figure.
+
+    Drawn beside every complex Venn. At four and five sets a Venn is drawable but hard to read --
+    locating a particular combination means tracing overlapping ellipses -- while UpSet makes
+    each intersection a labelled row. Beyond five it is the only honest option, since no ellipse
+    arrangement can show every region.
+
+    UpSet is Lex et al. 2014 (IEEE TVCG 20(12):1983-1992); using the cited implementation rather
+    than drawing something bespoke is deliberate.
+    '''
+    from upsetplot import UpSet, from_contents
+
+    contents = {label: set(members) for label, members in sets.items()}
+    if not any(contents.values()):
+        raise InvalidVennError('Every set is empty; there is no intersection to plot.')
+    data = from_contents(contents)
+    fig = plt.figure(figsize=toolsTG.figsize_for(settings, (9, 5)))
+    upset = UpSet(data, show_counts=True, sort_by='cardinality')
+
+    # One colour per set, shared with the Venn beside it: reading the pair together means
+    # matching a row to a circle, and two palettes would make that a lookup rather than a glance.
+    by_label = dict(zip(sets, colors or plotsPalette.venn_colors(len(sets))))
+    for label, colour in by_label.items():
+        upset.style_categories(label, bar_facecolor=colour)
+
+    axes = upset.plot(fig=fig)
+    _color_upset_dots(axes, by_label)
+    if title:
+        fig.suptitle(title, fontsize=10)
+    # plot()'s axes dict is the only handle on the drawn matrix, and it is not attached anywhere.
+    fig._trnagraph_upset_axes = axes
+    return fig
+
+
+def _color_upset_dots(axes, by_label):
+    '''
+    Tint each filled matrix dot with its row's set colour.
+
+    upsetplot draws every dot in one PathCollection and separates present from absent by ALPHA
+    (1.0 against 0.18) rather than by colour, so the filled ones can be recoloured while absent
+    ones stay grey -- an absent dot means "not in this set", and giving it the set's colour would
+    say the opposite. Rows are matched by tick label, not by input order, because upsetplot sorts
+    categories itself.
+    '''
+    from matplotlib.colors import to_rgba
+
+    matrix = axes['matrix']
+    labels = [text.get_text() for text in matrix.get_yticklabels()]
+    if not matrix.collections:
+        return
+    dots = matrix.collections[0]
+    faces = np.asarray(dots.get_facecolors()).copy()
+    for i, (_, row) in enumerate(np.asarray(dots.get_offsets())):
+        if faces[i][3] < 0.9:
+            continue
+        label = labels[int(round(row))]
+        if label in by_label:
+            faces[i] = to_rgba(by_label[label])
+    dots.set_facecolors(faces)
+
+
 def draw_venn(ax, sets, colors=None):
     '''
-    Draw a 2- or 3-set Venn onto `ax` and return matplotlib-venn's diagram object.
+    Draw a Venn onto `ax`, dispatching on set count (see venn_layout).
 
     Region counts come from exclusive_regions(), the same computation the TSV is written from,
     so the picture and the table beside it cannot report different numbers. matplotlib-venn is
@@ -56,14 +322,17 @@ def draw_venn(ax, sets, colors=None):
     from matplotlib_venn import venn2, venn3
 
     labels = list(sets)
-    if not 2 <= len(labels) <= 3:
+    layout = venn_layout(len(labels))
+    if layout == 'upset_only':
         raise InvalidVennError(
-            f'draw_venn handles 2 or 3 sets area-proportionally, got {len(labels)}. '
-            f'Larger diagrams use the fixed-ellipse layout.')
+            f'{len(labels)} sets cannot be drawn as a Venn; use draw_upset(). '
+            f'venn_layout() decides this.')
+    if layout == 'ellipse':
+        return draw_ellipse_venn(ax, sets, colors=colors)
     members = [set(sets[label]) for label in labels]
     draw = venn2 if len(labels) == 2 else venn3
-    kwargs = {'set_colors': colors} if colors else {}
-    return draw(members, set_labels=labels, ax=ax, **kwargs)
+    palette = colors or plotsPalette.venn_colors(len(labels))
+    return draw(members, set_labels=labels, ax=ax, set_colors=tuple(palette))
 
 
 def resolve_results_dir(adata):
@@ -169,6 +438,65 @@ def _split_pairs(adata):
             for cutoff, pair in sorted(cutoffs.items()) if {'u', 'o'} <= set(pair)}
 
 
+def declared_venn_plans(adata, block, read_basis=None, variant_tag='full'):
+    '''
+    Resolve `multivariate.venn` declarations into drawable plans.
+
+    Turns each declared circle into a VennSet: the variant string becomes a tag (validated by
+    parse_variant, so an unknown split fails with its message rather than a KeyError later), the
+    bare read type becomes an obs column for the run's basis, and the grouping column is attached
+    so the set can filter on its own level.
+
+    Labels are generated from whatever actually DISTINGUISHES the circles, so a four-way diagram
+    does not end up with four labels reading "tRNAs". An explicit `label` always wins.
+    '''
+    basis = read_basis or toolsTG.READ_BASIS_UNIQUE
+    plans, overridden = [], []
+    for declaration in (block.venn or []):
+        sets = []
+        for spec in declaration.sets:
+            # A declared variant wins; --variant only fills the gaps. A diagram contrasting u60
+            # with o60 cannot be forced onto one variant, which is exactly what it is for.
+            if spec.variant:
+                tag = toolsTG.parse_variant(adata, spec.variant).tag
+                if tag != variant_tag:
+                    overridden.append(spec.variant)
+            else:
+                tag = variant_tag
+            readtype = toolsTG.resolve_readtype(spec.readtype or SPLIT_READTYPE, basis, adata)
+            sets.append(VennSet(
+                label=spec.label or _distinguishing_label(spec, declaration.sets),
+                readtype=readtype, tag=tag, level=spec.level,
+                level_column=block.grouping if spec.level is not None else None))
+        plans.append(VennPlan(
+            name=declaration.name,
+            title=declaration.title or declaration.name.replace('_', ' '),
+            sets=sets))
+    if overridden:
+        # Stated rather than silent: a flag that was disregarded is worse unmentioned than
+        # refused, since the user has no other way to learn the figure ignored it.
+        logger.info(f'--variant {variant_tag!r} is ignored for Venn sets that name their own '
+                    f'variant ({sorted(set(overridden))}); each set uses the one it declares.')
+    return plans
+
+
+def _distinguishing_label(spec, siblings):
+    '''
+    A label naming only the fields that VARY across a diagram's circles.
+
+    Including a field every circle shares adds noise ("D0 norm:u60 total" x4 differing in two
+    words); including none leaves them indistinguishable. So the label is built from exactly the
+    fields that differ.
+    '''
+    parts = []
+    for field in ('level', 'variant', 'readtype'):
+        values = {getattr(sibling, field) for sibling in siblings}
+        value = getattr(spec, field)
+        if len(values) > 1 and value is not None:
+            parts.append(str(value))
+    return ' '.join(parts) or 'all features'
+
+
 def simple_venn_plans(adata, read_basis=None, readtype=SPLIT_READTYPE):
     '''
     The automatic Venns this object can support, and a message for each it cannot.
@@ -232,13 +560,17 @@ def _set_members(adata, spec, cutoff):
     '''
     obs = toolsTG.variant_obs(adata, spec.tag)
     if spec.level is not None:
-        obs = obs[obs[spec.level_column] == spec.level]
+        if not spec.level_column:
+            raise InvalidVennError(
+                f"Venn set {spec.label!r} names level {spec.level!r} but no column to look it up "
+                f"in. Set `multivariate.grouping` to the obs column the levels belong to.")
+        obs = obs[obs[spec.level_column].astype(str) == str(spec.level)]
     obs = obs.assign(_pooled='all')
     return toolsTG.presence_sets(obs, '_pooled', spec.readtype, cutoff)['all']
 
 
 def visualizer(adata, block, output, config_name='default', settings=None,
-               read_basis=None, threaded=False):
+               read_basis=None, variant_tag='full', threaded=False, colormap=None):
     '''
     Draw every Venn this object supports, store the membership, and write the tables.
 
@@ -248,6 +580,7 @@ def visualizer(adata, block, output, config_name='default', settings=None,
     individual_output = f'{output}individual/'
     messages = []
     plans, skipped = simple_venn_plans(adata, read_basis=read_basis)
+    plans += declared_venn_plans(adata, block, read_basis=read_basis, variant_tag=variant_tag)
     for message in skipped:
         messages.append(message)
         logger.warning(message)
@@ -275,14 +608,33 @@ def visualizer(adata, block, output, config_name='default', settings=None,
         # in a run would otherwise share the same key and overwrite its predecessor.
         toolsTG.write_multivariate(adata, config_name, 'venn', plan.name, sets, provenance)
 
-        fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (6, 6)))
-        draw_venn(ax, sets)
-        ax.set_title(f'{plan.title}\n(present at mean >= {block.presence_cutoff:g} normalized reads)',
-                     fontsize=10)
-        path = f'{individual_output}{plan.name}_venn.pdf'
-        fig.savefig(path, bbox_inches='tight')
-        plt.close(fig)
-        messages.append(f'Saving Venn: {path}')
+        subtitle = f'present at mean >= {block.presence_cutoff:g} normalized reads'
+        # Resolved ONCE per diagram and handed to both renderings: the pairing only works while
+        # a row and its circle are the same colour.
+        palette = venn_palette(sets, colormap)
+        layout = venn_layout(len(sets))
+        if layout == 'upset_only':
+            messages.append(f'{plan.name}: {len(sets)} sets cannot be drawn as a Venn; '
+                            f'writing the UpSet plot only.')
+        else:
+            fig, ax = plt.subplots(figsize=toolsTG.figsize_for(settings, (6, 6)))
+            draw_venn(ax, sets, colors=palette)
+            ax.set_title(f'{plan.title}\n({subtitle})', fontsize=10)
+            path = f'{individual_output}{plan.name}_venn.pdf'
+            fig.savefig(path, bbox_inches='tight')
+            plt.close(fig)
+            messages.append(f'Saving Venn: {path}')
+
+        # Every diagram past the proportional sizes gets an UpSet companion: at four and five
+        # sets the Venn is drawable but hard to read, and beyond that it is the only honest
+        # representation. Both are rendered from one computation, so they cannot disagree.
+        if layout != 'proportional':
+            upset_fig = draw_upset(sets, title=f'{plan.title} ({subtitle})', settings=settings,
+                                   colors=palette)
+            upset_path = f'{individual_output}{plan.name}_upset.pdf'
+            upset_fig.savefig(upset_path, bbox_inches='tight')
+            plt.close(upset_fig)
+            messages.append(f'Saving UpSet: {upset_path}')
 
         if results_dir:
             table = os.path.join(results_dir, f'{plan.name}_venn.tsv')

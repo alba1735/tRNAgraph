@@ -44,6 +44,50 @@ GRAPH_TYPES_ALL = ('cluster', 'correlation', 'count', 'coverage', 'heatmap',
                    'logo', 'mismatch', 'pca', 'radar', 'volcano')
 
 
+#: Graph types excluded from `-g all`'s fixed list, but folded in when their prerequisites are
+#: satisfied. Each needs a choice nobody makes by typing `-g all` -- two different grouping
+#: columns for `compare`, a `multivariate` config block for `venn` -- so producing them unasked
+#: would hand a user figures whose parameters they never selected. Once that choice HAS been
+#: made, requiring the type to be named again is ceremony rather than a safeguard.
+OPTIONAL_GRAPH_TYPES = ('compare', 'venn')
+
+
+def resolve_graphtypes(requested, optional_status):
+    '''
+    The graph types a run will produce, and the optional ones it left out with the reason.
+
+    `optional_status` maps each name in OPTIONAL_GRAPH_TYPES to None when its prerequisites are
+    met, or to a short reason when they are not.
+
+    `all` UNIONS with whatever else was requested rather than replacing it. It previously
+    replaced, so `-g all -g venn` produced exactly `all` and dropped the venn without a word --
+    a user asking for two things and receiving one, silently.
+
+    An explicitly named type is always included, prerequisites or not, so the gate downstream can
+    refuse it BY NAME and say what to add. Dropping an explicit request would leave the user with
+    no figure and no explanation.
+    '''
+    requested = list(requested)
+    types = [gt for gt in requested if gt != 'all']
+    skipped = []
+    if 'all' in requested:
+        types = list(GRAPH_TYPES_ALL) + types
+        for name in OPTIONAL_GRAPH_TYPES:
+            reason = optional_status.get(name, 'not available')
+            if name in requested:
+                continue
+            if reason is None:
+                types.append(name)
+            else:
+                skipped.append((name, reason))
+    seen, ordered = set(), []
+    for gt in types:
+        if gt not in seen:
+            seen.add(gt)
+            ordered.append(gt)
+    return ordered, skipped
+
+
 #: Graph types whose FILENAMES already record the read basis, so a basis directory segment
 #: would only duplicate identical output into a second place. Coverage's filenames carry
 #: --covtype's category; PCA's carry the readtype label, which differs by basis.
@@ -85,13 +129,23 @@ class anndataGrapher:
         # plots*.py modules that separately validate their own grp argument.
         self._validate_label_args()
         # Load cmap dict for each graph type
+        # Every entry names the obs COLUMN whose `colors` block that graph type reads, except
+        # `venn`: a diagram's circles are not levels of one column -- they cross grouping level,
+        # variant and read type -- so its colours are keyed by set label under `colors.venn`.
         self.cmap_dict = {'cluster':self.args.clustergrp, 'compare':self.args.comparegrp1, \
                           'coverage':self.args.covgrp, 'pca':self.args.pcacolors, 'radar':self.args.radargrp, \
-                          'volcano':self.args.volgrp}
+                          'venn':'venn', 'volcano':self.args.volgrp}
         # Load all graph types if specified
-        if self.args.graphtypes == 'all' or 'all' in self.args.graphtypes:
-            self.args.graphtypes = list(GRAPH_TYPES_ALL)
+        requested = ([self.args.graphtypes] if isinstance(self.args.graphtypes, str)
+                     else list(self.args.graphtypes))
+        if 'all' in requested:
             self.args.clusteroverview = True
+        self.args.graphtypes, skipped_optional = resolve_graphtypes(
+            requested, self._optional_graphtype_status())
+        for name, reason in skipped_optional:
+            # Reported rather than silent: "no Venn appeared" is otherwise indistinguishable
+            # from "there was nothing to draw".
+            self.logger.info(f'`-g all` does not include {name}: {reason}.')
         # Load max threads available unless specified
         if self.args.threads == 0:
             try:
@@ -234,6 +288,27 @@ class anndataGrapher:
             else:
                 self.adata_original.uns.setdefault('size_splits', {}).setdefault(self.variant_spec.tag, {})['log2FC'] = self.adata.uns['log2FC']
             self.adata_original.write(self.args.anndata)
+
+    def _optional_graphtype_status(self):
+        '''
+        Whether each opt-in graph type's prerequisites are met: {name: None or reason}.
+
+        `compare` needs two DIFFERENT grouping columns -- the fold change is taken between
+        --comparegrp2 values within each --comparegrp1 value, so one column for both is not a
+        comparison. Both default to 'group', which is why an ordinary run does not get it.
+
+        `venn` needs the `multivariate` config block that declares the grouping and thresholds
+        its sets are built from.
+        '''
+        grp1 = getattr(self.args, 'comparegrp1', None)
+        grp2 = getattr(self.args, 'comparegrp2', None)
+        compare = None if (grp1 and grp2 and grp1 != grp2) else (
+            f"--comparegrp1 and --comparegrp2 both name '{grp1}', so there is no comparison to "
+            f"take; set them to different obs columns")
+        venn = None if getattr(self.config, 'multivariate', None) is not None else (
+            'no `multivariate` block in --config, which declares the grouping and thresholds its '
+            'sets are built from')
+        return {'compare': compare, 'venn': venn}
 
     def resolved_diffrts(self):
         '''
@@ -568,7 +643,8 @@ class anndataGrapher:
             block = plotsVenn.require_multivariate_config(self.config)
             threaded = plotsVenn.visualizer(adata_c, block, output, config_name=self.config_name,
                                             settings=settings, read_basis=self.read_basis,
-                                            threaded=threaded)
+                                            variant_tag=self.variant_spec.tag, threaded=threaded,
+                                            colormap=colormap)
             membership = adata_c.uns.get('multivariate')
             if membership:
                 self.adata_original.uns['multivariate'] = membership

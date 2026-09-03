@@ -44,6 +44,27 @@ CATEGORICAL_COLORS = (
 # is to stop encoding the dimension in color at all -- a plot-design change, tracked separately.
 CATEGORICAL_OVERFLOW_PALETTE = 'husl'
 
+#: One color per SET in a Venn diagram and its UpSet companion. Drawn from CATEGORICAL_COLORS
+#: above, but ordered deliberately: the first two are the blue/orange pair that stays distinct
+#: under every common form of color vision deficiency, because both automatic diagrams are
+#: two-set. matplotlib-venn's own default is red/green/blue -- exactly the pair that collapses.
+#:
+#: Circles are drawn semi-transparent so overlaps blend, so these want to stay identifiable once
+#: layered. Five entries covers the largest diagram that can be drawn (plotsVenn.MAX_VENN_SETS);
+#: past that the UpSet plot takes over.
+VENN_SET_COLORS = (
+    '#0173b2',  # blue
+    '#de8f05',  # orange
+    '#029e73',  # green
+    '#cc78bc',  # purple
+    '#ca9161',  # tan
+)
+
+
+def venn_colors(n):
+    '''The first `n` set colors, cycling if a diagram somehow needs more than the palette has.'''
+    return [VENN_SET_COLORS[i % len(VENN_SET_COLORS)] for i in range(n)]
+
 
 def categorical_palette(n):
     '''N distinct colors for unordered categories -- the shared fallback when --style sets none.'''

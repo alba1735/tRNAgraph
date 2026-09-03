@@ -302,54 +302,54 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 
 #### `flags.graph` — `graph`
 
-| Key                   | Accepts                            | Default                                                                                          | Meaning                                                                                                                          |
-| --------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `allreads`            | `true` \| `false`                  | `false`                                                                                          | Plot every graph type from all reads instead of unique (transcript-specific) reads                                               |
-| `ccatail`             | `true` \| `false`                  | `true`                                                                                           | Specify wether to keep the CCA tail from the sequences                                                                           |
-| `clustergrp`          | string                             | `amino`                                                                                          | Specify AnnData column to group by                                                                                               |
-| `clusterlabels`       | string                             | —                                                                                                | Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot                 |
-| `clustermask`         | `true` \| `false`                  | `false`                                                                                          | Specify wether to mask the cluster plots to annotated HDBSCAN clusters                                                           |
-| `clusternumeric`      | `true` \| `false`                  | `false`                                                                                          | Specify wether to the cluster category is numeric                                                                                |
-| `clusteroverview`     | `true` \| `false`                  | `false`                                                                                          | Specify wether to generate an overview of the clusters                                                                           |
-| `combinedpdfonly`     | `true` \| `false`                  | `false`                                                                                          | Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output                                     |
-| `comparegrp1`         | string                             | `group`                                                                                          | AnnData obs column drawn as the coloured series within each compare plot                                                         |
-| `comparegrp2`         | string                             | `group`                                                                                          | AnnData obs column the fold change is taken BETWEEN, one figure per pair of its values                                           |
-| `corrgroup`           | string                             | `sample`                                                                                         | Specify a grouping variable to generate correlation matrices for                                                                 |
-| `corrmask`            | `"none"` \| `"upper"` \| `"lower"` | `none`                                                                                           | Hide one half of each correlation matrix: none (default), upper or lower                                                         |
-| `corrmethod`          | string                             | `pearson`                                                                                        | Specify correlation method                                                                                                       |
-| `covgap`              | `true` \| `false`                  | `false`                                                                                          | Specify wether to include gaps in coverage plots                                                                                 |
-| `covgrp`              | string                             | `group`                                                                                          | Specify a grouping variable to generate coverage plots for                                                                       |
-| `covmethod`           | string                             | `mean`                                                                                           | Specify method to use for coverage plots when combining multiple groups                                                          |
-| `covobs`              | string                             | `trna`                                                                                           | Specify the basis for each individual coverage plot                                                                              |
-| `covtype`             | string                             | —                                                                                                | Coverage category to plot: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino', or 'total' for their sum                  |
-| `diffrts`             | list of strings                    | `wholecounts, fiveprime, threeprime, other, total`                                               | Specify readtypes to use for heatmap/volcano                                                                                     |
-| `graphtypes`          | list of strings                    | `all, cluster, correlation, count, coverage, heatmap, logo, mismatch, pca, radar, venn, volcano` | Specify graphs to create, if not specified it will default to 'all'                                                              |
-| `heatbound`           | integer                            | `25`                                                                                             | Specify range to use for bounding the heatmap to top and bottom counts                                                           |
-| `heatcutoff`          | integer                            | `80`                                                                                             | Specify readcount cutoff to use for heatmap                                                                                      |
-| `heatgrp`             | string                             | `group`                                                                                          | Specify group to use for heatmap                                                                                                 |
-| `heatorient`          | `"vertical"` \| `"horizontal"`     | `vertical`                                                                                       | Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page                |
-| `heatsubplots`        | `true` \| `false`                  | `false`                                                                                          | Specify wether to generate subplots for each comparasion in addition to the sum                                                  |
-| `logogrp`             | string                             | `amino`                                                                                          | Specify AnnData column to group sequences by                                                                                     |
-| `logomanualgrp`       | list of strings                    | —                                                                                                | Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column                                     |
-| `logomanualname`      | string                             | —                                                                                                | Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified                       |
-| `logopseudocount`     | integer                            | `20`                                                                                             | Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs            |
-| `logornamode`         | `true` \| `false`                  | `false`                                                                                          | Specify wether to print the output as RNA rather than DNA                                                                        |
-| `logosize`            | string                             | `noloop`                                                                                         | Specify the sequence size to use for the logo plots from presets                                                                 |
-| `mismatchpseudocount` | integer                            | `10`                                                                                             | Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots (default: 10, matching tRAX) |
-| `pcacolors`           | string                             | `group`                                                                                          | Specify AnnData column to color PCA markers by                                                                                   |
-| `pcamarkers`          | string                             | `sample`                                                                                         | Specify AnnData column to use for PCA markers                                                                                    |
-| `pcareadtypes`        | list of strings                    | `total`                                                                                          | Read types to use for PCA markers                                                                                                |
-| `pseudogenes`         | `true` \| `false`                  | `true`                                                                                           | Specify wether to keep the pseudo-tRNAs (tRX)                                                                                    |
-| `radargrp`            | string                             | `group`                                                                                          | Specify AnnData column to group by                                                                                               |
-| `radarmethod`         | list of strings                    | `mean`                                                                                           | Specify method to use for radar plots                                                                                            |
-| `radarscaled`         | `true` \| `false`                  | `false`                                                                                          | Specify wether to scale the radar plots to 100%% (optional)                                                                      |
-| `regen_uns`           | `true` \| `false`                  | `false`                                                                                          | Force regenerate uns log2fc data if it would be generated again                                                                  |
-| `shrink`              | `"apeGLM"` \| `"none"`             | `apeGLM`                                                                                         | How to shrink log2 fold changes: apeGLM (default) or none                                                                        |
-| `variant`             | string                             | `norm:full`                                                                                      | Select which normalization:split-tag to plot, e.g                                                                                |
-| `volcutoff`           | integer                            | `80`                                                                                             | Specify readcount cutoff to use for volcano plot                                                                                 |
-| `volgrp`              | string                             | `group`                                                                                          | Specify group to use for volcano plot                                                                                            |
-| `vollabels`           | integer                            | `100`                                                                                            | Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels                                |
-| `volxlim`             | number                             | —                                                                                                | Force the volcano x-axis half-width to this log2 fold change                                                                     |
+| Key                   | Accepts                            | Default                                            | Meaning                                                                                                                          |
+| --------------------- | ---------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `allreads`            | `true` \| `false`                  | `false`                                            | Plot every graph type from all reads instead of unique (transcript-specific) reads                                               |
+| `ccatail`             | `true` \| `false`                  | `true`                                             | Specify wether to keep the CCA tail from the sequences                                                                           |
+| `clustergrp`          | string                             | `amino`                                            | Specify AnnData column to group by                                                                                               |
+| `clusterlabels`       | string                             | —                                                  | Specify a AnnData column of names to use for the clusters instead of the default and will place them on the plot                 |
+| `clustermask`         | `true` \| `false`                  | `false`                                            | Specify wether to mask the cluster plots to annotated HDBSCAN clusters                                                           |
+| `clusternumeric`      | `true` \| `false`                  | `false`                                            | Specify wether to the cluster category is numeric                                                                                |
+| `clusteroverview`     | `true` \| `false`                  | `false`                                            | Specify wether to generate an overview of the clusters                                                                           |
+| `combinedpdfonly`     | `true` \| `false`                  | `false`                                            | Do not generate single tRNA coverage plot PDFs for every tRNA, only keep the combined output                                     |
+| `comparegrp1`         | string                             | `group`                                            | AnnData obs column drawn as the coloured series within each compare plot                                                         |
+| `comparegrp2`         | string                             | `group`                                            | AnnData obs column the fold change is taken BETWEEN, one figure per pair of its values                                           |
+| `corrgroup`           | string                             | `sample`                                           | Specify a grouping variable to generate correlation matrices for                                                                 |
+| `corrmask`            | `"none"` \| `"upper"` \| `"lower"` | `none`                                             | Hide one half of each correlation matrix: none (default), upper or lower                                                         |
+| `corrmethod`          | string                             | `pearson`                                          | Specify correlation method                                                                                                       |
+| `covgap`              | `true` \| `false`                  | `false`                                            | Specify wether to include gaps in coverage plots                                                                                 |
+| `covgrp`              | string                             | `group`                                            | Specify a grouping variable to generate coverage plots for                                                                       |
+| `covmethod`           | string                             | `mean`                                             | Specify method to use for coverage plots when combining multiple groups                                                          |
+| `covobs`              | string                             | `trna`                                             | Specify the basis for each individual coverage plot                                                                              |
+| `covtype`             | string                             | —                                                  | Coverage category to plot: 'unique'/'transcript', 'isodecoder', 'isotype', 'notamino', or 'total' for their sum                  |
+| `diffrts`             | list of strings                    | `wholecounts, fiveprime, threeprime, other, total` | Specify readtypes to use for heatmap/volcano                                                                                     |
+| `graphtypes`          | list of strings                    | `all`                                              | Specify graphs to create, if not specified it will default to 'all'                                                              |
+| `heatbound`           | integer                            | `25`                                               | Specify range to use for bounding the heatmap to top and bottom counts                                                           |
+| `heatcutoff`          | integer                            | `80`                                               | Specify readcount cutoff to use for heatmap                                                                                      |
+| `heatgrp`             | string                             | `group`                                            | Specify group to use for heatmap                                                                                                 |
+| `heatorient`          | `"vertical"` \| `"horizontal"`     | `vertical`                                         | Heatmap layout: vertical (default), or horizontal to transpose the data and stack the panels for a landscape page                |
+| `heatsubplots`        | `true` \| `false`                  | `false`                                            | Specify wether to generate subplots for each comparasion in addition to the sum                                                  |
+| `logogrp`             | string                             | `amino`                                            | Specify AnnData column to group sequences by                                                                                     |
+| `logomanualgrp`       | list of strings                    | —                                                  | Specify a manual group of tRNAs to use for seqlogo plots instead of using the AnnData column                                     |
+| `logomanualname`      | string                             | —                                                  | Specify a name for the manual group of tRNAs output file, will be ignored and timestamped if not specified                       |
+| `logopseudocount`     | integer                            | `20`                                               | Specify the number of pseudocounts to add to each position when calculating as ratio of the bases in the pool of RNAs            |
+| `logornamode`         | `true` \| `false`                  | `false`                                            | Specify wether to print the output as RNA rather than DNA                                                                        |
+| `logosize`            | string                             | `noloop`                                           | Specify the sequence size to use for the logo plots from presets                                                                 |
+| `mismatchpseudocount` | integer                            | `10`                                               | Pseudocount added to coverage when computing per-position misincorporation rates for mismatch plots (default: 10, matching tRAX) |
+| `pcacolors`           | string                             | `group`                                            | Specify AnnData column to color PCA markers by                                                                                   |
+| `pcamarkers`          | string                             | `sample`                                           | Specify AnnData column to use for PCA markers                                                                                    |
+| `pcareadtypes`        | list of strings                    | `total`                                            | Read types to use for PCA markers                                                                                                |
+| `pseudogenes`         | `true` \| `false`                  | `true`                                             | Specify wether to keep the pseudo-tRNAs (tRX)                                                                                    |
+| `radargrp`            | string                             | `group`                                            | Specify AnnData column to group by                                                                                               |
+| `radarmethod`         | list of strings                    | `mean`                                             | Specify method to use for radar plots                                                                                            |
+| `radarscaled`         | `true` \| `false`                  | `false`                                            | Specify wether to scale the radar plots to 100%% (optional)                                                                      |
+| `regen_uns`           | `true` \| `false`                  | `false`                                            | Force regenerate uns log2fc data if it would be generated again                                                                  |
+| `shrink`              | `"apeGLM"` \| `"none"`             | `apeGLM`                                           | How to shrink log2 fold changes: apeGLM (default) or none                                                                        |
+| `variant`             | string                             | `norm:full`                                        | Select which normalization:split-tag to plot, e.g                                                                                |
+| `volcutoff`           | integer                            | `80`                                               | Specify readcount cutoff to use for volcano plot                                                                                 |
+| `volgrp`              | string                             | `group`                                            | Specify group to use for volcano plot                                                                                            |
+| `vollabels`           | integer                            | `100`                                              | Number of top significant markers to label on each volcano plot (default: 100); 0 disables labels                                |
+| `volxlim`             | number                             | —                                                  | Force the volcano x-axis half-width to this log2 fold change                                                                     |
 
 #### `flags.log2fc` — `tools log2fc`
 
@@ -364,6 +364,47 @@ What each key accepts is the part a template cannot show: a blank `"shrink": nul
 
 A list value **replaces** the default rather than adding to it, which is what lets a config narrow one — `"diffrts": ["fiveprime"]` plots that readtype alone. An empty list is rejected rather than silently selecting nothing.
 
+### Multivariate Analyses (`multivariate`)
+
+Venn diagrams of which tRNAs are present in which conditions. `graph -g venn` only runs when a `--config` file has this block, since the presence threshold is something you have to choose.
+
+```json
+{
+  "name": "my_experiment",
+  "multivariate": {
+    "grouping": "condition",
+    "presence_cutoff": 20,
+    "venn": [
+      {
+        "name": "treated_vs_control",
+        "title": "Treated vs control, by read type",
+        "sets": [
+          { "level": "control", "readtype": "fiveprime" },
+          { "level": "treated", "readtype": "fiveprime" },
+          { "level": "control", "readtype": "threeprime" },
+          { "level": "treated", "readtype": "threeprime" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+| Key               | Meaning                                                                     |
+| ----------------- | --------------------------------------------------------------------------- |
+| `grouping`        | The `obs` column your conditions live in.                                   |
+| `presence_cutoff` | Mean normalized reads a tRNA needs to count as present, averaged per group. |
+| `venn`            | Diagrams to draw. Leave it out and you still get the two automatic ones.    |
+
+Two diagrams are drawn without being asked for: fragment vs full-length (needs a read-length split) and 5' vs 3' (needs both end-specific read types). If the data can't support one, it's skipped with a message.
+
+For anything else, list one entry per diagram with a `name` and its `sets`. **One circle per entry in `sets`**, up to five. A circle is any mix of `level`, `variant` and `readtype`; leave a field out and it uses the run's default, so `{"level": "control"}` is a complete circle. Circle labels are built from whatever differs between them, or set `label` yourself. A `variant` named here wins over `--variant`.
+
+- Two or three circles are drawn to scale. Four and five use fixed ellipses where only the numbers mean anything. Past five, no diagram can show every overlap, so you get the UpSet plot alone.
+- Four or more circles also get an **UpSet plot** ([Lex et al. 2014](https://doi.org/10.1109/TVCG.2014.2346248)) next to the Venn, which stays readable at any size. Both come from the same numbers.
+- Read types follow `--allreads`; unique counts by default. Presence uses the same cutoff as differential expression, so a tRNA in a circle and a point on a volcano passed the same test.
+- Figures land in `<output>/venn/individual/`. Tables of which tRNAs are in which region go to the build's `results/multivariate/`. If the build directory recorded in the object is gone — normal when it was built on a server — the tables are skipped; the memberships are still in the object ([Data Structure](data_structure.md#multivariate-analyses-multivariate)).
+
 ### Style Files (`--style`)
 
 One JSON file carries both the color palette and the presentation settings for a figure set, so a paper's figures can be regenerated from a single file. It supersedes the former `--colormap`, which only ever carried colors.
@@ -373,7 +414,8 @@ One JSON file carries both the color palette and the presentation settings for a
   "colors": {
     "group": { "Control": "lightgrey", "Treated": "#FF5733" },
     "amino": { "Ala": "royalblue", "Gly": "#FF9896" },
-    "trimtype": { "Merged": "royalblue", "Discarded": "#B0B0B0" }
+    "trimtype": { "Merged": "royalblue", "Discarded": "#B0B0B0" },
+    "venn": { "control fiveprime": "lightgrey", "treated fiveprime": "#FF5733" }
   },
   "gradients": {
     "correlation": "crest",
@@ -407,6 +449,18 @@ Run `trnagraph tools template --style` to drop a blank `style.template.json` lis
 The defaults are perceptually uniform and colorblind-safe. Only two pairs are ever drawn in the same figure and so have to stay mutually distinguishable — `lfc` beside `significance`, and `score` beside `sequence`.
 
 Each takes either a Matplotlib or seaborn colormap name (`"mako_r"`, `"vlag"`, `"Blues"`) or a list of two or more colors to interpolate into your own ramp (`["#f7fbff", "#08306b"]`). A list for `lfc` wants an odd number of stops with a neutral middle, since that scale is centered on zero. An unknown name or an unparseable color fails when the file is read, not part-way through a long run.
+
+#### Venn set colors
+
+Most `colors` entries are keyed by an `obs` column and then its values. `venn` is keyed by **circle label** instead, because one circle can combine a condition, a variant and a read type.
+
+```json
+"venn": { "Day 0 norm:o60": "#007FFF", "Day 70 norm:o60": "#FFDC49" }
+```
+
+The labels are the ones printed on the figure; set `label` on a set in the `multivariate` config if you want to fix them. Name only the circles you want to change — the rest keep the default. A circle and its UpSet row always match.
+
+The default is five colors from the same set as `categorical`, blue and orange first so the two-circle diagrams stay readable for colorblind viewers. Circles are drawn at 35% opacity so overlaps show through, so very pale colors disappear.
 
 #### Categorical palette
 

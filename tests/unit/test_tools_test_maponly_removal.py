@@ -59,7 +59,7 @@ def test_no_flags_runs_every_step_including_build_cluster_and_graph():
 
     for step in ["trim_fastq", "create_index", "map_reads", "build_db", "cluster_db", "graph_db", "graph_split_db"]:
         assert step in called, f"{step} should run under run_all"
-    assert called.count("build_db") == 2  # once plain, once for split_build
+    assert called.count("build_db") == 1  # one build, with the split
 
 
 def test_map_trim_makedb_flags_alone_stop_after_mapping():

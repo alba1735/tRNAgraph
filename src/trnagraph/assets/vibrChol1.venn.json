@@ -1,0 +1,31 @@
+{
+  "multivariate": {
+    "grouping": "group",
+    "presence_cutoff": 20,
+    "venn": [
+      {
+        "name": "growthphase_frag_full",
+        "sets": [
+          {
+            "level": "VC_log",
+            "variant": "norm:o60"
+          },
+          {
+            "level": "VC_CF",
+            "variant": "norm:o60"
+          },
+          {
+            "level": "VC_log",
+            "variant": "norm:u60"
+          },
+          {
+            "level": "VC_CF",
+            "variant": "norm:u60"
+          }
+        ],
+        "title": "Exponential vs stationary phase, fragment vs full length"
+      }
+    ]
+  },
+  "name": "multivariate"
+}

@@ -586,7 +586,7 @@ def graph(
     ctx: typer.Context,
     anndata: str = typer.Option(..., "-i", "--input", help="Specify location of h5ad object"),
     output: str = typer.Option("figures", "-o", "--output", help="Specify output directory"),
-    graphtypes: List[str] = typer.Option(['all', 'cluster', 'correlation', 'count', 'coverage', 'heatmap', 'logo', 'mismatch', 'pca', 'radar', 'venn', 'volcano'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
+    graphtypes: List[str] = typer.Option(['all'], "-g", "--graphtypes", help="Specify graphs to create, if not specified it will default to 'all'"),
     config: Optional[str] = typer.Option(None, "--config", help="JSON file of obs/var filters plus a `flags.graph` block pinning this command's options, so one file can carry a whole run. A typed flag beats the file"),
     style: Optional[str] = typer.Option(None, "--style", help="JSON style file carrying the color palette and presentation settings. `trnagraph tools template --style` writes a blank one; a typed flag beats the file"),
     format: Optional[str] = typer.Option(None, "--format", help="Output image format for every plot: pdf, svg or png. Overrides a 'format' set in --style. Default: pdf"),
@@ -860,6 +860,14 @@ def test(
     except toolsTestSuite.WorkspaceNotOwnedError as refusal:
         # A safety refusal, not a crash -- the user needs the sentence, not a traceback.
         typer.secho(f"ERROR: {refusal}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except Exception as failure:
+        # A step that failed. The pipeline already logged the detail to toolsTestSuite.log, so
+        # this is the one-line verdict plus a non-zero exit -- previously the failure was
+        # swallowed and the run printed 'Done!' and exited 0, which reported success for a run
+        # that never finished and made the command useless as a CI gate.
+        typer.secho(f"ERROR: the demo pipeline did not complete: {failure}",
+                    fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     print('Done!\n')
 

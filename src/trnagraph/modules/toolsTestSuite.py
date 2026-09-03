@@ -111,6 +111,7 @@ WORKSPACE_ENTRIES = frozenset({
     'references',           # genome, annotations, tRNA database
     'processed',            # trim/map output
     'vibrChol1',            # the demo experiment's own output directory (`analyze build -o`)
+    'vibrChol1_nosplit',    # legacy: the second build an older suite ran, so --all can clear it
     'toolsTestSuite.log',   # the suite's own log, which the wipe already preserves
 })
 
@@ -637,6 +638,20 @@ class demoPipeline:
             )
             self._run_command(cmd, "Running graph command...")
 
+            # `venn` is excluded from `-g all` and needs a `multivariate` config block, so the
+            # default graph run above cannot reach it. A second invocation exercises it, gated on
+            # a split existing: the declared four-set diagram crosses growth phase with the
+            # u60/o60 variants, which a build without --readlengthsplit does not have.
+            if has_split:
+                venn_cmd = (
+                    f"{self.trnagraph_path} graph "
+                    f"-i vibrChol1/vibrChol1.h5ad -o {graphs_dir} -g venn "
+                    "--config config/vibrChol1.venn.json --style config/style.json"
+                )
+                self._run_command(venn_cmd, "Running graph command for Venn diagrams...")
+            else:
+                self.logger.info("No split variant present; skipping the Venn graph step.")
+
             self.logger.info("Done.")
 
     def graph_split_db(self) -> None:
@@ -691,11 +706,13 @@ class demoPipeline:
                 self.create_index()
             if run_all or self.args.map:
                 self.map_reads()
-            if run_all or self.args.build or self.args.hubonly:
-                self.build_db()
-            # split_build runs build with readlengthsplit
-            if getattr(self.args, 'split_build', False) or run_all:
-                self.args.split_build = True  # Ensure flag is set
+            # One build, with the split. A full run used to build twice, plain and split, but
+            # `results/complete/` IS the plain build's output -- every file matched except the
+            # runinfo line -- and nothing downstream read the plain tree.
+            if run_all:
+                self.args.split_build = True
+            if run_all or self.args.build or getattr(self.args, 'split_build', False) \
+                    or self.args.hubonly:
                 self.build_db()
             if run_all or self.args.cluster:
                 self.cluster_db()
@@ -711,7 +728,12 @@ class demoPipeline:
             self.logger.info("All tests completed.")
 
         except Exception as e:
+            # Logged AND re-raised. Swallowing it made a run that aborted partway print an error
+            # line, then "Done!", and exit 0 -- indistinguishable from success to anything reading
+            # the exit code, and easy to miss in a long log. A demo pipeline whose job is to say
+            # whether the pipeline works cannot report success when it did not finish.
             self.logger.error(f"An error occurred during execution: {e}")
+            raise
 
 if __name__ == "__main__":
     pass
